@@ -1,0 +1,49 @@
+{
+  "entities": {
+    "Connection": {
+      "title": "Connection",
+      "description": "Represents a connection request or active relationship between two business actors",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "alphabetic sorted combination of senderId and receiverId" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "status": { "type": "string", "enum": ["en_attente", "active", "refusée"] },
+        "senderName": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "receiverName": { "type": "string" },
+        "receiverRole": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "senderId", "receiverId", "status", "senderName", "senderRole", "receiverName", "receiverRole", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Represents an in-app user notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "The recipient's user ID" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["CONNECTION_REQUEST", "CONNECTION_ACCEPTED", "CONNECTION_REJECTED", "MESSAGE", "SYSTEM"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "relatedId": { "type": "string", "description": "Optional ID of related entity, e.g. Connection" }
+      },
+      "required": ["id", "userId", "title", "message", "type", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/connections/{connectionId}": {
+      "schema": "Connection",
+      "description": "B2B Actor connection requests and relationships"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    }
+  }
+}

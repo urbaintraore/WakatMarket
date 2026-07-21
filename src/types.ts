@@ -1,0 +1,313 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+export enum UserRole {
+  ADMIN = "ADMIN",
+  MANUFACTURER = "MANUFACTURER",
+  WHOLESALER = "WHOLESALER",
+  SEMI_WHOLESALER = "SEMI_WHOLESALER", // Demi-Grossiste
+  RETAILER = "RETAILER",
+  CLIENT = "CLIENT",
+  DRIVER_M2W = "DRIVER_M2W", // Fabricant -> Grossiste
+  DRIVER_W2R = "DRIVER_W2R", // Grossiste -> Détaillant
+  DRIVER_R2C = "DRIVER_R2C", // Détaillant -> Client
+  DRIVER_W2SG = "DRIVER_W2SG", // Grossiste -> Demi-Grossiste
+  DRIVER_SG2R = "DRIVER_SG2R", // Demi-Grossiste -> Détaillant
+}
+
+export interface LightClient {
+  id: string;
+  ownerId: string; // The user (Manufacturer/Wholesaler/etc.) who owns this client entry
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+  linkedUserId?: string; // Optional reference to a real UserProfile if they join the platform
+  createdAt: string;
+}
+
+export interface PriceTier {
+  minQuantity: number;
+  unitPrice: number;
+  label: string; // e.g. "Détail", "Demi-Gros", "Gros", "Carton"
+}
+
+export interface StockMovement {
+  id: string;
+  productId: string;
+  ownerId: string;
+  type: "IN" | "OUT" | "ADJUST";
+  quantity: number;
+  reason: string;
+  timestamp: string;
+  orderId?: string; // Reference to order if type is OUT
+  isSynced: boolean;
+}
+
+export interface DebtPayment {
+  id: string;
+  clientId: string;
+  amount: number;
+  date: string;
+  saleId?: string; // Reference to the sale that generated the debt
+  isSynced: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  status: "ACTIVE" | "PENDING" | "SUSPENDED";
+  companyName?: string;
+  avatar?: string;
+  country: string;
+  region: string;
+  province?: string;
+  commune?: string;
+  sector?: string;
+  address?: string;
+  rating?: number;
+  balance?: number;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface GeoLocation {
+  lat: number;
+  lng: number;
+  label: string;
+}
+
+export interface GeoNode {
+  id: string;
+  name: string;
+  type: "PAYS" | "REGION" | "PROVINCE" | "COMMUNE" | "SECTEUR" | "QUARTIER";
+  parentId?: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  subCategory?: string;
+  brand: string;
+  unit: string; // e.g. "Carton de 24 bouteilles", "Sac de 50kg"
+  weight: number; // in kg
+  volume: number; // in m³
+  image: string;
+  imageUrl?: string;
+  barcode: string;
+  qrCode: string;
+  expirationDate?: string;
+  creatorId: string; // Manufacturer ID
+  prixGros?: number;
+  prixDetail?: number;
+  quantiteMinimum?: number;
+  typeVente?: "GROS" | "DETAIL" | "BOTH";
+  priceTiers?: PriceTier[];
+  lowStockThreshold?: number;
+}
+
+export interface InventoryItem {
+  id: string;
+  productId: string;
+  ownerId: string; // Fabricant, Grossiste or Détaillant
+  stock: number;
+  threshold: number; // Critical threshold
+  price: number; // Selling price
+  promoPrice?: number;
+  promoEnds?: string;
+  prixGros?: number;
+  prixDetail?: number;
+  quantiteMinimum?: number;
+  typeVente?: "GROS" | "DETAIL" | "BOTH";
+  updatedAt?: string;
+  priceTiers?: PriceTier[];
+  lowStockThreshold?: number;
+}
+
+export enum OrderStatus {
+  DRAFT = "DRAFT",
+  PENDING = "PENDING", // En attente
+  CONFIRMED = "CONFIRMED", // Confirmée
+  PREPARING = "PREPARING", // Préparation
+  READY = "READY", // Prête
+  SHIPPED = "SHIPPED", // Expédiée (départ validé)
+  DELIVERING = "DELIVERING", // En livraison
+  DELIVERED = "DELIVERED", // Livrée (réception confirmée)
+  CANCELLED = "CANCELLED", // Annulée
+  RETURNED = "RETURNED", // Retournée
+}
+
+export interface OrderItem {
+  productId: string;
+  quantity: number;
+  priceAtOrder: number;
+}
+
+export interface Order {
+  id: string;
+  orderType: "B2B_M2W" | "B2B_W2R" | "B2C_R2C" | "B2B_W2SG" | "B2B_SG2R" | "B2C_SG2C"; // Add Wholesaler to Semi-Wholesaler, Semi-Wholesaler to Retailer, Semi-Wholesaler to Client
+  senderId: string; // Wholesaler, Retailer, or Client
+  receiverId: string; // Manufacturer, Wholesaler, or Retailer
+  items: OrderItem[];
+  totalAmount: number;
+  amountPaid: number;
+  paymentStatus: "PENDING" | "PAID" | "FAILED" | "PARTIAL" | "DEFERRED_APPROVED";
+  status: OrderStatus;
+  clientId?: string; // Reference to LightClient if B2C or offline client
+  createdAt: string;
+  updatedAt: string;
+  shippingFee: number;
+  distanceKm: number;
+  estimatedTimeMins: number;
+  paymentMethod: "ORANGE_MONEY" | "MOOV_MONEY" | "WAVE" | "CREDIT_CARD" | "CASH" | "DEFERRED";
+  deliveryAddress: string;
+  deliveryNotes?: string;
+  driverId?: string; // Assigned delivery driver
+  otpCode?: string; // Driver authentication pin for B2C
+  signatureImage?: string; // Digital signature png
+  deliveryPhoto?: string; // Proof of delivery photo url
+  claimMessage?: string; // Message from client regarding a claim
+  claimStatus?: "NONE" | "OPEN" | "RESOLVED"; // Status of a claim
+  sellerType?: string;
+  buyerType?: string;
+  canalDistribution?: string;
+}
+
+export enum MessageType {
+  TEXT = "TEXT",
+  AUDIO = "AUDIO",
+  IMAGE = "IMAGE",
+  VIDEO = "VIDEO",
+  DOCUMENT = "DOCUMENT",
+  LOCATION = "LOCATION",
+  SYSTEM = "SYSTEM"
+}
+
+export enum MessageStatus {
+  SENT = "SENT",
+  DELIVERED = "DELIVERED",
+  READ = "READ"
+}
+
+export interface ChatMessage {
+  id: string;
+  conversationId?: string;
+  senderId: string;
+  type?: MessageType;
+  content?: string; // Texte, message système ou nom de fichier
+  mediaUrl?: string; // Image, Video, Document
+  audioUrl?: string; // Voice notes
+  duration?: number; // Voice note duration in seconds
+  latitude?: number; // Pour partage de position
+  longitude?: number;
+  status?: MessageStatus;
+  createdAt?: string;
+  readBy?: Record<string, string>; // userId -> timestamp de lecture
+  replyToId?: string; // Pour les réponses
+  senderName?: string;
+  senderRole?: UserRole;
+  text?: string;
+  receiverId?: string;
+  timestamp?: string;
+  transcription?: string;
+}
+
+export interface ConversationParticipant {
+  userId: string;
+  joinedAt: string;
+  role: "MEMBER" | "ADMIN";
+}
+
+export interface Conversation {
+  id: string;
+  type: "PRIVATE" | "GROUP";
+  participants: string[]; // Liste simple pour requêtes rapides array-contains
+  participantDetails: Record<string, ConversationParticipant>;
+  lastMessage?: string;
+  lastMessageDate?: string;
+  unreadCount: Record<string, number>; // userId -> count
+  
+  // Pour les groupes
+  groupName?: string;
+  groupDescription?: string;
+  groupImage?: string;
+  createdBy?: string;
+
+  // Contextes optionnels
+  orderId?: string;
+  productId?: string;
+  deliveryId?: string;
+  invoiceId?: string;
+  paymentId?: string;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIRecommendation {
+  id: string;
+  type: "RESTOCK" | "DEMAND_FORECAST" | "PROMOTION" | "ROUTE_OPTIMIZATION";
+  targetId: string; // Product ID or Route ID
+  title: string;
+  description: string;
+  confidence: number; // 0-100%
+  suggestedAction: string;
+  metrics?: {
+    currentStock?: number;
+    recommendedQty?: number;
+    estimatedVentesGrowth?: number;
+  };
+}
+
+export interface PlatformStats {
+  commissionRate: number; // % taken by platform
+  totalRevenue: number;
+  totalOrdersCount: number;
+  activeUsersCount: {
+    manufacturers: number;
+    wholesalers: number;
+    semiWholesalers?: number; // Optional or required, let's keep it optional for compatibility but fully used
+    retailers: number;
+    drivers: number;
+    clients: number;
+  };
+}
+
+export interface LoyaltyPoints {
+  userId: string;
+  points: number;
+  tier: "BRONZE" | "SILVER" | "GOLD";
+}
+
+export interface Connection {
+  id: string;
+  senderId: string;    // L'acteur qui demande l'ajout
+  receiverId: string;  // Le client/partenaire concerné
+  status: "en_attente" | "active" | "refusée";
+  senderName: string;
+  senderRole: UserRole;
+  receiverName: string;
+  receiverRole: UserRole;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Notification {
+  id: string;
+  userId: string; // recipient
+  senderId?: string; // sender of the notification (required for Firestore security rules)
+  title: string;
+  message: string;
+  type: "CONNECTION_REQUEST" | "CONNECTION_ACCEPTED" | "CONNECTION_REJECTED" | "MESSAGE" | "SYSTEM";
+  read: boolean;
+  createdAt: string;
+  relatedId?: string; // e.g. Connection ID or Message ID
+}
