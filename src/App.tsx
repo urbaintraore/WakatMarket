@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX
+  UserCheck, UserX, WifiOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -156,6 +156,7 @@ export default function App() {
   const [fbLatitude, setFbLatitude] = useState<number | undefined>(undefined);
   const [fbLongitude, setFbLongitude] = useState<number | undefined>(undefined);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [demoLoadingRole, setDemoLoadingRole] = useState<UserRole | null>(null);
 
   // Deduplicate helper
   const deduplicate = <T extends { id: string }>(arr: T[]): T[] => {
@@ -461,7 +462,7 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      import("@/src/services/syncService").then(({ syncService }) => {
+      import("./services/syncService").then(({ syncService }) => {
         syncService.processQueue();
       });
     };
@@ -480,7 +481,7 @@ export default function App() {
   useEffect(() => {
     if (isOnline) {
       const interval = setInterval(() => {
-        import("@/src/services/syncService").then(({ syncService }) => {
+        import("./services/syncService").then(({ syncService }) => {
           syncService.processQueue();
           setSyncQueue(db.getSyncQueue());
         });
@@ -571,6 +572,83 @@ export default function App() {
       setIsAuthScreen(false);
     } catch (err: any) {
       setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur de connexion Firebase.") });
+    }
+  };
+
+  const handleFastDemoLogin = async (role: UserRole) => {
+    setFbMsg(null);
+    setDemoLoadingRole(role);
+    const email = `${role.toLowerCase()}@wakat.com`;
+    const password = "Password123!";
+    
+    try {
+      console.log(`[FAST DEMO] Tentative de connexion pour le rôle ${role}...`);
+      await loginWithEmail(email, password);
+      setFbMsg({ type: "success", text: `Connexion Démo réussie en tant que ${role} !` });
+      setIsAuthScreen(false);
+    } catch (err: any) {
+      console.warn(`[FAST DEMO] Compte inexistant ou identifiants incorrects. Auto-inscription de ${email}...`);
+      try {
+        let firstName = "";
+        let lastName = "";
+        switch (role) {
+          case UserRole.ADMIN:
+            firstName = "Urbain";
+            lastName = "Admin";
+            break;
+          case UserRole.MANUFACTURER:
+            firstName = "Mamadou";
+            lastName = "Fabricant";
+            break;
+          case UserRole.WHOLESALER:
+            firstName = "Alassane";
+            lastName = "Grossiste";
+            break;
+          case UserRole.SEMI_WHOLESALER:
+            firstName = "Fatou";
+            lastName = "Demi-Grossiste";
+            break;
+          case UserRole.RETAILER:
+            firstName = "Awa";
+            lastName = "Détaillant";
+            break;
+          case UserRole.CLIENT:
+            firstName = "Moussa";
+            lastName = "Client";
+            break;
+          default:
+            firstName = "Sidi";
+            lastName = "Livreur";
+        }
+
+        // Auto-register in Firebase & Firestore
+        await registerWithEmail(
+          email,
+          password,
+          lastName,
+          firstName,
+          "+226 70 12 34 56",
+          role,
+          "Burkina Faso",
+          "Ouagadougou",
+          "Ouaga 2000",
+          12.3714,
+          -1.5197
+        );
+
+        // Try signing in again
+        await loginWithEmail(email, password);
+        setFbMsg({ type: "success", text: `Compte démo ${role} créé et connecté avec succès !` });
+        setIsAuthScreen(false);
+      } catch (regErr: any) {
+        console.error("[FAST DEMO] Erreur critique d'auto-inscription:", regErr);
+        setFbMsg({
+          type: "error",
+          text: `Impossible de connecter ou d'auto-enregistrer le compte démo ${role} : ${formatFirebaseError(regErr.message || "Erreur de création.")}`
+        });
+      }
+    } finally {
+      setDemoLoadingRole(null);
     }
   };
 
@@ -1285,7 +1363,7 @@ export default function App() {
     }
 
     // 4. Add to sync queue
-    import("@/src/services/syncService").then(({ syncService }) => {
+    import("./services/syncService").then(({ syncService }) => {
       syncService.addToQueue("CREATE_ORDER", newSale);
     });
 
@@ -1304,7 +1382,7 @@ export default function App() {
     syncPayments([newPayment, ...payments]);
     addNotification(`Paiement de ${formatCFA(amount)} enregistré.`);
     
-    import("@/src/services/syncService").then(({ syncService }) => {
+    import("./services/syncService").then(({ syncService }) => {
       syncService.addToQueue("ADD_PAYMENT", newPayment);
     });
   };
@@ -1764,6 +1842,21 @@ export default function App() {
         </div>
       </header>
 
+      {/* Offline Banner */}
+      {!isOnline && (
+        <div className="bg-amber-100 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto flex items-center gap-3">
+            <WifiOff className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div>
+              <h3 className="text-sm font-bold text-amber-800 dark:text-amber-200">Mode Hors-Ligne Actif</h3>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                Vous n'êtes pas connecté à internet. Vous pouvez continuer à utiliser l'application. Vos modifications seront automatiquement synchronisées lorsque la connexion sera rétablie.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main ERP Canvas Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
@@ -1824,55 +1917,165 @@ export default function App() {
 
             {/* Email/Password Login Mode */}
             {fbAuthMode === "signin" && (
-              <form onSubmit={handleFbLogin} className="space-y-4 text-xs">
-                <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 mb-1">E-mail de connexion</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="Saisir votre adresse e-mail..."
-                    value={fbEmail}
-                    onChange={(e) => setFbEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Mot de passe</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Saisir le mot de passe..."
-                    value={fbPassword}
-                    onChange={(e) => setFbPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                  />
-                </div>
+              <div className="space-y-5">
+                <form onSubmit={handleFbLogin} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">E-mail de connexion</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="Saisir votre adresse e-mail..."
+                      value={fbEmail}
+                      onChange={(e) => setFbEmail(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Mot de passe</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="Saisir le mot de passe..."
+                      value={fbPassword}
+                      onChange={(e) => setFbPassword(e.target.value)}
+                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
+                    />
+                  </div>
 
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="fb-persist"
-                    checked={fbPersist}
-                    onChange={(e) => {
-                      setFbPersist(e.target.checked);
-                      authService.configureSessionPersistence(e.target.checked);
-                    }}
-                    className="rounded border-zinc-300 dark:border-zinc-700 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                  />
-                  <label htmlFor="fb-persist" className="text-[11px] text-zinc-500 dark:text-zinc-400 cursor-pointer selection:bg-transparent">
-                    Se souvenir de moi sur cet appareil (Persistance locale)
-                  </label>
-                </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="fb-persist"
+                      checked={fbPersist}
+                      onChange={(e) => {
+                        setFbPersist(e.target.checked);
+                        authService.configureSessionPersistence(e.target.checked);
+                      }}
+                      className="rounded border-zinc-300 dark:border-zinc-700 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <label htmlFor="fb-persist" className="text-[11px] text-zinc-500 dark:text-zinc-400 cursor-pointer selection:bg-transparent">
+                      Se souvenir de moi sur cet appareil (Persistance locale)
+                    </label>
+                  </div>
 
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-                >
-                  {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-                  Se connecter à WakatMarket
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={authLoading || !!demoLoadingRole}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+                  >
+                    {authLoading && !demoLoadingRole ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+                    Se connecter à WakatMarket
+                  </button>
+                </form>
+
+                {/* Fast Demo Login Section */}
+                <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
+                    <span className="font-bold text-[10px] uppercase tracking-wider">
+                      Connexion Rapide Démo (Création automatique s'il manque)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.ADMIN)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.ADMIN ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Administrateur</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">Gestion ERP globale</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.WHOLESALER)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.WHOLESALER ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <Landmark className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Grossiste</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">Procurement B2B</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.SEMI_WHOLESALER)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.SEMI_WHOLESALER ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <Compass className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Demi-Grossiste</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">Vente en gros & détail</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.RETAILER)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.RETAILER ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <ShoppingBag className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Détaillant</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">POS Boutique & Client</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.CLIENT)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.CLIENT ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <ShoppingCart className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Acheteur Client</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">B2C Market local</p>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => handleFastDemoLogin(UserRole.DRIVER_R2C)}
+                      disabled={authLoading || !!demoLoadingRole}
+                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {demoLoadingRole === UserRole.DRIVER_R2C ? (
+                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
+                      ) : (
+                        <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      )}
+                      <div className="truncate">
+                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Livreur</p>
+                        <p className="text-[9px] text-zinc-400 font-normal">Gestion de livraison</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Email/Password Signup Mode */}

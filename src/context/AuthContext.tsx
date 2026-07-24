@@ -112,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setDbUser(profile);
     } catch (err: any) {
+      console.warn("Erreur de connexion Firebase, tentative de repli local...", err);
       const allUsers = [...db.getUsers()];
       try {
         const erp = localStorage.getItem("wakat_erp_v2_users");
@@ -133,18 +134,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDbUser(mappedUser);
         setFirebaseUser({ uid: found.id, email: found.email, emailVerified: true } as any);
       } else {
-        const newProf: FirebaseUser = {
-          uid: "user-" + Date.now(),
-          nom: email.split("@")[0],
-          prénom: "",
-          email,
-          téléphone: "",
-          rôle: UserRole.CLIENT,
-          dateCréation: new Date().toISOString(),
-          statut: "ACTIVE"
-        };
-        setDbUser(newProf);
-        setFirebaseUser({ uid: newProf.uid, email: newProf.email, emailVerified: true } as any);
+        // Pour les erreurs réelles d'identifiants incorrects sur des comptes non-maquettés, on lève l'erreur pour informer l'utilisateur.
+        const errorMsg = formatFirebaseError(err.message || "Identifiants invalides.");
+        setError(errorMsg);
+        throw err;
       }
     } finally {
       setLoading(false);

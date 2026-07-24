@@ -30,7 +30,12 @@ export const authService = {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       return userCredential.user;
     } catch (error: any) {
-      console.error("Erreur de connexion par e-mail:", error);
+      const isExpectedAuthError = error?.code?.includes("auth/") || error?.message?.includes("auth/");
+      if (isExpectedAuthError) {
+        console.warn("Connexion refusée par Firebase Auth (identifiants invalides) :", error.message || error);
+      } else {
+        console.error("Erreur de connexion par e-mail:", error);
+      }
       throw error;
     }
   },

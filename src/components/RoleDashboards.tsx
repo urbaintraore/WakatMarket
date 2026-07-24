@@ -20,6 +20,45 @@ import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
 import { AdminUserEditModal } from "./AdminUserEditModal";
 import { motion, AnimatePresence } from "motion/react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+
+// ----------------------------------------------------------------------
+// Shared Price History Chart
+// ----------------------------------------------------------------------
+export function PriceHistoryChart({ basePrice }: { basePrice: number }) {
+  const data = useMemo(() => {
+    // Generate a simulated history based on the current basePrice
+    const now = new Date();
+    const history = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const randomFluctuation = 1 + (Math.random() * 0.1 - 0.05); // +/- 5%
+      history.push({
+        name: d.toLocaleDateString("fr-FR", { month: "short" }),
+        prix: Math.round(basePrice * (i === 0 ? 1 : randomFluctuation))
+      });
+    }
+    return history;
+  }, [basePrice]);
+
+  return (
+    <div className="h-48 w-full mt-4">
+      <h5 className="text-[10px] uppercase font-bold text-zinc-500 mb-2">Historique des Prix (6 mois)</h5>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
+          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(val) => `${val}`} />
+          <Tooltip 
+            formatter={(value: number) => [formatCFA(value), "Prix"]}
+            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
+          />
+          <Line type="monotone" dataKey="prix" stroke="#059669" strokeWidth={2} dot={{ r: 3, fill: "#059669", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 5 }} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 // ----------------------------------------------------------------------
 // 1. ADMIN DASHBOARD
@@ -396,6 +435,7 @@ export function ManufacturerDashboard({
   const [uploadMode, setUploadMode] = useState<"url" | "file">("file");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedProductForChart, setSelectedProductForChart] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdding) {
@@ -459,20 +499,27 @@ export function ManufacturerDashboard({
     }));
   };
 
-  const handleCheckoutPOS = () => {
-    const items = Object.keys(posCart)
-      .filter((prodId) => posCart[prodId] > 0)
-      .map((prodId) => ({ productId: prodId, quantity: posCart[prodId] }));
-
-    if (items.length === 0) return;
-
-    const clientId = posSelectedLightClientId || "CASH_CLIENT";
-    onPlaceSale(clientId, items, posAmountPaid, "CASH");
-    
-    setPosCart({});
-    setPosAmountPaid(0);
-    setPosSelectedLightClientId("");
-    alert("Vente comptoir enregistrée !");
+  const handleCheckoutPOS = async (saleData: any) => {
+    // 1. Appel de la Cloud Function 'enregistrerVente' (simulé ou réel)
+    try {
+      /* 
+      // VRAI APPEL CLOUD FUNCTION (Décommenter si Firebase configuré)
+      import { getFunctions, httpsCallable } from "firebase/functions";
+      const functions = getFunctions();
+      const enregistrerVente = httpsCallable(functions, 'enregistrerVente');
+      await enregistrerVente(saleData);
+      */
+      
+      // Simulation pour l'UI React locale :
+      const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
+      onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
+      
+      setPosCart({});
+      setPosAmountPaid(0);
+      setPosSelectedLightClientId("");
+    } catch (e: any) {
+      throw new Error("Erreur de transaction : " + e.message);
+    }
   };
 
   // Available M2W drivers
@@ -745,55 +792,70 @@ export function ManufacturerDashboard({
               const prod = products.find((p) => p.id === item.productId);
               if (!prod) return null;
               return (
-                <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
-                  <div className="flex gap-3 items-center min-w-0">
-                    <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover" />
-                    <div className="min-w-0">
-                      <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
-                      <p className="text-[10px] text-zinc-500 font-medium">Unité : {prod.unit}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          Stock : {item.stock} u
-                        </span>
-                        <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono">
-                          {formatCFA(item.price)} / u
-                        </span>
+                <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex flex-col gap-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex gap-3 items-center min-w-0">
+                      <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover" />
+                      <div className="min-w-0">
+                        <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
+                        <p className="text-[10px] text-zinc-500 font-medium">Unité : {prod.unit}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                            Stock : {item.stock} u
+                          </span>
+                          <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono">
+                            {formatCFA(item.price)} / u
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  {/* Inline Stock Fast update */}
-                  <div className="flex gap-2 items-center">
-                    <div className="flex flex-col items-center">
-                      <label className="text-[9px] text-zinc-500 font-bold">Stock</label>
-                      <input
-                        type="number"
-                        defaultValue={item.stock}
-                        className="w-16 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (!isNaN(val)) onUpdateInventory(item.id, val, item.price);
-                        }}
-                      />
+                    {/* Inline Stock Fast update */}
+                    <div className="flex gap-2 items-center">
+                      <button
+                        onClick={() => setSelectedProductForChart(selectedProductForChart === item.id ? null : item.id)}
+                        className={`p-1.5 rounded-lg transition ${selectedProductForChart === item.id ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"}`}
+                        title="Historique des prix"
+                      >
+                        <TrendingUp className="w-4 h-4" />
+                      </button>
+                      <div className="flex flex-col items-center">
+                        <label className="text-[9px] text-zinc-500 font-bold">Stock</label>
+                        <input
+                          type="number"
+                          defaultValue={item.stock}
+                          className="w-16 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
+                          onBlur={(e) => {
+                            const val = parseInt(e.target.value);
+                            if (!isNaN(val)) onUpdateInventory(item.id, val, item.price);
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <label className="text-[9px] text-zinc-500 font-bold">Prix</label>
+                        <input
+                          type="number"
+                          defaultValue={item.price}
+                          className="w-20 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
+                          onBlur={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) onUpdateInventory(item.id, item.stock, val);
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => onDeleteInventoryItem(item.id)}
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition"
+                      >
+                        Suppr.
+                      </button>
                     </div>
-                    <div className="flex flex-col items-center">
-                      <label className="text-[9px] text-zinc-500 font-bold">Prix</label>
-                      <input
-                        type="number"
-                        defaultValue={item.price}
-                        className="w-20 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                        onBlur={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val)) onUpdateInventory(item.id, item.stock, val);
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => onDeleteInventoryItem(item.id)}
-                      className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition"
-                    >
-                      Suppr.
-                    </button>
                   </div>
+                  
+                  {selectedProductForChart === item.id && (
+                    <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 animate-fade-in">
+                      <PriceHistoryChart basePrice={item.price} />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -930,6 +992,7 @@ export function ManufacturerDashboard({
           <WeeklySalesChart orders={orders} currentUserId={currentUser.id} />
           
           <POSComponent
+            currentUser={currentUser}
             inventory={myInventory}
             products={products}
             lightClients={lightClients}
@@ -1175,20 +1238,27 @@ export function WholesalerDashboard({
     }));
   };
 
-  const handleCheckoutPOS = () => {
-    const items = Object.keys(posCart)
-      .filter((prodId) => posCart[prodId] > 0)
-      .map((prodId) => ({ productId: prodId, quantity: posCart[prodId] }));
-
-    if (items.length === 0) return;
-
-    const clientId = posSelectedLightClientId || "CASH_CLIENT";
-    onPlaceSale(clientId, items, posAmountPaid, "CASH");
-    
-    setPosCart({});
-    setPosAmountPaid(0);
-    setPosSelectedLightClientId("");
-    alert("Vente comptoir enregistrée !");
+  const handleCheckoutPOS = async (saleData: any) => {
+    // 1. Appel de la Cloud Function 'enregistrerVente' (simulé ou réel)
+    try {
+      /* 
+      // VRAI APPEL CLOUD FUNCTION (Décommenter si Firebase configuré)
+      import { getFunctions, httpsCallable } from "firebase/functions";
+      const functions = getFunctions();
+      const enregistrerVente = httpsCallable(functions, 'enregistrerVente');
+      await enregistrerVente(saleData);
+      */
+      
+      // Simulation pour l'UI React locale :
+      const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
+      onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
+      
+      setPosCart({});
+      setPosAmountPaid(0);
+      setPosSelectedLightClientId("");
+    } catch (e: any) {
+      throw new Error("Erreur de transaction : " + e.message);
+    }
   };
 
   return (
@@ -1221,41 +1291,70 @@ export function WholesalerDashboard({
       </div>
 
       {activeTab === "dashboard" && (
-        <div className="space-y-6 animate-fade-in">
-          <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-          
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires Global</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalRevenue)}</h3>
-              <p className="text-[10px] text-emerald-600 mt-1">Total des ventes confirmées</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+          {/* Left Column: Metrics & Orders (Takes 2 columns on lg) */}
+          <div className="lg:col-span-2 space-y-6">
+            <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+            
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires Global</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalRevenue)}</h3>
+                <p className="text-[10px] text-emerald-600 mt-1">Total des ventes confirmées</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Demi-Grossistes</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToSemiWholesalersVal)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Moyen volume)</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Détaillants</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToRetailersVal)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Point de vente)</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Total Approvisionnement</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalPurchasesVal)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Achats auprès des usines</p>
+              </div>
             </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Demi-Grossistes</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToSemiWholesalersVal)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Moyen volume)</p>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Détaillants</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToRetailersVal)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Point de vente)</p>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Total Approvisionnement</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalPurchasesVal)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Achats auprès des usines</p>
+
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider">Dernières commandes B2B</h4>
+                <button onClick={() => setActiveTab("sales")} className="text-[10px] font-bold text-emerald-600 hover:underline">Voir tout</button>
+              </div>
+              {incomingRetailerOrders.length === 0 ? (
+                <div className="text-center py-8 text-zinc-400 text-xs">Aucune commande récente.</div>
+              ) : (
+                <div className="space-y-3">
+                  {incomingRetailerOrders.slice(0, 5).map(order => {
+                    const buyer = users.find(u => u.id === order.senderId);
+                    return (
+                      <div key={order.id} className="flex justify-between items-center p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
+                        <div>
+                          <p className="font-bold text-xs">{buyer?.companyName || buyer?.name}</p>
+                          <p className="text-[10px] text-zinc-500">{new Date(order.createdAt).toLocaleDateString()}</p>
+                        </div>
+                        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded-lg">{formatCFA(order.totalAmount)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Right Column: Alerts & Notifications (Takes 1 column on lg) */}
+          <div className="space-y-6">
              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4 text-orange-500" /> Alertes de Stock
                 </h4>
                 <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  {activeAlerts.length} critique(s)
+                  {activeAlerts.length}
                 </span>
               </div>
               {activeAlerts.length === 0 ? (
@@ -1272,7 +1371,7 @@ export function WholesalerDashboard({
                           <img loading="lazy" src={prod?.image} alt={prod?.name} className="w-8 h-8 rounded object-cover" />
                           <div className="min-w-0">
                             <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">{prod?.name}</p>
-                            <p className="text-[10px] text-zinc-500">Stock actuel: {item.stock}</p>
+                            <p className="text-[10px] text-rose-600 font-bold">Stock critique: {item.stock}</p>
                           </div>
                         </div>
                         <button onClick={() => setActiveTab("procure")} className="text-[10px] font-bold text-emerald-600 hover:underline">Réappro.</button>
@@ -1282,27 +1381,25 @@ export function WholesalerDashboard({
                 </div>
               )}
             </div>
-            
+
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4">Dernières commandes B2B</h4>
-              {incomingRetailerOrders.length === 0 ? (
-                <div className="text-center py-8 text-zinc-400 text-xs">Aucune commande récente.</div>
-              ) : (
-                <div className="space-y-3">
-                  {incomingRetailerOrders.slice(0, 4).map(order => {
-                    const buyer = users.find(u => u.id === order.senderId);
-                    return (
-                      <div key={order.id} className="flex justify-between items-center border-b border-zinc-100 dark:border-zinc-800 pb-2 last:border-0">
-                        <div>
-                          <p className="font-bold text-xs">{buyer?.companyName || buyer?.name}</p>
-                          <p className="text-[10px] text-zinc-500">{new Date(order.createdAt).toLocaleDateString()}</p>
-                        </div>
-                        <span className="font-mono text-xs font-bold">{formatCFA(order.totalAmount)}</span>
-                      </div>
-                    );
-                  })}
+              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4 flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-indigo-500" /> Notifications
+              </h4>
+              <div className="space-y-3">
+                <div className="p-3 border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl">
+                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mb-1">Mise à jour système</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Les taux de commission B2B ont été révisés. Vérifiez vos marges.</p>
                 </div>
-              )}
+                <div className="p-3 border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl">
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mb-1">Nouvelle fonctionnalité</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">L'historique des prix est maintenant disponible dans votre catalogue.</p>
+                </div>
+                <div className="p-3 border border-orange-100 dark:border-orange-900/30 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl">
+                  <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mb-1">Activité</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Vous avez {myBuyers.length} acheteurs enregistrés. Explorez vos statistiques.</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1625,7 +1722,8 @@ export function WholesalerDashboard({
 
           <div className="pt-8 border-t border-zinc-200 dark:border-zinc-800">
             <POSComponent
-              inventory={myInventory}
+            currentUser={currentUser}
+            inventory={myInventory}
               products={products}
               lightClients={lightClients}
               posCart={posCart}
@@ -2553,12 +2651,13 @@ export function RetailerDashboard({
             )}
           </div>
           <POSComponent
+            currentUser={currentUser}
             inventory={myInventory}
             products={products}
             lightClients={lightClients}
             posCart={posCart}
             onAddToCart={handlePOSAddToCart}
-            onCheckout={handlePOSCheckout}
+            onCheckout={handleCheckoutPOS}
             selectedClientId={posSelectedLightClientId}
             setSelectedClientId={setPosSelectedLightClientId}
             amountPaid={posAmountPaid}
@@ -4087,38 +4186,81 @@ export function SemiWholesalerDashboard({
 
       {/* Tab: Dashboard */}
       {activeTab === "dashboard" && (
-        <div className="space-y-6 animate-fade-in">
-          <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalSalesRevenue)}</h3>
-              <p className="text-[10px] text-emerald-600 mt-1">Commandes finalisées</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+          {/* Left Column: Metrics & Distribution (Takes 2 columns) */}
+          <div className="lg:col-span-2 space-y-6">
+            <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalSalesRevenue)}</h3>
+                <p className="text-[10px] text-emerald-600 mt-1">Commandes finalisées</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes de Demi-Gros (B2B)</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(wholesaleSalesVal)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Aux boutiques détaillants</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes au Détail (B2C)</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(retailSalesVal)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Aux consommateurs directs</p>
+              </div>
+              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
+                <p className="text-[10px] uppercase font-bold text-zinc-500">Approvisionnements</p>
+                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalProcurementCost)}</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Cumul d'achats de gros</p>
+              </div>
             </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes de Demi-Gros (B2B)</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(wholesaleSalesVal)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Aux boutiques détaillants</p>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes au Détail (B2C)</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(retailSalesVal)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Aux consommateurs directs</p>
-            </div>
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl">
-              <p className="text-[10px] uppercase font-bold text-zinc-500">Approvisionnements</p>
-              <h3 className="font-mono text-lg font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalProcurementCost)}</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Cumul d'achats de gros</p>
+
+            {/* Quick stats on sales type ratio */}
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
+              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4">
+                Canaux de distribution actifs
+              </h4>
+              <div className="space-y-5">
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1.5">
+                    <span>Demi-Gros (Détaillants B2B)</span>
+                    <span>{totalSalesRevenue > 0 ? Math.round((wholesaleSalesVal / totalSalesRevenue) * 100) : 50}%</span>
+                  </div>
+                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-orange-500 h-full transition-all"
+                      style={{ width: `${totalSalesRevenue > 0 ? (wholesaleSalesVal / totalSalesRevenue) * 100 : 50}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-xs font-semibold mb-1.5">
+                    <span>Détail (Consommateurs B2C)</span>
+                    <span>{totalSalesRevenue > 0 ? Math.round((retailSalesVal / totalSalesRevenue) * 100) : 50}%</span>
+                  </div>
+                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-amber-500 h-full transition-all"
+                      style={{ width: `${totalSalesRevenue > 0 ? (retailSalesVal / totalSalesRevenue) * 100 : 50}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-orange-50/50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-900/30 rounded-xl text-[11px] text-orange-800 dark:text-orange-200 mt-4">
+                  <Sparkles className="w-4 h-4 inline mr-1" />
+                  <strong>Conseil d'approvisionnement :</strong> Le riz parfumé et le savon de Marseille se vendent 35% plus vite en demi-gros qu'en boutique de détail ce mois-ci. Ajustez vos marges en conséquence !
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Right Column: Alerts & Notifications */}
+          <div className="space-y-6">
             {/* Stock Alerts Panel */}
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-orange-500" /> Alertes & Ruptures de stock
+                  <AlertCircle className="w-4 h-4 text-orange-500" /> Alertes de stock
                 </h4>
                 <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
                   {activeAlerts.length} alerte(s)
@@ -4130,7 +4272,7 @@ export function SemiWholesalerDashboard({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {activeAlerts.map((item) => {
+                  {activeAlerts.slice(0, 5).map((item) => {
                     const prod = products.find((p) => p.id === item.productId);
                     return (
                       <div key={item.id} className="p-3 bg-rose-50/40 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-950/30 rounded-xl flex items-center justify-between">
@@ -4138,12 +4280,12 @@ export function SemiWholesalerDashboard({
                           <img loading="lazy" src={prod?.image} alt={prod?.name} className="w-8 h-8 rounded object-cover" />
                           <div className="min-w-0">
                             <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">{prod?.name}</p>
-                            <p className="text-[10px] text-zinc-500">Seuil: {item.threshold} • Minimum: {item.quantiteMinimum || 1}</p>
+                            <p className="text-[10px] text-zinc-500">Seuil: {item.threshold}</p>
                           </div>
                         </div>
                         <div className="text-right">
                           <p className={`font-bold text-xs ${item.stock === 0 ? "text-rose-600 animate-pulse" : "text-amber-600"}`}>
-                            {item.stock === 0 ? "Rupture" : `${item.stock} unités`}
+                            {item.stock === 0 ? "Rupture" : `${item.stock} u`}
                           </p>
                         </div>
                       </div>
@@ -4153,41 +4295,19 @@ export function SemiWholesalerDashboard({
               )}
             </div>
 
-            {/* Quick stats on sales type ratio */}
+            {/* Notifications */}
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-3">
-                Canaux de distribution actifs
+              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4 flex items-center gap-1.5">
+                <Bell className="w-4 h-4 text-indigo-500" /> Notifications
               </h4>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-xs font-semibold mb-1">
-                    <span>Demi-Gros (Détaillants B2B)</span>
-                    <span>{totalSalesRevenue > 0 ? Math.round((wholesaleSalesVal / totalSalesRevenue) * 100) : 50}%</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-orange-500 h-full transition-all"
-                      style={{ width: `${totalSalesRevenue > 0 ? (wholesaleSalesVal / totalSalesRevenue) * 100 : 50}%` }}
-                    />
-                  </div>
+              <div className="space-y-3">
+                <div className="p-3 border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl">
+                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mb-1">Livraison en approche</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Votre commande de réapprovisionnement arrive dans 30 min.</p>
                 </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-semibold mb-1">
-                    <span>Détail (Consommateurs B2C)</span>
-                    <span>{totalSalesRevenue > 0 ? Math.round((retailSalesVal / totalSalesRevenue) * 100) : 50}%</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-amber-500 h-full transition-all"
-                      style={{ width: `${totalSalesRevenue > 0 ? (retailSalesVal / totalSalesRevenue) * 100 : 50}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3 bg-orange-50/50 dark:bg-zinc-850/50 rounded-xl text-[11px] text-zinc-600 dark:text-zinc-400">
-                  <Sparkles className="w-4 h-4 text-orange-500 inline mr-1" />
-                  <strong>Conseil d'approvisionnement :</strong> Le riz parfumé et le savon de Marseille se vendent 35% plus vite en demi-gros qu'en boutique de détail ce mois-ci. Ajustez vos marges en conséquence !
+                <div className="p-3 border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl">
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mb-1">Synchronisation réussie</p>
+                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Vos ventes locales ont été synchronisées avec succès.</p>
                 </div>
               </div>
             </div>
