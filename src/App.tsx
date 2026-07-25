@@ -1069,6 +1069,28 @@ export default function App() {
     addNotification("Client supprimé de votre carnet d'adresses.");
   };
 
+  const handleUpdateCreditLimit = (id: string, isRealUser: boolean, limit: number) => {
+    if (isRealUser) {
+      const updated = users.map(u => {
+        if (u.id === id) {
+          return { ...u, creditLimit: limit };
+        }
+        return u;
+      });
+      setUsers(updated);
+      db.saveUsers(updated);
+    } else {
+      const updated = lightClients.map(lc => {
+        if (lc.id === id) {
+          return { ...lc, creditLimit: limit };
+        }
+        return lc;
+      });
+      syncLightClients(updated);
+    }
+    addNotification(`Limite de crédit mise à jour avec succès.`);
+  };
+
   const recordStockMovement = (productId: string, type: "IN" | "OUT" | "ADJUST", quantity: number, reason: string, orderId?: string) => {
     if (!currentUser) return;
     const newMovement: StockMovement = {
@@ -2467,6 +2489,7 @@ export default function App() {
                   onAddPayment={handleAddPayment}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
                   onPayOrder={handlePayOrder}
+                  onUpdateCreditLimit={handleUpdateCreditLimit}
                 />
               )}
 
@@ -2493,6 +2516,7 @@ export default function App() {
                   onAddPayment={handleAddPayment}
                   onPayOrder={handlePayOrder}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
+                  onUpdateCreditLimit={handleUpdateCreditLimit}
                 />
               )}
 
@@ -2519,6 +2543,7 @@ export default function App() {
                   onAddPayment={handleAddPayment}
                   onPayOrder={handlePayOrder}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
+                  onUpdateCreditLimit={handleUpdateCreditLimit}
                 />
               )}
 

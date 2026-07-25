@@ -26,6 +26,7 @@ export interface LightClient {
   notes?: string;
   linkedUserId?: string; // Optional reference to a real UserProfile if they join the platform
   createdAt: string;
+  creditLimit?: number; // Maximum allowed credit limit (in CFA)
 }
 
 export interface PriceTier {
@@ -74,6 +75,7 @@ export interface UserProfile {
   balance?: number;
   latitude?: number;
   longitude?: number;
+  creditLimit?: number; // Maximum allowed credit limit (in CFA)
 }
 
 export interface GeoLocation {

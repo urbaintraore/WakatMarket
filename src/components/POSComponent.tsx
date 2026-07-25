@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { Search, ShoppingBag, Plus, FileText, CheckCircle2, AlertTriangle, Download } from "lucide-react";
-import { Product, InventoryItem, LightClient, UserRole, User } from "../types";
+import { Product, InventoryItem, LightClient, UserRole, UserProfile } from "../types";
 import { formatCFA } from "../data";
 import { billingService } from "../services/billingService";
 
 interface POSComponentProps {
-  currentUser: User;
+  currentUser: UserProfile;
   inventory: InventoryItem[];
   products: Product[];
   lightClients: LightClient[];
@@ -16,6 +16,7 @@ interface POSComponentProps {
   setSelectedClientId: (id: string) => void;
   amountPaid: number;
   setAmountPaid: (amt: number) => void;
+  title?: string;
 }
 
 export function POSComponent({
@@ -29,7 +30,8 @@ export function POSComponent({
   selectedClientId,
   setSelectedClientId,
   amountPaid,
-  setAmountPaid
+  setAmountPaid,
+  title = "Caisse Minute (POS Comptoir)"
 }: POSComponentProps) {
   const [searchQuery, setSearchQuery] = useState("");
   // Determine available sale types based on role

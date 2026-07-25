@@ -18,6 +18,8 @@ import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
 import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart } from "./CommonDashboardParts";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
+import { CaisseModule } from "./CaisseModule";
+import { MyBuyersModule } from "./MyBuyersModule";
 import { AdminUserEditModal } from "./AdminUserEditModal";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -1079,6 +1081,7 @@ interface WholesalerDashboardProps {
   onDeleteLightClient: (clientId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onPayOrder?: (orderId: string) => void;
+  onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
 }
 
 export function WholesalerDashboard({
@@ -1102,6 +1105,7 @@ export function WholesalerDashboard({
   onDeleteLightClient,
   onUpdateOrderStatus,
   onPayOrder,
+  onUpdateCreditLimit,
 }: WholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
@@ -1406,56 +1410,21 @@ export function WholesalerDashboard({
       )}
 
       {activeTab === "buyers" && (
-        <div className="space-y-4">
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs ({myBuyers.length})</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => (
-                <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-bold">
-                    {buyer.companyName ? buyer.companyName[0] : buyer.name[0]}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{buyer.companyName || buyer.name}</p>
-                    <p className="text-xs text-zinc-500">{buyer.role}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mt-8">Stocks de mes Acheteurs</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => {
-                const buyerInventory = inventory.filter(i => i.ownerId === buyer.id);
-                return (
-                  <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl">
-                    <p className="font-semibold text-sm mb-2">{buyer.companyName || buyer.name}</p>
-                    {buyerInventory.length === 0 ? (
-                      <p className="text-xs text-zinc-400 italic">Aucun stock disponible.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {buyerInventory.map(item => {
-                          const product = products.find(p => p.id === item.productId);
-                          return (
-                            <div key={item.id} className="flex justify-between items-center text-xs">
-                              <span>{product?.name || 'Produit inconnu'}</span>
-                              <span className="font-bold">{item.stock}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="space-y-4 animate-fade-in">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
+            <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
+          </div>
+          <MyBuyersModule
+            currentUser={currentUser}
+            users={users}
+            orders={orders}
+            payments={payments}
+            lightClients={lightClients}
+            products={products}
+            onAddPayment={onAddPayment}
+            onUpdateCreditLimit={onUpdateCreditLimit}
+          />
         </div>
       )}
 
@@ -1721,19 +1690,16 @@ export function WholesalerDashboard({
           </div>
 
           <div className="pt-8 border-t border-zinc-200 dark:border-zinc-800">
-            <POSComponent
-            currentUser={currentUser}
-            inventory={myInventory}
+            <h4 className="text-xs font-bold uppercase text-zinc-500 tracking-wider mb-4">Caisse Minute - Vente Directe</h4>
+            <CaisseModule
+              currentUser={currentUser}
+              inventory={myInventory}
               products={products}
               lightClients={lightClients}
-              posCart={posCart}
-              onAddToCart={handlePOSAddToCart}
-              onCheckout={handleCheckoutPOS}
-              selectedClientId={posSelectedLightClientId}
-              setSelectedClientId={setPosSelectedLightClientId}
-              amountPaid={posAmountPaid}
-              setAmountPaid={setPosAmountPaid}
-              title="Point de Vente Comptoir Direct"
+              users={users}
+              orders={orders}
+              payments={payments}
+              onPlaceSale={onPlaceSale}
             />
           </div>
         </div>
@@ -2114,6 +2080,7 @@ interface RetailerDashboardProps {
   onDeleteLightClient: (clientId: string) => void;
   onPayOrder?: (orderId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
+  onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
 }
 
 export function RetailerDashboard({
@@ -2138,6 +2105,7 @@ export function RetailerDashboard({
   onDeleteLightClient,
   onPayOrder,
   onUpdateOrderStatus,
+  onUpdateCreditLimit,
 }: RetailerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "suppliers" | "buyers" | "clients" | "sync">("procure");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
@@ -2253,20 +2221,17 @@ export function RetailerDashboard({
     }));
   };
 
-  const handlePOSCheckout = () => {
-    const items = Object.keys(posCart)
-      .filter((prodId) => posCart[prodId] > 0)
-      .map((prodId) => ({ productId: prodId, quantity: posCart[prodId] }));
-
-    if (items.length === 0) return;
-
-    const clientId = posSelectedLightClientId || "CASH_CLIENT";
-    onPlaceSale(clientId, items, posAmountPaid, "CASH");
-    
-    setPosCart({});
-    setPosAmountPaid(0);
-    setPosSelectedLightClientId("");
-    alert("Vente comptoir enregistrée !");
+  const handlePOSCheckout = async (saleData: any) => {
+    try {
+      const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
+      onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
+      
+      setPosCart({});
+      setPosAmountPaid(0);
+      setPosSelectedLightClientId("");
+    } catch (e: any) {
+      throw new Error("Erreur : " + e.message);
+    }
   };
 
   const handleConfirmOrder = (orderId: string) => {
@@ -2308,56 +2273,21 @@ export function RetailerDashboard({
       </div>
 
       {activeTab === "buyers" && (
-        <div className="space-y-4">
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs ({myBuyers.length})</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => (
-                <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-bold">
-                    {buyer.companyName ? buyer.companyName[0] : buyer.name[0]}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{buyer.companyName || buyer.name}</p>
-                    <p className="text-xs text-zinc-500">{buyer.role}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mt-8">Stocks de mes Acheteurs</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => {
-                const buyerInventory = inventory.filter(i => i.ownerId === buyer.id);
-                return (
-                  <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl">
-                    <p className="font-semibold text-sm mb-2">{buyer.companyName || buyer.name}</p>
-                    {buyerInventory.length === 0 ? (
-                      <p className="text-xs text-zinc-400 italic">Aucun stock disponible.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {buyerInventory.map(item => {
-                          const product = products.find(p => p.id === item.productId);
-                          return (
-                            <div key={item.id} className="flex justify-between items-center text-xs">
-                              <span>{product?.name || 'Produit inconnu'}</span>
-                              <span className="font-bold">{item.stock}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="space-y-4 animate-fade-in">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
+            <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
+          </div>
+          <MyBuyersModule
+            currentUser={currentUser}
+            users={users}
+            orders={orders}
+            payments={payments}
+            lightClients={lightClients}
+            products={products}
+            onAddPayment={onAddPayment}
+            onUpdateCreditLimit={onUpdateCreditLimit}
+          />
         </div>
       )}
 
@@ -2650,20 +2580,19 @@ export function RetailerDashboard({
               </div>
             )}
           </div>
-          <POSComponent
-            currentUser={currentUser}
-            inventory={myInventory}
-            products={products}
-            lightClients={lightClients}
-            posCart={posCart}
-            onAddToCart={handlePOSAddToCart}
-            onCheckout={handleCheckoutPOS}
-            selectedClientId={posSelectedLightClientId}
-            setSelectedClientId={setPosSelectedLightClientId}
-            amountPaid={posAmountPaid}
-            setAmountPaid={setPosAmountPaid}
-            title="Caisse Minute (POS Comptoir)"
-          />
+          <div className="pt-8 border-t border-zinc-200 dark:border-zinc-800">
+            <h4 className="text-xs font-bold uppercase text-zinc-500 tracking-wider mb-4">Caisse Minute (POS Comptoir)</h4>
+            <CaisseModule
+              currentUser={currentUser}
+              inventory={myInventory}
+              products={products}
+              lightClients={lightClients}
+              users={users}
+              orders={orders}
+              payments={payments}
+              onPlaceSale={onPlaceSale}
+            />
+          </div>
         </div>
       )}
 
@@ -3833,6 +3762,7 @@ interface SemiWholesalerDashboardProps {
   onDeleteLightClient: (clientId: string) => void;
   onPayOrder?: (orderId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
+  onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
 }
 
 export function SemiWholesalerDashboard({
@@ -3857,6 +3787,7 @@ export function SemiWholesalerDashboard({
   onDeleteLightClient,
   onPayOrder,
   onUpdateOrderStatus,
+  onUpdateCreditLimit,
 }: SemiWholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
@@ -4131,56 +4062,21 @@ export function SemiWholesalerDashboard({
       </div>
 
       {activeTab === "buyers" && (
-        <div className="space-y-4">
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs ({myBuyers.length})</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => (
-                <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center gap-3">
-                  <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center text-orange-700 dark:text-orange-300 font-bold">
-                    {buyer.companyName ? buyer.companyName[0] : buyer.name[0]}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">{buyer.companyName || buyer.name}</p>
-                    <p className="text-xs text-zinc-500">{buyer.role}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mt-8">Stocks de mes Acheteurs</h4>
-          {myBuyers.length === 0 ? (
-            <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {myBuyers.map(buyer => {
-                const buyerInventory = inventory.filter(i => i.ownerId === buyer.id);
-                return (
-                  <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl">
-                    <p className="font-semibold text-sm mb-2">{buyer.companyName || buyer.name}</p>
-                    {buyerInventory.length === 0 ? (
-                      <p className="text-xs text-zinc-400 italic">Aucun stock disponible.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {buyerInventory.map(item => {
-                          const product = products.find(p => p.id === item.productId);
-                          return (
-                            <div key={item.id} className="flex justify-between items-center text-xs">
-                              <span>{product?.name || 'Produit inconnu'}</span>
-                              <span className="font-bold">{item.stock}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="space-y-4 animate-fade-in">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
+            <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
+          </div>
+          <MyBuyersModule
+            currentUser={currentUser}
+            users={users}
+            orders={orders}
+            payments={payments}
+            lightClients={lightClients}
+            products={products}
+            onAddPayment={onAddPayment}
+            onUpdateCreditLimit={onUpdateCreditLimit}
+          />
         </div>
       )}
 
@@ -4630,6 +4526,25 @@ export function SemiWholesalerDashboard({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "pos" && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Caisse Minute - Vente POS</h4>
+            <p className="text-[11px] text-zinc-500 mt-1">Sélectionnez les produits de votre stock de demi-gros, ajustez les quantités et facturez en gros ou détail.</p>
+          </div>
+          <CaisseModule
+            currentUser={currentUser}
+            inventory={myInventory}
+            products={products}
+            lightClients={lightClients}
+            users={users}
+            orders={orders}
+            payments={payments}
+            onPlaceSale={onPlaceSale}
+          />
         </div>
       )}
 
