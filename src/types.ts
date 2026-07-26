@@ -340,3 +340,9 @@ export interface Notification {
   createdAt: string;
   relatedId?: string; // e.g. Connection ID or Message ID
 }
+
+export function isConnectionActive(c: any): boolean {
+  if (!c) return false;
+  const status = (c.status || c.statut || "").toLowerCase();
+  return status === "active" || status === "actif";
+}

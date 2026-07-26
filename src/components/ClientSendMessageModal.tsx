@@ -17,6 +17,7 @@ interface ClientSendMessageModalProps {
     companyName?: string;
     debtAmount?: number;
     isRealUser?: boolean;
+    initialMessage?: string;
   };
   currentUser: UserProfile | null;
   isOpen: boolean;
@@ -33,7 +34,7 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const [messageText, setMessageText] = useState("");
+  const [messageText, setMessageText] = useState(client.initialMessage || "");
   const [selectedChannel, setSelectedChannel] = useState<"PLATFORM" | "WHATSAPP" | "SMS">("PLATFORM");
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);

@@ -17,7 +17,7 @@ import {
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { supabase } from "../supabase";
-import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
+import { Conversation, ChatMessage, MessageType, MessageStatus, isConnectionActive } from "../types";
 import { db as localDb } from "../data";
 
 export const chatService = {
@@ -113,7 +113,7 @@ export const chatService = {
   subscribeToUserConversations(userId: string, callback: (convs: Conversation[]) => void) {
     const emitLocal = () => {
       const activeConns = localDb.getConnections()
-        .filter(c => c.status === "active" && (c.senderId === userId || c.receiverId === userId));
+        .filter(c => isConnectionActive(c) && (c.senderId === userId || c.receiverId === userId));
       
       const fallbackConvs: Conversation[] = activeConns.map(conn => {
         const otherId = conn.senderId === userId ? conn.receiverId : conn.senderId;
@@ -164,18 +164,24 @@ export const chatService = {
       orderBy("updatedAt", "desc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const convs = snapshot.docs.map(doc => doc.data() as Conversation);
-      
-      // If we got real data, merge with any local info
-      if (convs.length > 0) {
-        callback(convs);
-      } else {
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const convs = snapshot.docs.map(doc => doc.data() as Conversation);
+        
+        // If we got real data, merge with any local info
+        if (convs.length > 0) {
+          callback(convs);
+        } else {
+          emitLocal();
+        }
+      }, (error) => {
+        console.warn("[chatService] Conversations query failed, relying on dynamic local fallback", error);
         emitLocal();
-      }
-    }, (error) => {
-      console.warn("[chatService] Conversations query failed, relying on dynamic local fallback", error);
-    });
+      });
+    } catch (e) {
+      console.warn("[chatService] Failed to establish real-time Firestore listener for conversations:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
@@ -183,7 +189,11 @@ export const chatService = {
         window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub();
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[chatService] Error calling unsubscribe for conversations:", e);
+      }
     };
   },
 
@@ -215,36 +225,46 @@ export const chatService = {
       orderBy("createdAt", "asc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const firestoreMsgs = snapshot.docs.map(doc => doc.data() as ChatMessage);
-      
-      // Merge with existing local messages
-      const existingLocal = localDb.getMessages();
-      
-      // Replace or insert Firestore messages into local array by matching id
-      const map = new Map<string, ChatMessage>();
-      existingLocal.forEach(m => map.set(m.id, m));
-      firestoreMsgs.forEach(m => map.set(m.id, m));
-      
-      const allMsgs = Array.from(map.values());
-      localDb.saveMessages(allMsgs);
-      
-      // Filter current conversation's messages and pass to callback
-      const currentMsgs = allMsgs
-        .filter(m => m.conversationId === convId)
-        .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const firestoreMsgs = snapshot.docs.map(doc => doc.data() as ChatMessage);
         
-      callback(currentMsgs);
-    }, (error) => {
-      console.warn("[chatService] Real-time message listener failed, using local cache:", error);
-    });
+        // Merge with existing local messages
+        const existingLocal = localDb.getMessages();
+        
+        // Replace or insert Firestore messages into local array by matching id
+        const map = new Map<string, ChatMessage>();
+        existingLocal.forEach(m => map.set(m.id, m));
+        firestoreMsgs.forEach(m => map.set(m.id, m));
+        
+        const allMsgs = Array.from(map.values());
+        localDb.saveMessages(allMsgs);
+        
+        // Filter current conversation's messages and pass to callback
+        const currentMsgs = allMsgs
+          .filter(m => m.conversationId === convId)
+          .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+          
+        callback(currentMsgs);
+      }, (error) => {
+        console.warn("[chatService] Real-time message listener failed, using local cache:", error);
+        emitLocal();
+      });
+    } catch (e) {
+      console.warn("[chatService] Failed to establish real-time Firestore listener for messages:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub();
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[chatService] Error calling unsubscribe for messages:", e);
+      }
     };
   },
 

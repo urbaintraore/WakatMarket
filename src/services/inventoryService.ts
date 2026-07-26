@@ -1,5 +1,5 @@
 import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 import { InventoryItem } from "../types";
 import { filterMockData } from "../data";
 
@@ -20,6 +20,33 @@ export const inventoryService = {
       console.warn("Firestore error during getAllInventory:", error);
       return [];
     }
+  },
+
+  subscribeToInventory(callback: (items: InventoryItem[]) => void) {
+    const q = query(collection(db, COLLECTION_NAME));
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const list: InventoryItem[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            list.push(docSnap.data() as InventoryItem);
+          }
+        });
+        callback(filterMockData(list));
+      }, (error) => {
+        console.warn("Firestore error during subscribeToInventory:", error);
+      });
+    } catch (e) {
+      console.warn("Failed to set up real-time listener for inventory:", e);
+    }
+    return () => {
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("Error unsubscribing from inventory:", e);
+      }
+    };
   },
 
   async updateInventoryItem(item: InventoryItem): Promise<void> {

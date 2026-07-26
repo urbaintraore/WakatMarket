@@ -11,7 +11,7 @@ import {
   Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
   Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save
 } from "lucide-react";
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection } from "../types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
@@ -1214,7 +1214,7 @@ export function WholesalerDashboard({
   // Filter manufacturers by connection
   const manufacturers = useMemo(() => {
     const partnerIds = connections
-      .filter(c => c.status === "active")
+      .filter(c => isConnectionActive(c))
       .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
     
     return users.filter(u => 
@@ -2231,7 +2231,7 @@ export function RetailerDashboard({
   // Filter Wholesalers and Semi-Wholesalers by connection
   const wholesalers = useMemo(() => {
     const partnerIds = connections
-      .filter(c => c.status === "active")
+      .filter(c => isConnectionActive(c))
       .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
 
     return users.filter((u) => 
@@ -3942,7 +3942,7 @@ export function SemiWholesalerDashboard({
   // Filter wholesalers (suppliers) by connection
   const wholesalers = useMemo(() => {
     const partnerIds = connections
-      .filter(c => c.status === "active")
+      .filter(c => isConnectionActive(c))
       .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
 
     return users.filter((u) => 

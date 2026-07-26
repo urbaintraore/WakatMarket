@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { 
   X, Store, Package, ShoppingCart, MessageSquare, 
-  MapPin, Phone, Mail, Star, ShieldCheck, Search, Filter, CheckCircle2, AlertTriangle, ChevronRight
+  MapPin, Phone, Mail, Star, ShieldCheck, Search, Filter, CheckCircle2, AlertTriangle, ChevronRight, Send, HelpCircle
 } from "lucide-react";
 import { UserProfile, Product, InventoryItem, UserRole } from "../types";
 import { formatCFA } from "../data";
@@ -26,7 +26,7 @@ interface PartnerStockModalProps {
   inventory: InventoryItem[];
   isOpen: boolean;
   onClose: () => void;
-  onInitiateOrder?: (partnerId: string, productId?: string) => void;
+  onInitiateOrder?: (partnerId: string, productId?: string, mode?: "BUY" | "SELL") => void;
   onOpenChat?: (partnerId: string) => void;
 }
 
@@ -44,6 +44,62 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
+
+  // Dynamic B2B rank hierarchy and action authorization mode
+  const roleRelationship = useMemo(() => {
+    if (!currentUser) {
+      return {
+        canBuy: true,
+        canSell: false,
+        label: "S'approvisionner / Commander",
+        mode: "BUY" as const,
+        headerDesc: "S'approvisionner en direct chez ce partenaire agréé."
+      };
+    }
+
+    const getRoleRank = (role: string): number => {
+      switch (role) {
+        case "MANUFACTURER": return 5;
+        case "WHOLESALER": return 4;
+        case "SEMI_WHOLESALER": return 3;
+        case "RETAILER": return 2;
+        case "CLIENT": return 1;
+        default: return 0;
+      }
+    };
+
+    const currentRank = getRoleRank(currentUser.role);
+    const partnerRank = getRoleRank(partner.role);
+
+    if (currentRank < partnerRank) {
+      // Current user is downstream, they buy from upstream partner (s'approvisionner)
+      return {
+        canBuy: true,
+        canSell: false,
+        label: "S'approvisionner / Commander",
+        mode: "BUY" as const,
+        headerDesc: "S'approvisionner auprès de ce fournisseur agréé de niveau supérieur."
+      };
+    } else if (currentRank > partnerRank) {
+      // Current user is upstream, they sell/propose offers to downstream partner (proposer des offres)
+      return {
+        canBuy: false,
+        canSell: true,
+        label: "Proposer une offre / Vendre",
+        mode: "SELL" as const,
+        headerDesc: "Proposer des offres d'approvisionnement ou facturer ce client partenaire."
+      };
+    } else {
+      // Same level
+      return {
+        canBuy: true,
+        canSell: false,
+        label: "Commander / S'approvisionner",
+        mode: "BUY" as const,
+        headerDesc: "Échange et approvisionnement de niveau équivalent."
+      };
+    }
+  }, [currentUser, partner.role]);
 
   // Get all inventory items belonging to this partner establishment
   const partnerInventory = useMemo(() => {
@@ -160,6 +216,21 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
           >
             <X className="w-6 h-6" />
           </button>
+        </div>
+
+        {/* B2B Action Authorization Banner */}
+        <div className="px-5 py-2.5 bg-emerald-50 dark:bg-emerald-950/40 border-b border-emerald-100 dark:border-emerald-900/40 flex items-center justify-between gap-3 text-xs shrink-0 text-emerald-800 dark:text-emerald-300 font-semibold">
+          <div className="flex items-center gap-2">
+            {roleRelationship.canSell ? (
+              <Send className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <ShoppingCart className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            )}
+            <span>{roleRelationship.headerDesc}</span>
+          </div>
+          <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 rounded">
+            Mode : {roleRelationship.canSell ? "Proposition d'offre B2B" : "Ravitaillement / Achat"}
+          </span>
         </div>
 
         {/* Establishment Contact & Metrics Bar */}
@@ -328,21 +399,25 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
 
                       <button
                         type="button"
-                        disabled={isOutOfStock}
+                        disabled={roleRelationship.canBuy && isOutOfStock}
                         onClick={() => {
                           if (onInitiateOrder) {
-                            onInitiateOrder(partner.id, product.id);
+                            onInitiateOrder(partner.id, product.id, roleRelationship.mode);
                             onClose();
                           }
                         }}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer ${
-                          isOutOfStock
+                          roleRelationship.canBuy && isOutOfStock
                             ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
                             : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20"
                         }`}
                       >
-                        <ShoppingCart className="w-3.5 h-3.5" />
-                        <span>Acheter / Commander</span>
+                        {roleRelationship.canSell ? (
+                          <Send className="w-3.5 h-3.5" />
+                        ) : (
+                          <ShoppingCart className="w-3.5 h-3.5" />
+                        )}
+                        <span>{roleRelationship.label}</span>
                       </button>
                     </div>
                   </div>
@@ -371,13 +446,19 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onInitiateOrder(partner.id);
+                  onInitiateOrder(partner.id, undefined, roleRelationship.mode);
                   onClose();
                 }}
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer"
               >
-                <ShoppingCart className="w-4 h-4" />
-                <span>Passer une commande complète</span>
+                {roleRelationship.canSell ? (
+                  <Send className="w-4 h-4" />
+                ) : (
+                  <ShoppingCart className="w-4 h-4" />
+                )}
+                <span>
+                  {roleRelationship.canSell ? "Proposer une offre d'approvisionnement complète" : "Passer une commande complète"}
+                </span>
               </button>
             )}
           </div>

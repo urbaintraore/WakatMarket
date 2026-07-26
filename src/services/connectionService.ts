@@ -385,27 +385,48 @@ export const connectionService = {
       callback(userConns);
     };
 
-    const unsub1 = onSnapshot(q1, (snapshot) => {
-      senderConns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Connection));
-      handleCallback();
-    }, (err) => {
-      console.warn("[ConnectionService] Sender query failed, using local fallback", err);
-    });
+    let unsub1 = () => {};
+    let unsub2 = () => {};
 
-    const unsub2 = onSnapshot(q2, (snapshot) => {
-      receiverConns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Connection));
-      handleCallback();
-    }, (err) => {
-      console.warn("[ConnectionService] Receiver query failed, using local fallback", err);
-    });
+    try {
+      unsub1 = onSnapshot(q1, (snapshot) => {
+        senderConns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Connection));
+        handleCallback();
+      }, (err) => {
+        console.warn("[ConnectionService] Sender query failed, using local fallback", err);
+        handleCallback();
+      });
+    } catch (e) {
+      console.warn("[ConnectionService] Failed to set up real-time listener for q1:", e);
+    }
+
+    try {
+      unsub2 = onSnapshot(q2, (snapshot) => {
+        receiverConns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Connection));
+        handleCallback();
+      }, (err) => {
+        console.warn("[ConnectionService] Receiver query failed, using local fallback", err);
+        handleCallback();
+      });
+    } catch (e) {
+      console.warn("[ConnectionService] Failed to set up real-time listener for q2:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub1();
-      unsub2();
+      try {
+        unsub1();
+      } catch (e) {
+        console.warn("[ConnectionService] Error unsubscribing unsub1:", e);
+      }
+      try {
+        unsub2();
+      } catch (e) {
+        console.warn("[ConnectionService] Error unsubscribing unsub2:", e);
+      }
     };
   },
 
@@ -436,31 +457,41 @@ export const connectionService = {
       where("userId", "==", userId)
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
-      // Sort by date desc
-      const sorted = notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      const existingLocal = localDb.getNotifications();
-      const map = new Map<string, Notification>();
-      existingLocal.forEach(n => map.set(n.id, n));
-      sorted.forEach(n => map.set(n.id, n));
-      const allNotifs = Array.from(map.values());
-      localDb.saveNotifications(allNotifs);
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+        // Sort by date desc
+        const sorted = notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        const existingLocal = localDb.getNotifications();
+        const map = new Map<string, Notification>();
+        existingLocal.forEach(n => map.set(n.id, n));
+        sorted.forEach(n => map.set(n.id, n));
+        const allNotifs = Array.from(map.values());
+        localDb.saveNotifications(allNotifs);
 
-      const userNotifs = allNotifs.filter(n => n.userId === userId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      callback(userNotifs);
-    }, (err) => {
-      console.warn("[ConnectionService] Notifications query failed, using local fallback", err);
-    });
+        const userNotifs = allNotifs.filter(n => n.userId === userId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        callback(userNotifs);
+      }, (err) => {
+        console.warn("[ConnectionService] Notifications query failed, using local fallback", err);
+        emitLocal();
+      });
+    } catch (e) {
+      console.warn("[ConnectionService] Failed to set up real-time listener for notifications:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_notifications_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub();
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[ConnectionService] Error unsubscribing from notifications:", e);
+      }
     };
   },
 

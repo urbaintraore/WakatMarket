@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck } from 'lucide-react';
 import { formatCFA, db } from '../data';
-import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification } from '../types';
+import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
@@ -144,7 +144,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
 
   const activeConnections = useMemo(() => {
     if (!currentUser) return [];
-    return connections.filter(c => c.status === "active");
+    return connections.filter(c => isConnectionActive(c));
   }, [connections, currentUser?.id]);
 
   const handleRespondToRequest = async (conn: Connection, status: "active" | "refusée") => {
@@ -211,13 +211,22 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
 
   const filteredUsers = React.useMemo(() => {
     return allKnownUsers.filter(u => {
-      if (u.role !== selectedRole) return false;
-      if (!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
       const cleanQ = q.replace(/[\s\-\+]/g, '');
-      const uPhone = (u.phone || "").toLowerCase().replace(/[\s\-\+]/g, '');
+      const uPhone = (u.phone || (u as any).téléphone || "").toLowerCase().replace(/[\s\-\+]/g, '');
       const uEmail = (u.email || "").toLowerCase();
       const uName = (u.name || "").toLowerCase();
+
+      if (q) {
+        const matchesQuery = 
+          (uPhone && (uPhone.includes(cleanQ) || cleanQ.includes(uPhone))) ||
+          (uEmail && uEmail.includes(q)) ||
+          (uName && uName.includes(q));
+        if (matchesQuery) return true;
+      }
+
+      if (u.role !== selectedRole) return false;
+      if (!q) return true;
 
       return (
         (uPhone && (uPhone.includes(cleanQ) || cleanQ.includes(uPhone))) ||
@@ -959,12 +968,25 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
               isRealUser: true
             });
           }}
-          onInitiateOrder={(partnerId) => {
+          onInitiateOrder={(partnerId, productId, mode) => {
+            const product = productId ? db.getProducts().find(p => p.id === productId) : null;
+            let initialMsg = "";
+            if (mode === "SELL") {
+              initialMsg = product 
+                ? `Bonjour, je souhaite vous soumettre une offre d'approvisionnement pour le produit : ${product.name}. Pouvons-nous en discuter ?`
+                : `Bonjour, je souhaite vous proposer une offre complète de ravitaillement pour vos stocks.`;
+            } else {
+              initialMsg = product
+                ? `Bonjour, je souhaiterais passer commande pour le produit : ${product.name}. Quels sont vos conditions et délais ?`
+                : `Bonjour, je souhaiterais passer une commande d'approvisionnement complète auprès de votre établissement.`;
+            }
+
             setSelectedClientForMessage({
               id: partnerId,
               name: selectedPartnerForStock.companyName || selectedPartnerForStock.name,
               role: selectedPartnerForStock.role,
-              isRealUser: true
+              isRealUser: true,
+              initialMessage: initialMsg
             });
           }}
         />

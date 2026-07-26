@@ -31,18 +31,42 @@ export const relationService = {
     let destinataire: UserProfile | null = null;
 
     try {
-      // Recherche Firestore par phone ou email
+      // Recherche Firestore par phone, téléphone ou email
       const usersRef = collection(db, "users");
       const qPhone = query(usersRef, where("phone", "==", destinataireIdentifiant.trim()));
       const snapPhone = await getDocs(qPhone);
 
       if (!snapPhone.empty) {
-        destinataire = { id: snapPhone.docs[0].id, ...snapPhone.docs[0].data() } as UserProfile;
+        const docData = snapPhone.docs[0].data() as any;
+        destinataire = { 
+          id: snapPhone.docs[0].id, 
+          ...docData,
+          phone: docData.phone || docData.téléphone || '',
+          role: docData.role || docData.rôle || UserRole.CLIENT
+        } as UserProfile;
       } else {
-        const qEmail = query(usersRef, where("email", "==", cleanIdentifiant));
-        const snapEmail = await getDocs(qEmail);
-        if (!snapEmail.empty) {
-          destinataire = { id: snapEmail.docs[0].id, ...snapEmail.docs[0].data() } as UserProfile;
+        const qTel = query(usersRef, where("téléphone", "==", destinataireIdentifiant.trim()));
+        const snapTel = await getDocs(qTel);
+        if (!snapTel.empty) {
+          const docData = snapTel.docs[0].data() as any;
+          destinataire = { 
+            id: snapTel.docs[0].id, 
+            ...docData,
+            phone: docData.phone || docData.téléphone || '',
+            role: docData.role || docData.rôle || UserRole.CLIENT
+          } as UserProfile;
+        } else {
+          const qEmail = query(usersRef, where("email", "==", cleanIdentifiant));
+          const snapEmail = await getDocs(qEmail);
+          if (!snapEmail.empty) {
+            const docData = snapEmail.docs[0].data() as any;
+            destinataire = { 
+              id: snapEmail.docs[0].id, 
+              ...docData,
+              phone: docData.phone || docData.téléphone || '',
+              role: docData.role || docData.rôle || UserRole.CLIENT
+            } as UserProfile;
+          }
         }
       }
     } catch (err) {
@@ -52,11 +76,16 @@ export const relationService = {
     // Fallback recherche dans localDb
     if (!destinataire) {
       const allUsers = localDb.getUsers();
-      destinataire = allUsers.find(u => 
-        u.id === destinataireIdentifiant.trim() ||
-        u.phone === destinataireIdentifiant.trim() || 
-        u.email.toLowerCase() === cleanIdentifiant
-      ) || null;
+      const cleanInput = destinataireIdentifiant.trim().toLowerCase().replace(/[\s\-\+]/g, '');
+      destinataire = allUsers.find(u => {
+        const uPhone = (u.phone || (u as any).téléphone || "").toLowerCase().replace(/[\s\-\+]/g, '');
+        return (
+          u.id === destinataireIdentifiant.trim() ||
+          (uPhone && (uPhone.includes(cleanInput) || cleanInput.includes(uPhone))) ||
+          u.email.toLowerCase() === cleanIdentifiant ||
+          u.name.toLowerCase().includes(cleanIdentifiant)
+        );
+      }) || null;
     }
 
     if (!destinataire) {
@@ -386,19 +415,28 @@ export const relationService = {
       where("statut", "==", "en_attente")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const items: Relation[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Relation));
-      callback(items);
-    }, (err) => {
-      console.warn("[relationService] Listener incoming relations error, using fallback:", err);
-    });
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const items: Relation[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Relation));
+        callback(items);
+      }, (err) => {
+        console.warn("[relationService] Listener incoming relations error, using fallback:", err);
+      });
+    } catch (e) {
+      console.warn("[relationService] Failed to set up real-time listener for incoming relations:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub();
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[relationService] Error unsubscribing from relations:", e);
+      }
     };
   },
 
@@ -435,22 +473,32 @@ export const relationService = {
       orderBy("dateCreation", "desc")
     );
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const items: PartnerNotificationItem[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as PartnerNotificationItem));
-      callback(items);
-    }, (err) => {
-      console.warn("[relationService] Listener notifications error, using fallback:", err);
-    });
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const items: PartnerNotificationItem[] = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as PartnerNotificationItem));
+        callback(items);
+      }, (err) => {
+        console.warn("[relationService] Listener notifications error, using fallback:", err);
+        emitLocal();
+      });
+    } catch (e) {
+      console.warn("[relationService] Failed to set up real-time listener for partner notifications:", e);
+    }
 
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_notifications_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
-      unsub();
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[relationService] Error unsubscribing from partner notifications:", e);
+      }
     };
   },
 

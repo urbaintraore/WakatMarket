@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection } from "./types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive } from "./types";
 import {
   db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice
 } from "./data";
@@ -95,6 +95,29 @@ export default function App() {
           companyName: `${u.nom} Entreprise`
         }));
         setUsers(mappedUsers);
+      });
+      return () => unsubscribe();
+    }
+  }, [isRealUserAuthenticated]);
+
+  // Firestore Sync for inventory
+  useEffect(() => {
+    if (isRealUserAuthenticated) {
+      const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
+        if (fbInventory && fbInventory.length > 0) {
+          setInventory(prev => {
+            const updatedMap = new Map<string, InventoryItem>();
+            prev.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            fbInventory.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            const nextList = Array.from(updatedMap.values());
+            db.saveInventory(nextList);
+            return nextList;
+          });
+        }
       });
       return () => unsubscribe();
     }
@@ -416,7 +439,7 @@ export default function App() {
 
         // Auto-add accepted connections to lightClients
         const activePartnerIds = conns
-          .filter(c => c.status === "active")
+          .filter(c => isConnectionActive(c))
           .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
 
         if (activePartnerIds.length > 0) {
@@ -1532,8 +1555,9 @@ export default function App() {
         );
 
         const hasConnection = realConnections.some(c => 
-          (c.senderId === currentUser.id && c.receiverId === u.id && c.status === "active") ||
-          (c.senderId === u.id && c.receiverId === currentUser.id && c.status === "active")
+          ((c.senderId === currentUser.id && c.receiverId === u.id) ||
+           (c.senderId === u.id && c.receiverId === currentUser.id)) && 
+          isConnectionActive(c)
         );
 
         return hasOrder || hasConnection;
@@ -1549,7 +1573,7 @@ export default function App() {
         
         // Include products from partners we are connected to
         return inventory.some(i => i.productId === p.id && realConnections.some(c => 
-          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && c.status === "active"
+          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
         ));
       })
     : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, realConnections]);
@@ -1561,7 +1585,7 @@ export default function App() {
         
         // Include inventory from partners we are connected to
         return realConnections.some(c => 
-          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && c.status === "active"
+          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
         );
       })
     : inventory) as InventoryItem[], [isRealUserAuthenticated, inventory, currentUser, realConnections]);

@@ -290,20 +290,33 @@ export const userService = {
     // Initial fetch of local users to be responsive
     this.getAllUsers().then(callback);
 
-    return onSnapshot(firestoreCollection, (snapshot) => {
-      const users: FirebaseUser[] = [];
-      snapshot.forEach((doc: any) => {
-        users.push(doc.data() as FirebaseUser);
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(firestoreCollection, (snapshot) => {
+        const users: FirebaseUser[] = [];
+        snapshot.forEach((doc: any) => {
+          users.push(doc.data() as FirebaseUser);
+        });
+        
+        // Merge with local users for a complete picture
+        this.getAllUsers().then(locals => {
+          const map = new Map<string, FirebaseUser>();
+          [...locals, ...users].forEach(u => map.set(u.uid, u));
+          callback(Array.from(map.values()).filter(u => u.statut !== "DELETED"));
+        });
+      }, (error) => {
+        console.warn("[userService] subscribeToAllUsers Firestore connection failed, relying on local storage fallback", error);
       });
-      
-      // Merge with local users for a complete picture
-      this.getAllUsers().then(locals => {
-        const map = new Map<string, FirebaseUser>();
-        [...locals, ...users].forEach(u => map.set(u.uid, u));
-        callback(Array.from(map.values()).filter(u => u.statut !== "DELETED"));
-      });
-    }, (error) => {
-      console.warn("[userService] subscribeToAllUsers Firestore connection failed, relying on local storage fallback", error);
-    });
+    } catch (e) {
+      console.warn("[userService] Failed to set up Firestore onSnapshot for all users:", e);
+    }
+
+    return () => {
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("[userService] Failed to unsubscribe from all users:", e);
+      }
+    };
   }
 };
