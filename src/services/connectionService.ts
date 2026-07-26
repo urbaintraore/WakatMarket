@@ -193,9 +193,22 @@ export const connectionService = {
    * Subscribe to a user's connections (live stream)
    */
   subscribeToUserConnections(userId: string, callback: (connections: Connection[]) => void) {
+    const emitLocal = () => {
+      const localConns = localDb.getConnections().filter(c => c.senderId === userId || c.receiverId === userId);
+      callback(localConns);
+    };
+
     // Return local data immediately to ensure instant UI response
-    const initialLocal = localDb.getConnections().filter(c => c.senderId === userId || c.receiverId === userId);
-    callback(initialLocal);
+    emitLocal();
+
+    const handleLocalUpdate = () => {
+      emitLocal();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_connections_updated", handleLocalUpdate);
+      window.addEventListener("storage", handleLocalUpdate);
+    }
 
     const q1 = query(collection(db, "connections"), where("senderId", "==", userId));
     const q2 = query(collection(db, "connections"), where("receiverId", "==", userId));
@@ -231,6 +244,10 @@ export const connectionService = {
     });
 
     return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
+        window.removeEventListener("storage", handleLocalUpdate);
+      }
       unsub1();
       unsub2();
     };
@@ -240,16 +257,30 @@ export const connectionService = {
    * Subscribe to a user's notifications (live stream)
    */
   subscribeToUserNotifications(userId: string, callback: (notifications: Notification[]) => void) {
+    const emitLocal = () => {
+      const localNotifs = localDb.getNotifications().filter(n => n.userId === userId);
+      const sorted = localNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(sorted);
+    };
+
     // Return local data immediately to ensure instant UI response
-    const initialLocal = localDb.getNotifications().filter(n => n.userId === userId);
-    callback(initialLocal);
+    emitLocal();
+
+    const handleLocalUpdate = () => {
+      emitLocal();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_notifications_updated", handleLocalUpdate);
+      window.addEventListener("storage", handleLocalUpdate);
+    }
 
     const q = query(
       collection(db, "notifications"),
       where("userId", "==", userId)
     );
 
-    return onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
       // Sort by date desc
       const sorted = notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -259,6 +290,14 @@ export const connectionService = {
     }, (err) => {
       console.warn("[ConnectionService] Notifications query failed, using local fallback", err);
     });
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_notifications_updated", handleLocalUpdate);
+        window.removeEventListener("storage", handleLocalUpdate);
+      }
+      unsub();
+    };
   },
 
   /**

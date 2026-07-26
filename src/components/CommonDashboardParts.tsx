@@ -303,81 +303,77 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
         </button>
       </div>
 
-      {/* PRIORITY: Incoming connection requests (Moved above search form) */}
-      {activeViewTab === "b2b" && pendingReceived.length > 0 && (
-        <div className="space-y-3 animate-bounce-subtle bg-rose-50/30 dark:bg-rose-950/5 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-rose-600 flex items-center gap-2">
-            <Bell className="w-4 h-4 animate-bounce" /> VOUS AVEZ DES DEMANDES DE CONNEXION ({pendingReceived.length})
+      {/* PRIORITY: Incoming connection requests */}
+      {pendingReceived.length > 0 && (
+        <div className="space-y-3 bg-rose-50/50 dark:bg-rose-950/20 p-4 rounded-2xl border-2 border-rose-300 dark:border-rose-800 shadow-md">
+          <h4 className="text-xs font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Bell className="w-4 h-4 animate-bounce text-rose-600" /> VOUS AVEZ DES DEMANDES DE CONNEXION ({pendingReceived.length})
+            </span>
+            <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold">Action Requise</span>
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pendingReceived.map(req => (
-              <div key={req.id} className="p-4 bg-white dark:bg-zinc-900 border-2 border-rose-200 dark:border-rose-900 rounded-2xl flex flex-col justify-between gap-3 shadow-md">
-                <div>
-                  <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.senderName}</p>
-                  <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight">{req.senderRole}</p>
-                  {req.notes && (
-                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 italic">"{req.notes}"</p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleRespondToRequest(req, "active")}
-                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" /> Accepter
-                  </button>
-                  <button
-                    onClick={() => handleRespondToRequest(req, "refusée")}
-                    className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl text-xs font-bold transition flex items-center justify-center border border-zinc-200 dark:border-zinc-700"
-                    title="Refuser"
-                    type="button"
-                  >
-                    <UserX className="w-3.5 h-3.5" />
-                  </button>
-                  {confirmDeleteId === req.id ? (
-                    <div className="flex gap-1 animate-in fade-in slide-in-from-right-2">
+            {pendingReceived.map(req => {
+              const senderUser = allKnownUsers.find(u => u.id === req.senderId);
+              return (
+                <div key={req.id} className="p-4 bg-white dark:bg-zinc-900 border-2 border-rose-200 dark:border-rose-900 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
+                  <div>
+                    <div className="flex justify-between items-start">
+                      <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.senderName}</p>
+                      <span className="text-[9px] px-2 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 rounded-full font-bold uppercase">{req.senderRole}</span>
+                    </div>
+                    {req.notes && (
+                      <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 italic">"{req.notes}"</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-2">
                       <button
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setConnections(prev => prev.filter(c => c.id !== req.id));
-                          await connectionService.deleteConnection(req.id);
-                          setConfirmDeleteId(null);
-                        }}
-                        className="px-3 py-2 bg-rose-600 text-white rounded-xl text-[10px] font-bold shadow-sm"
-                        type="button"
+                        onClick={() => handleRespondToRequest(req, "active")}
+                        className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm"
                       >
-                        Confirmer
+                        <UserCheck className="w-3.5 h-3.5" /> Accepter
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setConfirmDeleteId(null);
-                        }}
-                        className="px-2 py-2 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl text-[10px] font-bold"
+                        onClick={() => handleRespondToRequest(req, "refusée")}
+                        className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl text-xs font-bold transition flex items-center justify-center border border-zinc-200 dark:border-zinc-700"
+                        title="Refuser"
                         type="button"
                       >
-                        Annuler
+                        <UserX className="w-3.5 h-3.5" /> Refuser
                       </button>
                     </div>
-                  ) : (
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setConfirmDeleteId(req.id);
-                      }}
-                      className="px-3 py-2 bg-rose-50 dark:bg-rose-950/20 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl transition flex items-center justify-center border border-rose-100 dark:border-rose-900/30"
-                      title="Supprimer la demande"
-                      type="button"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+
+                    <div className="flex gap-2">
+                      {senderUser && (
+                        <button
+                          onClick={() => setSelectedPartnerForStock(senderUser)}
+                          className="flex-1 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 border border-zinc-200 dark:border-zinc-700"
+                        >
+                          <Store className="w-3 h-3 text-emerald-600" /> Voir Profil/Stock
+                        </button>
+                      )}
+                      {senderUser && (
+                        <button
+                          onClick={() => setSelectedClientForMessage({
+                            id: senderUser.id,
+                            name: senderUser.name,
+                            phone: senderUser.phone,
+                            email: senderUser.email,
+                            role: senderUser.role,
+                            companyName: senderUser.companyName,
+                            isRealUser: true
+                          })}
+                          className="py-1.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 border border-emerald-200 dark:border-emerald-800"
+                        >
+                          <MessageSquare className="w-3 h-3" /> Discuter
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -515,11 +511,11 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
 
           <button 
             type="button"
-            disabled={!selectedTargetUser}
+            disabled={!selectedTargetUser && !searchQuery.trim()}
             onClick={() => {
-              if (selectedTargetUser) {
-                // Pass the ID to ensure accurate user identification
-                onCreateClient(selectedTargetUser.id, notesInput, selectedTargetUser.role, isRegisteringPartner);
+              const targetIdentifier = selectedTargetUser ? selectedTargetUser.id : searchQuery.trim();
+              if (targetIdentifier) {
+                onCreateClient(targetIdentifier, notesInput, selectedRole, isRegisteringPartner);
                 setIsAdding(false);
                 setIsRegisteringPartner(false);
                 setSearchQuery("");
@@ -528,7 +524,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
               }
             }}
             className={`w-full py-3 rounded-xl text-xs font-bold shadow-lg transition ${
-              !selectedTargetUser 
+              (!selectedTargetUser && !searchQuery.trim()) 
                 ? 'bg-zinc-300 dark:bg-zinc-800 text-zinc-500 cursor-not-allowed shadow-none' 
                 : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20'
             }`}
@@ -538,7 +534,11 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                 ? `Enregistrer ${selectedTargetUser.name} comme partenaire` 
                 : (activeViewTab === "b2b" ? `Envoyer la demande de connexion à ${selectedTargetUser.name}` : `Enregistrer ${selectedTargetUser.name}`)
               ) 
-              : 'Sélectionnez un utilisateur existant dans la liste'}
+              : (searchQuery.trim() 
+                  ? `Envoyer la demande de connexion à "${searchQuery.trim()}"`
+                  : 'Saisissez un numéro/e-mail ou choisissez un utilisateur'
+                )
+            }
           </button>
         </div>
       )}

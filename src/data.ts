@@ -109,7 +109,7 @@ class ERPStorage {
     const initial = USE_DEMO_DATA ? INITIAL_USERS : [];
     
     [...initial, ...loaded].forEach(u => {
-      if (u && u.id && !u.id.startsWith("user-")) {
+      if (u && u.id) {
         userMap.set(u.id, u);
       }
     });
@@ -123,7 +123,7 @@ class ERPStorage {
             const parsed = JSON.parse(val);
             if (parsed && (parsed.uid || parsed.email)) {
               const uid = parsed.uid || parsed.email;
-              if (uid && !uid.startsWith("user-")) {
+              if (uid) {
                 const profile: UserProfile = {
                   id: uid,
                   name: `${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur",
@@ -254,6 +254,9 @@ class ERPStorage {
 
   saveConnections(connections: Connection[]): void {
     this.set("wakat_erp_v2_connections", connections);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated", { detail: connections }));
+    }
   }
 
   getNotifications(): Notification[] {
@@ -262,6 +265,9 @@ class ERPStorage {
 
   saveNotifications(notifications: Notification[]): void {
     this.set("wakat_erp_v2_notifications", notifications);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated", { detail: notifications }));
+    }
   }
 
   getSyncQueue(): any[] {

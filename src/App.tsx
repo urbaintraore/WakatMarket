@@ -1000,7 +1000,7 @@ export default function App() {
     let clientEmail = "";
 
     if (targetUser) {
-      if (!isRoleAllowed(currentUser.role, targetUser.role)) {
+      if (!isPartnerRegistration && !isRoleAllowed(currentUser.role, targetUser.role)) {
         addNotification(`Contrainte de rôle : Un ${currentUser.role} ne peut pas ajouter un ${targetUser.role} (${targetUser.name}).`);
         return;
       }
@@ -1009,29 +1009,18 @@ export default function App() {
       clientPhone = targetUser.phone || "";
       clientEmail = targetUser.email || "";
       
-      const isMock = targetUser.id.length < 10 || !isRealUserAuthenticated; 
-      
       if (!isRealUserAuthenticated) {
-        addNotification("Attention: Vous utilisez un compte local. Le partenaire est ajouté localement.");
+        addNotification("Attention: Compte local. Demande transmise en temps réel à l'utilisateur.");
       }
 
-      if (isPartnerRegistration) {
-        connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
-          addNotification(`Demande de partenariat envoyée à ${targetUser?.companyName || targetUser?.name}. Une notification lui a été transmise pour validation.`);
-        }).catch(err => {
-          console.error("Error creating connection request:", err);
-          addNotification("Erreur lors de la demande de partenariat.");
-        });
-      } else {
-        connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
-          addNotification(`Invitation envoyée à ${targetUser?.companyName || targetUser?.name}. Notification transmise.`);
-        }).catch(err => {
-          console.error("Error creating connection request:", err);
-          addNotification("Erreur lors de l'envoi de l'invitation.");
-        });
-      }
+      connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
+        addNotification(`Demande de connexion formelle (en attente) transmise à ${targetUser?.companyName || targetUser?.name}.`);
+      }).catch(err => {
+        console.error("Error creating connection request:", err);
+        addNotification("Erreur lors de l'envoi de la demande de connexion.");
+      });
     } else {
-      if (!isRoleAllowed(currentUser.role, clientRole)) {
+      if (!isPartnerRegistration && !isRoleAllowed(currentUser.role, clientRole)) {
         addNotification(`Contrainte de rôle : Vous n'êtes pas autorisé à créer un client avec le rôle ${clientRole}.`);
         return;
       }
@@ -1039,7 +1028,7 @@ export default function App() {
       const generatedEmail = isEmail ? identifier : `${identifier.replace(/[^a-z0-9]/g, '')}@b2bhub.sn`;
       const generatedPhone = isEmail ? "+22670000000" : identifier;
       const newUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      const derivedName = isEmail ? identifier.split("@")[0] : `Client ${identifier}`;
+      const derivedName = isEmail ? identifier.split("@")[0] : `Partenaire ${identifier}`;
 
       const newUser: UserProfile = {
         id: newUserId,
@@ -1062,9 +1051,9 @@ export default function App() {
       clientPhone = newUser.phone;
       clientEmail = newUser.email;
 
-      // For manually created users, we send a connection request that remains pending
-      connectionService.createConnectionRequest(currentUser, newUser, "Compte créé manuellement").then(() => {
-        addNotification(`Compte local créé et invitation envoyée à ${newUser.name}.`);
+      // For newly created user profiles, send a connection request that remains pending
+      connectionService.createConnectionRequest(currentUser, newUser, notes || "Compte créé et invitation de partenariat").then(() => {
+        addNotification(`Compte créé et demande de connexion formelle transmise à ${newUser.name}.`);
       }).catch(err => {
         console.error("Error creating connection for new user:", err);
       });
