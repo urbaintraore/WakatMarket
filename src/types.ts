@@ -304,13 +304,38 @@ export interface Connection {
   updatedAt: string;
 }
 
+export interface Relation {
+  id: string; // Document ID: e.g. "demandeurId_destinataireId"
+  demandeurId: string;
+  destinataireId: string;
+  statut: "en_attente" | "actif" | "refuse";
+  dateCreation: any;
+  dateReponse?: any;
+  participants: string[]; // [demandeurId, destinataireId]
+  notes?: string;
+  demandeurNom?: string;
+  demandeurRole?: string;
+  destinataireNom?: string;
+  destinataireRole?: string;
+}
+
+export interface PartnerNotificationItem {
+  id: string;
+  type: "demande_connexion" | "connexion_acceptee" | "connexion_refusee";
+  relationId: string;
+  expediteurId: string;
+  lu: boolean;
+  dateCreation: any;
+  contenu: string;
+}
+
 export interface Notification {
   id: string;
   userId: string; // recipient
-  senderId?: string; // sender of the notification (required for Firestore security rules)
+  senderId?: string; // sender of the notification
   title: string;
   message: string;
-  type: "CONNECTION_REQUEST" | "CONNECTION_ACCEPTED" | "CONNECTION_REJECTED" | "MESSAGE" | "SYSTEM";
+  type: "CONNECTION_REQUEST" | "CONNECTION_ACCEPTED" | "CONNECTION_REJECTED" | "MESSAGE" | "SYSTEM" | "demande_connexion" | "connexion_acceptee" | "connexion_refusee";
   read: boolean;
   createdAt: string;
   relatedId?: string; // e.g. Connection ID or Message ID
