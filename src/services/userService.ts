@@ -88,8 +88,7 @@ export const userService = {
       const sanitized = sanitizeForFirestore(user);
       await setDoc(doc(db, "users", user.uid), sanitized);
     } catch (error: any) {
-      console.error("ERREUR CRITIQUE: Firestore failed during createUser:", error);
-      throw error;
+      console.warn("Firestore setDoc failed during createUser (relying on offline fallback):", error.message || error);
     }
   },
 
@@ -175,8 +174,7 @@ export const userService = {
       const sanitized = sanitizeForFirestore(fields);
       await updateDoc(doc(db, "users", uid), sanitized);
     } catch (error: any) {
-      console.error("ERREUR CRITIQUE: Firestore failed during updateUser:", error);
-      throw error;
+      console.warn("Firestore updateDoc failed during updateUser (relying on offline fallback):", error.message || error);
     }
   },
 
@@ -304,6 +302,8 @@ export const userService = {
         [...locals, ...users].forEach(u => map.set(u.uid, u));
         callback(Array.from(map.values()).filter(u => u.statut !== "DELETED"));
       });
+    }, (error) => {
+      console.warn("[userService] subscribeToAllUsers Firestore connection failed, relying on local storage fallback", error);
     });
   }
 };

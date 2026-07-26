@@ -52,8 +52,12 @@ export const chatService = {
           await setDoc(convRef, newConv);
         }
       } catch (e) {
-        // Fallback for offline mode
-        await setDoc(convRef, newConv, { merge: true });
+        console.warn("[chatService] Firestore getOrCreatePrivateConversation failed, utilizing offline/local mode", e);
+        try {
+          await setDoc(convRef, newConv, { merge: true });
+        } catch (innerErr) {
+          console.warn("[chatService] Inner setDoc failed as well, continuing offline-only:", innerErr);
+        }
       }
       
       return convId;
@@ -107,18 +111,80 @@ export const chatService = {
    * Listens to all conversations for a user
    */
   subscribeToUserConversations(userId: string, callback: (convs: Conversation[]) => void) {
+    const emitLocal = () => {
+      const activeConns = localDb.getConnections()
+        .filter(c => c.status === "active" && (c.senderId === userId || c.receiverId === userId));
+      
+      const fallbackConvs: Conversation[] = activeConns.map(conn => {
+        const otherId = conn.senderId === userId ? conn.receiverId : conn.senderId;
+        
+        // Find if there is a last message in local messages
+        const msgs = localDb.getMessages()
+          .filter(m => m.conversationId === conn.id)
+          .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+        const lastMsg = msgs[msgs.length - 1];
+
+        return {
+          id: conn.id,
+          type: "PRIVATE",
+          participants: [conn.senderId, conn.receiverId],
+          participantDetails: {
+            [conn.senderId]: { userId: conn.senderId, joinedAt: conn.createdAt, role: "ADMIN" },
+            [conn.receiverId]: { userId: conn.receiverId, joinedAt: conn.createdAt, role: "ADMIN" }
+          },
+          lastMessage: lastMsg?.content || "Aucun message",
+          lastMessageDate: lastMsg?.createdAt || conn.updatedAt || conn.createdAt,
+          unreadCount: {
+            [userId]: 0,
+            [otherId]: 0
+          },
+          createdAt: conn.createdAt,
+          updatedAt: lastMsg?.createdAt || conn.updatedAt || conn.createdAt
+        };
+      });
+
+      callback(fallbackConvs);
+    };
+
+    emitLocal();
+
+    const handleLocalUpdate = () => {
+      emitLocal();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_connections_updated", handleLocalUpdate);
+      window.addEventListener("wakat_messages_updated", handleLocalUpdate);
+      window.addEventListener("storage", handleLocalUpdate);
+    }
+
     const q = query(
       collection(db, "conversations"),
       where("participants", "array-contains", userId),
       orderBy("updatedAt", "desc")
     );
 
-    return onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       const convs = snapshot.docs.map(doc => doc.data() as Conversation);
-      callback(convs);
+      
+      // If we got real data, merge with any local info
+      if (convs.length > 0) {
+        callback(convs);
+      } else {
+        emitLocal();
+      }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, "conversations");
+      console.warn("[chatService] Conversations query failed, relying on dynamic local fallback", error);
     });
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
+        window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
+        window.removeEventListener("storage", handleLocalUpdate);
+      }
+      unsub();
+    };
   },
 
   /**
@@ -264,7 +330,7 @@ export const chatService = {
       // Optionally, we could find all unread messages and mark them as read by this user.
       // But for performance, unreadCount is usually sufficient for the UI.
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `conversations/${convId}`);
+      console.warn("[chatService] markConversationAsRead failed in Firestore, ignoring for offline resilience", error);
     }
   },
 

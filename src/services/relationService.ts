@@ -157,7 +157,16 @@ export const relationService = {
       });
     } catch (e: any) {
       console.error("[relationService] Transaction Firestore échouée:", e);
-      throw e;
+      if (e instanceof Error && (
+        e.message.includes("déjà en relation") || 
+        e.message.includes("non compatibles") || 
+        e.message.includes("enregistrer vous-même") ||
+        e.message.includes("n'existe pas") ||
+        e.message.includes("Seul le destinataire")
+      )) {
+        throw e;
+      }
+      console.warn("[relationService] Falling back to offline local storage because of Firestore failure:", e.message || e);
     }
 
     // Sauvegarde locale systématique (Mode Hors-Ligne)
@@ -302,7 +311,13 @@ export const relationService = {
       });
     } catch (e: any) {
       console.error("[relationService] Transaction de réponse Firestore échouée:", e);
-      throw e;
+      if (e instanceof Error && (
+        e.message.includes("n'existe pas") ||
+        e.message.includes("Seul le destinataire")
+      )) {
+        throw e;
+      }
+      console.warn("[relationService] Falling back to offline local storage for response because of Firestore failure:", e.message || e);
     }
 
     // Traitement local systématique
