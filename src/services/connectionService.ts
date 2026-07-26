@@ -224,9 +224,17 @@ export const connectionService = {
         new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
       );
       
-      // Sync local storage with Firestore state
-      localDb.saveConnections(unique);
-      callback(unique);
+      // Sync local storage with Firestore state safely
+      const existingLocal = localDb.getConnections();
+      const map = new Map<string, Connection>();
+      existingLocal.forEach(c => map.set(c.id, c));
+      unique.forEach(c => map.set(c.id, c));
+      const allConns = Array.from(map.values());
+      localDb.saveConnections(allConns);
+
+      const userConns = allConns.filter(c => c.senderId === userId || c.receiverId === userId)
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+      callback(userConns);
     };
 
     const unsub1 = onSnapshot(q1, (snapshot) => {
@@ -285,8 +293,16 @@ export const connectionService = {
       // Sort by date desc
       const sorted = notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
-      localDb.saveNotifications(sorted);
-      callback(sorted);
+      const existingLocal = localDb.getNotifications();
+      const map = new Map<string, Notification>();
+      existingLocal.forEach(n => map.set(n.id, n));
+      sorted.forEach(n => map.set(n.id, n));
+      const allNotifs = Array.from(map.values());
+      localDb.saveNotifications(allNotifs);
+
+      const userNotifs = allNotifs.filter(n => n.userId === userId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      callback(userNotifs);
     }, (err) => {
       console.warn("[ConnectionService] Notifications query failed, using local fallback", err);
     });

@@ -1945,7 +1945,9 @@ export default function App() {
                     ) : (
                       realNotifications.map((n) => {
                         const isConnRequest = n.type === "CONNECTION_REQUEST" && n.relatedId;
-                        const relatedConn = isConnRequest ? realConnections.find(c => c.id === n.relatedId) : null;
+                        const relatedConn = isConnRequest 
+                          ? (realConnections.find(c => c.id === n.relatedId) || db.getConnections().find(c => c.id === n.relatedId))
+                          : null;
                         const isPending = relatedConn?.status === "en_attente";
 
                         return (

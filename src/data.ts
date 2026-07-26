@@ -78,9 +78,79 @@ export const INITIAL_RECOMMENDATIONS: AIRecommendation[] = [];
 // Initialize and Sync Storage
 export const USE_DEMO_DATA = false;
 
+const MOCK_ID_REGEX = /^(p[1-9]|inv-[1-9]|ord-[1-9]|lc-[1-9]|mov-[1-9]|pay-[1-9]|msg-[1-9]|rec-[1-9]|u[1-9]|user-1|user-2|user-3|user-4|user-5|demo-)/i;
+
 export function filterMockData<T extends { id?: string; uid?: string }>(data: T[]): T[] {
   if (USE_DEMO_DATA) return data;
-  return data;
+  if (!Array.isArray(data)) return [];
+  return data.filter(item => {
+    if (!item) return false;
+    const itemId = item.id || item.uid;
+    if (!itemId) return true;
+    if (MOCK_ID_REGEX.test(itemId)) return false;
+    return true;
+  });
+}
+
+export function clearDemoData(): void {
+  try {
+    const keys = [
+      "wakat_erp_v2_users",
+      "wakat_erp_v2_products",
+      "wakat_erp_v2_inventory",
+      "wakat_erp_v2_orders",
+      "wakat_erp_v2_messages",
+      "wakat_erp_v2_recommendations",
+      "wakat_erp_v2_light_clients",
+      "wakat_erp_v2_stock_movements",
+      "wakat_erp_v2_payments",
+      "wakat_erp_v2_connections",
+      "wakat_erp_v2_notifications"
+    ];
+
+    keys.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        try {
+          const items = JSON.parse(raw);
+          if (Array.isArray(items)) {
+            const cleaned = items.filter(item => {
+              const id = item?.id || item?.uid;
+              if (!id) return true;
+              return !MOCK_ID_REGEX.test(id);
+            });
+            localStorage.setItem(key, JSON.stringify(cleaned));
+          }
+        } catch (e) {}
+      }
+    });
+
+    const statsRaw = localStorage.getItem("wakat_erp_v2_platform_stats");
+    if (statsRaw) {
+      try {
+        const stats = JSON.parse(statsRaw);
+        if (stats) {
+          stats.totalRevenue = 0;
+          stats.totalOrdersCount = 0;
+          stats.activeUsersCount = {
+            manufacturers: 0,
+            wholesalers: 0,
+            semiWholesalers: 0,
+            retailers: 0,
+            drivers: 0,
+            clients: 0,
+          };
+          localStorage.setItem("wakat_erp_v2_platform_stats", JSON.stringify(stats));
+        }
+      } catch (e) {}
+    }
+  } catch (e) {
+    console.error("Error clearing demo data:", e);
+  }
+}
+
+if (typeof window !== "undefined" && !USE_DEMO_DATA) {
+  clearDemoData();
 }
 
 class ERPStorage {
@@ -103,7 +173,7 @@ class ERPStorage {
   }
 
   getUsers(): UserProfile[] {
-    const loaded = this.get<UserProfile[]>("wakat_erp_v2_users", USE_DEMO_DATA ? INITIAL_USERS : []);
+    const loaded = filterMockData(this.get<UserProfile[]>("wakat_erp_v2_users", USE_DEMO_DATA ? INITIAL_USERS : []));
     const userMap = new Map<string, UserProfile>();
     
     const initial = USE_DEMO_DATA ? INITIAL_USERS : [];
