@@ -6,6 +6,7 @@ import {
 import { Product, InventoryItem, LightClient, UserRole, UserProfile, Order, DebtPayment } from "../types";
 import { formatCFA } from "../data";
 import { billingService } from "../services/billingService";
+import { pushNotificationService } from "../services/pushNotificationService";
 
 interface CaisseModuleProps {
   currentUser: UserProfile;
@@ -401,6 +402,15 @@ export function CaisseModule({
         amountPaid, 
         paymentMethod
       );
+
+      if (amountPaid > 0) {
+        pushNotificationService.notifyPaymentReceived(
+          currentUser.id,
+          amountPaid,
+          acheteurNom,
+          invoiceData.venteId
+        );
+      }
 
       // Generate invoice
       const pdfUrl = await billingService.genererEtEnregistrerFacture(invoiceData);

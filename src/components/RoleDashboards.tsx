@@ -25,39 +25,77 @@ import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // ----------------------------------------------------------------------
-// Shared Price History Chart
+// Shared Price History Chart (30 Days - Purchase & Selling Prices)
 // ----------------------------------------------------------------------
-export function PriceHistoryChart({ basePrice }: { basePrice: number }) {
+export function PriceHistoryChart({ basePrice, buyingPrice }: { basePrice: number; buyingPrice?: number }) {
   const data = useMemo(() => {
-    // Generate a simulated history based on the current basePrice
     const now = new Date();
     const history = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const randomFluctuation = 1 + (Math.random() * 0.1 - 0.05); // +/- 5%
+    const sellingBase = basePrice || 5000;
+    const buyingBase = buyingPrice || Math.round(sellingBase * 0.75);
+
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const wave = Math.sin(i * 0.4) * 0.06;
+      const noise = (Math.sin(i * 1.7) * 0.03);
+
+      const buyingMultiplier = Math.max(0.7, 1 + wave * 0.5 + noise);
+      const sellingMultiplier = Math.max(0.8, 1 + wave + noise * 0.5);
+
+      const pAchat = i === 0 ? buyingBase : Math.round(buyingBase * buyingMultiplier);
+      const pVente = i === 0 ? sellingBase : Math.round(sellingBase * sellingMultiplier);
+
       history.push({
-        name: d.toLocaleDateString("fr-FR", { month: "short" }),
-        prix: Math.round(basePrice * (i === 0 ? 1 : randomFluctuation))
+        date: d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+        prixAchat: pAchat,
+        prixVente: pVente,
       });
     }
     return history;
-  }, [basePrice]);
+  }, [basePrice, buyingPrice]);
 
   return (
-    <div className="h-48 w-full mt-4">
-      <h5 className="text-[10px] uppercase font-bold text-zinc-500 mb-2">Historique des Prix (6 mois)</h5>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
-          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={(val) => `${val}`} />
-          <Tooltip 
-            formatter={(value: number) => [formatCFA(value), "Prix"]}
-            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
-          />
-          <Line type="monotone" dataKey="prix" stroke="#059669" strokeWidth={2} dot={{ r: 3, fill: "#059669", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 5 }} />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="bg-zinc-50 dark:bg-zinc-950 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800 mt-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <h5 className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Évolution des Prix (30 derniers jours)
+        </h5>
+        <div className="flex items-center gap-3 text-[10px] font-bold">
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" /> Prix Vente
+          </span>
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" /> Prix Achat
+          </span>
+        </div>
+      </div>
+      <div className="h-44 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} opacity={0.6} />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} />
+            <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6b7280' }} tickFormatter={(val) => `${Math.round(val/1000)}k`} />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const d = payload[0].payload;
+                  return (
+                    <div className="bg-zinc-900 text-white p-2 rounded-lg text-[11px] space-y-1 shadow-lg border border-zinc-800">
+                      <p className="font-bold border-b border-zinc-800 pb-1">{d.date}</p>
+                      <p className="text-emerald-400">Prix Vente: {formatCFA(d.prixVente)}</p>
+                      <p className="text-amber-400">Prix Achat: {formatCFA(d.prixAchat)}</p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Line type="monotone" dataKey="prixAchat" name="Prix Achat" stroke="#d97706" strokeWidth={1.5} strokeDasharray="3 3" dot={false} />
+            <Line type="monotone" dataKey="prixVente" name="Prix Vente" stroke="#059669" strokeWidth={2.5} dot={{ r: 2, fill: "#059669" }} activeDot={{ r: 4 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -867,7 +905,7 @@ export function ManufacturerDashboard({
                   
                   {selectedProductForChart === item.id && (
                     <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 animate-fade-in">
-                      <PriceHistoryChart basePrice={item.price} />
+                      <PriceHistoryChart basePrice={item.price} buyingPrice={prod?.prixGros} />
                     </div>
                   )}
                 </div>

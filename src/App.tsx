@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -27,6 +27,10 @@ import { connectionService } from "./services/connectionService";
 import { formatFirebaseError } from "./utils/firebaseErrors";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
+import { ProductDetailModal } from "./components/ProductDetailModal";
+import { OnboardingTour } from "./components/OnboardingTour";
+import { pushNotificationService } from "./services/pushNotificationService";
+import wakatLogo from "./assets/images/wakatmarket_logo_1785061321209.jpg";
 
 // Dashboards
 import {
@@ -346,9 +350,16 @@ export default function App() {
   const [showReports, setShowReports] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showPitchDeck, setShowPitchDeck] = useState(false);
+  const [showMobileToolsMenu, setShowMobileToolsMenu] = useState(false);
 
   // States for user profile editing
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+
+  // State for Product Detail Modal with 30-Day Recharts Price Graph
+  const [viewingProductDetail, setViewingProductDetail] = useState<{
+    product: Product;
+    inventoryItem?: InventoryItem;
+  } | null>(null);
 
   const handleOpenProfileEdit = () => {
     setShowProfileEdit(true);
@@ -405,6 +416,13 @@ export default function App() {
       };
     }
   }, [currentUser?.id]);
+
+  // Automatic real-time monitoring of seller stock levels to trigger critical stock push notifications
+  useEffect(() => {
+    if (currentUser && [UserRole.MANUFACTURER, UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(currentUser.role)) {
+      pushNotificationService.checkAndNotifyCriticalStocks(inventory, products, currentUser.id);
+    }
+  }, [currentUser?.id, inventory, products]);
 
   // Sync back to db helpers
   const syncUsers = async (list: UserProfile[]) => {
@@ -493,6 +511,16 @@ export default function App() {
   }, [isOnline]);
 
   const [toasts, setToasts] = useState<{ id: string; text: string; time: string }[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      const tourCompleted = localStorage.getItem(`wakat_onboarding_completed_${currentUser.id}`);
+      if (!tourCompleted) {
+        setShowOnboarding(true);
+      }
+    }
+  }, [currentUser?.id]);
 
   // Add Notification helper
   const addNotification = (text: string) => {
@@ -1392,17 +1420,42 @@ export default function App() {
     addNotification(`Vente enregistrée : ${formatCFA(totalAmount)}`);
   };
 
-  const handleAddPayment = (clientId: string, amount: number) => {
+  const handleAddPayment = (clientId: string, amount: number, orderId?: string, method?: string) => {
     if (!currentUser) return;
     const newPayment: DebtPayment = {
       id: `pay-${Date.now()}`,
       clientId,
       amount,
       date: new Date().toISOString(),
+      orderId,
+      method,
       isSynced: false
     };
     syncPayments([newPayment, ...payments]);
-    addNotification(`Paiement de ${formatCFA(amount)} enregistré.`);
+
+    // Update order amountPaid and paymentStatus if orderId is provided
+    if (orderId) {
+      const updatedOrders = orders.map((o) => {
+        if (o.id === orderId) {
+          const newAmountPaid = (o.amountPaid || 0) + amount;
+          const newPaymentStatus = newAmountPaid >= o.totalAmount ? "PAID" : "PARTIAL";
+          return {
+            ...o,
+            amountPaid: newAmountPaid,
+            paymentStatus: newPaymentStatus as any,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return o;
+      });
+      syncOrders(updatedOrders);
+    }
+
+    // Trigger local push notification for seller
+    pushNotificationService.notifyPaymentReceived(amount, `Client ID: ${clientId}`, orderId);
+
+    const orderRefText = orderId ? ` pour la facture #${orderId.split('-').pop()?.toUpperCase()}` : "";
+    addNotification(`Règlement de ${formatCFA(amount)} enregistré avec succès${orderRefText}.`);
     
     import("./services/syncService").then(({ syncService }) => {
       syncService.addToQueue("ADD_PAYMENT", newPayment);
@@ -1469,6 +1522,12 @@ export default function App() {
         }
 
         addNotification(`Paiement effectué de ${formatCFA(o.totalAmount)} pour la commande B2B ${orderId}`);
+        pushNotificationService.notifyPaymentReceived(
+          o.receiverId,
+          o.totalAmount,
+          payer?.name || "Partenaire Client",
+          orderId
+        );
         success = true;
         return { ...o, paymentStatus: "PAID" as const, updatedAt: new Date().toISOString() };
       }
@@ -1682,17 +1741,22 @@ export default function App() {
           
           {/* Logo Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-600 dark:bg-emerald-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
-              <Compass className="w-6 h-6 animate-spin-slow" />
+            <div className="w-11 h-11 bg-white dark:bg-zinc-800 rounded-xl p-0.5 border border-emerald-500/30 shadow-md shadow-emerald-500/10 flex items-center justify-center overflow-hidden">
+              <img
+                src={wakatLogo}
+                alt="WakatMarket Logo"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover rounded-lg"
+              />
             </div>
             <div>
-              <h1 className="font-bold text-sm tracking-tight text-zinc-950 dark:text-white flex items-center gap-1.5">
+              <h1 className="font-extrabold text-base tracking-tight text-zinc-950 dark:text-white flex items-center gap-1.5">
                 WakatMarket
-                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded-full uppercase">
+                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded-full uppercase border border-emerald-300 dark:border-emerald-800">
                   B2B + B2C
                 </span>
               </h1>
-              <p className="text-[9px] text-zinc-500 font-medium">Distribution & Logistique Intelligente d'Afrique</p>
+              <p className="text-[9.5px] text-zinc-500 font-medium">Distribution & Logistique Intelligente d'Afrique</p>
             </div>
           </div>
 
@@ -1752,7 +1816,82 @@ export default function App() {
           </div>
 
           {/* Right Header Operations */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Mobile Outils Menu Dropdown Button */}
+            <div className="relative lg:hidden">
+              <button
+                onClick={() => setShowMobileToolsMenu(!showMobileToolsMenu)}
+                className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                id="mobile-tools-menu-btn"
+                title="Menu Outils"
+              >
+                <LayoutGrid className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden xs:inline">Menu Outils</span>
+              </button>
+
+              {showMobileToolsMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 animate-fadeIn">
+                  <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800 font-extrabold text-[10px] uppercase text-zinc-400">
+                    Outils & Services Mobiles
+                  </div>
+                  <div className="py-1 space-y-1">
+                    <button
+                      onClick={() => { setShowScanner(!showScanner); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showScanner ? "bg-emerald-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <Scan className="w-4 h-4 text-emerald-500" />
+                      <span>Scanner Code-barres</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowAICopilot(!showAICopilot); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showAICopilot ? "bg-indigo-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      <span>IA Forecasting</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowReports(!showReports); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showReports ? "bg-rose-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <BarChart2 className="w-4 h-4 text-rose-500" />
+                      <span>BI & Exports</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowPitchDeck(!showPitchDeck);
+                        setShowScanner(false);
+                        setShowAICopilot(false);
+                        setShowReports(false);
+                        setShowChat(false);
+                        setShowMobileToolsMenu(false);
+                      }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showPitchDeck ? "bg-amber-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <Presentation className="w-4 h-4 text-amber-500" />
+                      <span>Pitch Deck</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowChat(!showChat); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showChat ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <MessageSquare className="w-4 h-4 text-blue-500" />
+                      <span>Messagerie</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Simulated Online PWA bar */}
             <span className="hidden sm:inline-flex items-center gap-1 text-[9px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full font-bold">
               <Globe className="w-3 h-3 text-emerald-500" /> PWA Installable (Hors-ligne OK)
@@ -1791,11 +1930,26 @@ export default function App() {
                           if (!n.read) connectionService.markNotificationAsRead(n.id);
                         });
                       }}
-                      className="text-[9px] text-emerald-600 hover:underline font-semibold"
+                      className="text-[9px] text-emerald-600 hover:underline font-semibold cursor-pointer"
                     >
                       Tout marquer comme lu
                     </button>
                   </div>
+
+                  {/* Web Push Toggle Button */}
+                  <button
+                    onClick={() => pushNotificationService.requestPermission()}
+                    className="w-full text-left px-3 py-2 bg-emerald-50/80 dark:bg-emerald-950/40 hover:bg-emerald-100/80 border-b border-emerald-200 dark:border-emerald-800/60 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>🔔 Alertes Push Vendeurs (Stock & Paiement)</span>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+                      pushNotificationService.getPermissionStatus() === "granted"
+                        ? "bg-emerald-600 text-white"
+                        : "bg-amber-500 text-white"
+                    }`}>
+                      {pushNotificationService.getPermissionStatus() === "granted" ? "Activées" : "Activer"}
+                    </span>
+                  </button>
                   <div className="divide-y divide-zinc-100 dark:divide-zinc-800 max-h-60 overflow-y-auto">
                     {realNotifications.length === 0 ? (
                       <div className="p-4 text-center text-[10px] text-zinc-400">Aucune notification</div>
@@ -1878,6 +2032,56 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Mobile Sticky Quick Menu Strip (Horizontal Swipeable Pill Bar) */}
+      <div className="lg:hidden bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 px-3 py-2 overflow-x-auto scrollbar-none shadow-xs sticky top-16 z-30 flex items-center gap-2">
+        <button
+          onClick={() => setShowScanner(!showScanner)}
+          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
+            showScanner ? "bg-emerald-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          <Scan className="w-3.5 h-3.5" /> Scanner
+        </button>
+        <button
+          onClick={() => setShowAICopilot(!showAICopilot)}
+          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
+            showAICopilot ? "bg-indigo-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> IA Forecasting
+        </button>
+        <button
+          onClick={() => setShowReports(!showReports)}
+          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
+            showReports ? "bg-rose-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          <BarChart2 className="w-3.5 h-3.5" /> BI & Exports
+        </button>
+        <button
+          onClick={() => {
+            setShowPitchDeck(!showPitchDeck);
+            setShowScanner(false);
+            setShowAICopilot(false);
+            setShowReports(false);
+            setShowChat(false);
+          }}
+          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
+            showPitchDeck ? "bg-amber-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          <Presentation className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> Pitch Deck
+        </button>
+        <button
+          onClick={() => setShowChat(!showChat)}
+          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
+            showChat ? "bg-blue-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5" /> Messagerie
+        </button>
+      </div>
 
       {/* Offline Banner */}
       {!isOnline && (
@@ -2583,6 +2787,30 @@ export default function App() {
           ) : null}
         </section>
 
+        {/* Product Detail Modal with Recharts 30-Day Price History */}
+        {viewingProductDetail && (
+          <ProductDetailModal
+            product={viewingProductDetail.product}
+            inventoryItem={viewingProductDetail.inventoryItem}
+            onClose={() => setViewingProductDetail(null)}
+          />
+        )}
+
+        {/* Interactive Onboarding Tour */}
+        {showOnboarding && currentUser && (
+          <OnboardingTour
+            currentUser={currentUser}
+            isOpen={true}
+            onClose={() => setShowOnboarding(false)}
+            onComplete={() => {
+              if (currentUser?.id) {
+                localStorage.setItem(`wakat_onboarding_completed_${currentUser.id}`, "true");
+              }
+              setShowOnboarding(false);
+            }}
+          />
+        )}
+
       </main>
 
       {/* Modern, elegant, clean Africanized ERP Footer */}
@@ -2596,7 +2824,15 @@ export default function App() {
               Plateforme unifiée et souveraine de souveraineté alimentaire, logistique, et distribution d'Afrique.
             </p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {currentUser && (
+              <button
+                onClick={() => setShowOnboarding(true)}
+                className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 transition cursor-pointer flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-xl"
+              >
+                <span>🚀 Visite Guidée (Onboarding)</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 if (confirm("Voulez-vous réinitialiser toutes les transactions d'approvisionnement locales ?")) {
@@ -2605,7 +2841,7 @@ export default function App() {
               }}
               className="text-[10px] text-zinc-500 hover:text-white transition cursor-pointer flex items-center gap-1 bg-zinc-800 px-3 py-1.5 rounded-xl border border-zinc-700/50"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Réinitialiser les données locales (Espace d'essai)
+              <RefreshCw className="w-3.5 h-3.5" /> Réinitialiser les données locales
             </button>
           </div>
         </div>

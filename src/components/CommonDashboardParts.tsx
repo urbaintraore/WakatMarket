@@ -4,6 +4,7 @@ import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
+import { ClientSendMessageModal } from './ClientSendMessageModal';
 
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
@@ -114,6 +115,18 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
   const [isRegisteringPartner, setIsRegisteringPartner] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Message modal state
+  const [selectedClientForMessage, setSelectedClientForMessage] = useState<{
+    id: string;
+    name: string;
+    phone?: string;
+    email?: string;
+    role?: string;
+    companyName?: string;
+    debtAmount?: number;
+    isRealUser?: boolean;
+  } | null>(null);
 
   const pendingReceived = useMemo(() => {
     if (!currentUser) return [];
@@ -670,16 +683,16 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                       
                       <div className="flex gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3">
                         <button
+                          type="button"
                           onClick={() => {
-                            // Find the chat button or switch tabs to chat
-                            const chatTabBtn = document.querySelector('[data-tab="chat"]') as HTMLButtonElement;
-                            if (chatTabBtn) {
-                              chatTabBtn.click();
-                            } else {
-                              window.location.hash = "#chat";
-                            }
+                            setSelectedClientForMessage({
+                              id: otherPartyId,
+                              name: otherPartyName,
+                              role: otherPartyRole,
+                              isRealUser: true
+                            });
                           }}
-                          className="flex-1 py-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                          className="flex-1 py-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                         >
                           <MessageSquare className="w-3.5 h-3.5" /> Envoyer un message
                         </button>
@@ -776,6 +789,25 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                       <History className="w-4 h-4 text-zinc-400" />
                     </div>
                   </div>
+
+                  <div className="flex gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3 mt-3">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedClientForMessage({
+                          id: client.id,
+                          name: client.name,
+                          phone: client.phone,
+                          debtAmount: debt,
+                          isRealUser: false
+                        });
+                      }}
+                      className="flex-1 py-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" /> Envoyer un message
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -870,6 +902,20 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
             </div>
           )}
         </div>
+      )}
+
+      {/* Direct Messaging Modal for Client et Adresses */}
+      {selectedClientForMessage && (
+        <ClientSendMessageModal
+          client={selectedClientForMessage}
+          currentUser={currentUser}
+          isOpen={true}
+          onClose={() => setSelectedClientForMessage(null)}
+          onOpenGlobalChat={() => {
+            const chatToggle = document.getElementById("header-chat-toggle") as HTMLButtonElement;
+            if (chatToggle) chatToggle.click();
+          }}
+        />
       )}
     </div>
   );

@@ -2,11 +2,13 @@ import React, { useState, useMemo } from "react";
 import { 
   User as UserIcon, Phone, Mail, ShoppingBag, DollarSign, PlusCircle, 
   ChevronDown, ChevronUp, Search, Calendar, CheckCircle, Clock, AlertTriangle,
-  Download, FileText, Users, TrendingDown, AlertCircle
+  Download, FileText, Users, TrendingDown, AlertCircle, Eye, ArrowUpRight
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { UserProfile, Order, DebtPayment, LightClient, Product } from "../types";
 import { formatCFA } from "../data";
+import { BuyerDetailModal } from "./BuyerDetailModal";
+import { PartialPaymentModal } from "./PartialPaymentModal";
 
 interface UnifiedBuyer {
   id: string; // User ID or LightClient ID
@@ -26,7 +28,7 @@ interface MyBuyersModuleProps {
   payments: DebtPayment[];
   lightClients: LightClient[];
   products?: Product[];
-  onAddPayment: (clientId: string, amount: number) => void;
+  onAddPayment: (clientId: string, amount: number, orderId?: string, method?: string) => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onCreateLightClient?: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
 }
@@ -52,6 +54,10 @@ export function MyBuyersModule({
   const [onlyShowDebtors, setOnlyShowDebtors] = useState<boolean>(true);
   const [debtSearchQuery, setDebtSearchQuery] = useState("");
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<Record<string, string>>({});
+
+  // Modals state for Buyer Details and Partial Payment Form
+  const [selectedBuyerForDetail, setSelectedBuyerForDetail] = useState<UnifiedBuyer | null>(null);
+  const [selectedInvoiceForPartialPayment, setSelectedInvoiceForPartialPayment] = useState<{ order: Order; buyerName: string } | null>(null);
 
   // Add buyer form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -680,6 +686,18 @@ export function MyBuyersModule({
                                 {buyer.companyName}
                               </span>
                             )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBuyerForDetail(buyer);
+                              }}
+                              className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-md transition cursor-pointer"
+                              title="Ouvrir la fiche signalétique et le bilan complet client"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>Fiche Détaillée</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1215,14 +1233,24 @@ export function MyBuyersModule({
                                       </span>
                                     </td>
                                     <td className="py-2.5 px-3 text-center">
-                                      <button
-                                        onClick={() => handleExportPDF(order)}
-                                        className="inline-flex items-center gap-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-1.5 rounded-md transition cursor-pointer"
-                                        title="Télécharger la facture PDF officielle"
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                        <span className="text-[10px] font-bold">PDF</span>
-                                      </button>
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <button
+                                          onClick={() => setSelectedInvoiceForPartialPayment({ order, buyerName: buyer.name })}
+                                          className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-2 py-1 rounded-md text-[10px] transition cursor-pointer shadow-sm"
+                                          title="Enregistrer un règlement partiel pour cette facture"
+                                        >
+                                          <DollarSign className="w-3 h-3" />
+                                          <span>Régler</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleExportPDF(order)}
+                                          className="inline-flex items-center gap-1 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 p-1.5 rounded-md transition cursor-pointer"
+                                          title="Télécharger la facture PDF officielle"
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                          <span className="text-[10px] font-bold">PDF</span>
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 );
@@ -1239,6 +1267,39 @@ export function MyBuyersModule({
             </div>
           )}
         </div>
+      )}
+
+      {/* Render Buyer Detail Modal */}
+      {selectedBuyerForDetail && (
+        <BuyerDetailModal
+          buyer={selectedBuyerForDetail}
+          currentUser={currentUser}
+          users={users}
+          orders={orders}
+          payments={payments}
+          lightClients={lightClients}
+          products={products}
+          isOpen={true}
+          onClose={() => setSelectedBuyerForDetail(null)}
+          onSubmitPayment={(clientId, amount, orderId, method) => {
+            onAddPayment(clientId, amount, orderId, method);
+          }}
+          onUpdateCreditLimit={onUpdateCreditLimit}
+        />
+      )}
+
+      {/* Render Standalone Partial Payment Modal */}
+      {selectedInvoiceForPartialPayment && (
+        <PartialPaymentModal
+          order={selectedInvoiceForPartialPayment.order}
+          buyerName={selectedInvoiceForPartialPayment.buyerName}
+          isOpen={true}
+          onClose={() => setSelectedInvoiceForPartialPayment(null)}
+          onSubmitPayment={(clientId, amount, orderId, method) => {
+            onAddPayment(clientId, amount, orderId, method);
+            setSelectedInvoiceForPartialPayment(null);
+          }}
+        />
       )}
     </div>
   );
