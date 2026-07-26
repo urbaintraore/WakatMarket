@@ -1,5 +1,5 @@
 import { db, handleFirestoreError, OperationType, auth } from "../firebase/firebase";
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db as mockDb, filterMockData } from "../data";
 
 export interface FirebaseUser {
@@ -105,6 +105,10 @@ export const userService = {
           data.rôle = "ADMIN" as any;
           try { await updateDoc(doc(db, "users", uid), { rôle: "ADMIN" }); } catch (e) {}
         }
+        if (data.email === "sayouba@ujkz.bf" && data.rôle !== "SEMI_WHOLESALER") {
+          data.rôle = "SEMI_WHOLESALER" as any;
+          try { await updateDoc(doc(db, "users", uid), { rôle: "SEMI_WHOLESALER" }); } catch (e) {}
+        }
         saveLocalUser(uid, data);
         return data;
       }
@@ -118,6 +122,10 @@ export const userService = {
         local.rôle = "ADMIN";
         saveLocalUser(uid, local);
       }
+      if (local.email === "sayouba@ujkz.bf" && local.rôle !== "SEMI_WHOLESALER") {
+        local.rôle = "SEMI_WHOLESALER";
+        saveLocalUser(uid, local);
+      }
       return local;
     }
 
@@ -127,7 +135,9 @@ export const userService = {
       const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
       
       let determinedRole = "CLIENT";
-      if (email.includes("detaillant")) {
+      if (email === "sayouba@ujkz.bf") {
+        determinedRole = "SEMI_WHOLESALER";
+      } else if (email.includes("detaillant")) {
         determinedRole = "RETAILER";
       } else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) {
         determinedRole = "SEMI_WHOLESALER";
@@ -135,7 +145,7 @@ export const userService = {
         determinedRole = "WHOLESALER";
       } else if (email.includes("fabricant") || email.includes("manufacturer")) {
         determinedRole = "MANUFACTURER";
-      } else if (email.includes("admin")) {
+      } else if (email.includes("admin") || email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com") {
         determinedRole = "ADMIN";
       }
 
@@ -173,11 +183,10 @@ export const userService = {
   async deleteUser(uid: string): Promise<void> {
     // 1. Remove from Firestore
     try {
-      await setDoc(doc(db, "users", uid), { statut: "DELETED", updatedAt: new Date().toISOString() }, { merge: true });
-      // Or truly delete:
-      // await deleteDoc(doc(db, "users", uid));
+      await deleteDoc(doc(db, "users", uid));
     } catch (e) {
-      console.warn("Firestore error during deleteUser:", e);
+      console.error("Firestore error during deleteUser:", e);
+      throw e;
     }
 
     // 2. Remove from local storage
@@ -266,8 +275,11 @@ export const userService = {
       }
     }
 
-    const finalArray = Array.from(map.values());
-    finalArray.forEach(u => { if ((u.email === "urbain.traore@yahoo.fr" || u.email === "urbain.traoreurb@gmail.com") && u.rôle !== "ADMIN") u.rôle = "ADMIN"; });
+    const finalArray = Array.from(map.values()).filter(u => u.statut !== "DELETED");
+    finalArray.forEach(u => { 
+      if ((u.email === "urbain.traore@yahoo.fr" || u.email === "urbain.traoreurb@gmail.com") && u.rôle !== "ADMIN") u.rôle = "ADMIN"; 
+      if (u.email === "sayouba@ujkz.bf" && u.rôle !== "SEMI_WHOLESALER") u.rôle = "SEMI_WHOLESALER";
+    });
     return finalArray;
   },
 
@@ -290,7 +302,7 @@ export const userService = {
       this.getAllUsers().then(locals => {
         const map = new Map<string, FirebaseUser>();
         [...locals, ...users].forEach(u => map.set(u.uid, u));
-        callback(Array.from(map.values()));
+        callback(Array.from(map.values()).filter(u => u.statut !== "DELETED"));
       });
     });
   }

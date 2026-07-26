@@ -217,7 +217,7 @@ class ERPStorage {
       }
     } catch (e) {}
 
-    const result = Array.from(userMap.values());
+    const result = Array.from(userMap.values()).filter(u => (u.status as any) !== "DELETED");
     return result;
   }
 

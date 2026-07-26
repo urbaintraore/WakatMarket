@@ -439,7 +439,7 @@ interface ManufacturerDashboardProps {
   onUpdateInventory: (itemId: string, stock: number, price: number) => void;
   onDeleteInventoryItem: (itemId: string) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
-  onCreateLightClient: (name: string, phone: string, notes?: string) => void;
+  onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteLightClient: (clientId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
@@ -1126,7 +1126,7 @@ interface WholesalerDashboardProps {
   onDeleteInventoryItem: (itemId: string) => void;
   onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
-  onCreateLightClient: (name: string, phone: string, notes?: string) => void;
+  onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteLightClient: (clientId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
@@ -2140,7 +2140,7 @@ interface RetailerDashboardProps {
   onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
   onPlaceQuickB2CSale: (items: { productId: string; quantity: number }[]) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
-  onCreateLightClient: (name: string, phone: string, notes?: string) => void;
+  onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteLightClient: (clientId: string) => void;
   onPayOrder?: (orderId: string) => void;
@@ -3835,7 +3835,7 @@ interface SemiWholesalerDashboardProps {
   onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
   onPlaceQuickB2CSale?: (items: { productId: string; quantity: number }[]) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
-  onCreateLightClient: (name: string, phone: string, notes?: string) => void;
+  onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteLightClient: (clientId: string) => void;
   onPayOrder?: (orderId: string) => void;

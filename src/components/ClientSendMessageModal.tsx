@@ -3,7 +3,7 @@ import {
   X, MessageSquare, Send, Phone, MessageCircle, 
   FileText, CheckCircle, Sparkles, Copy, ExternalLink
 } from "lucide-react";
-import { LightClient, UserProfile } from "../types";
+import { LightClient, UserProfile, MessageType } from "../types";
 import { chatService } from "../services/chatService";
 import { formatCFA } from "../data";
 
@@ -89,7 +89,7 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
         if (currentUser?.id && client.id) {
           try {
             const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, client.id);
-            await chatService.sendMessage(convId, currentUser.id, messageText, "TEXT");
+            await chatService.sendMessage(convId, currentUser.id, MessageType.TEXT, messageText);
           } catch (e) {
             console.warn("Firestore chat error, using local fallback:", e);
           }

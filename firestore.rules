@@ -7,6 +7,23 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper: Vérifie si l'utilisateur possède un email d'administrateur
+    function isSpecialAdminEmail() {
+      return isAuthenticated() && (
+        request.auth.token.email == "urbain.traore@yahoo.fr" || 
+        request.auth.token.email == "urbain.traoreurb@gmail.com"
+      );
+    }
+
+    // Helper: Vérifie si l'utilisateur est un administrateur
+    function isAdmin() {
+      return isAuthenticated() && (
+        isSpecialAdminEmail() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rôle == "ADMIN")
+      );
+    }
+
     // Helper: Vérifie si une relation de partenariat ACTIVE existe entre deux UIDs
     function estPartenaireActif(autreUid) {
       let relId1 = request.auth.uid + "_" + autreUid;
@@ -24,13 +41,19 @@ service cloud.firestore {
     // 1. Profils Utilisateurs
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == userId && (!('rôle' in request.resource.data) || request.resource.data.rôle == resource.data.rôle)) || 
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
 
     // 2. Collection /relations/{relationId} (Structure stricte demandée)
     match /relations/{relationId} {
       // Un utilisateur ne peut lire un document relation que s'il est participant
       allow read: if isAuthenticated() && (
+        resource == null ||
         request.auth.uid in resource.data.participants ||
         request.auth.uid == resource.data.demandeurId ||
         request.auth.uid == resource.data.destinataireId
@@ -42,11 +65,21 @@ service cloud.firestore {
         request.auth.uid in request.resource.data.participants &&
         request.resource.data.statut == 'en_attente';
 
-      // Réponse par le destinataire uniquement
-      allow update: if isAuthenticated() && 
-        request.auth.uid == resource.data.destinataireId &&
-        (request.resource.data.statut == 'actif' || request.resource.data.statut == 'refuse') &&
-        request.resource.data.demandeurId == resource.data.demandeurId;
+      // Réponse par le destinataire, renvoi par le demandeur, ou admin
+      allow update: if isAuthenticated() && (
+        // Cas 1 : Le destinataire répond à la demande (accepter ou refuser)
+        (request.auth.uid == resource.data.destinataireId &&
+         (request.resource.data.statut == 'actif' || request.resource.data.statut == 'refuse') &&
+         request.resource.data.demandeurId == resource.data.demandeurId) ||
+         
+        // Cas 2 : Le demandeur renvoie ou met à jour la demande
+        (request.auth.uid == resource.data.demandeurId &&
+         request.resource.data.statut == 'en_attente' &&
+         request.resource.data.destinataireId == resource.data.destinataireId) ||
+         
+        // Cas 3 : Administrateur
+        isAdmin()
+      );
 
       // Suppression par l'un des deux participants
       allow delete: if isAuthenticated() && (
@@ -76,15 +109,16 @@ service cloud.firestore {
 
     // Rétrocompatibilité : Collection globale /notifications
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow update: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
       allow create: if isAuthenticated();
-      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
+      allow delete: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
     }
 
     // Rétrocompatibilité : Collection /connections
     match /connections/{connectionId} {
       allow read: if isAuthenticated() && (
+        resource == null ||
         request.auth.uid == resource.data.senderId || 
         request.auth.uid == resource.data.receiverId
       );

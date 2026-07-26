@@ -92,7 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const emailPrefix = email.split("@")[0] || "utilisateur";
         const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
         let determinedRole = "CLIENT";
-        if (email.includes("detaillant")) determinedRole = "RETAILER";
+        if (email === "sayouba@ujkz.bf") determinedRole = "SEMI_WHOLESALER";
+        else if (email.includes("detaillant")) determinedRole = "RETAILER";
         else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) determinedRole = "SEMI_WHOLESALER";
         else if (email.includes("grossiste") || email.includes("wholesaler")) determinedRole = "WHOLESALER";
         else if (email.includes("fabricant") || email.includes("manufacturer")) determinedRole = "MANUFACTURER";
@@ -162,13 +163,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const user = await authService.signUpWithEmail(email, password);
       // Wait, "Le document Firestore doit être créé uniquement après une authentification réussie."
+      const finalRole = (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) 
+        ? "ADMIN" 
+        : email === "sayouba@ujkz.bf" 
+          ? "SEMI_WHOLESALER" 
+          : rôle;
+      
       const newUser: FirebaseUser = {
         uid: user.uid,
         nom,
         prénom,
         email,
         téléphone,
-        rôle,
+        rôle: finalRole,
         dateCréation: new Date().toISOString(),
         statut: "ACTIVE",
         pays,

@@ -24,6 +24,8 @@ import { inventoryService } from "./services/inventoryService";
 import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
 import { connectionService } from "./services/connectionService";
+import { relationService } from "./services/relationService";
+import { syncService } from "./services/syncService";
 import { formatFirebaseError } from "./utils/firebaseErrors";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -161,7 +163,6 @@ export default function App() {
   const [fbLatitude, setFbLatitude] = useState<number | undefined>(undefined);
   const [fbLongitude, setFbLongitude] = useState<number | undefined>(undefined);
   const [geoLoading, setGeoLoading] = useState(false);
-  const [demoLoadingRole, setDemoLoadingRole] = useState<UserRole | null>(null);
 
   // Deduplicate helper
   const deduplicate = <T extends { id: string }>(arr: T[]): T[] => {
@@ -188,7 +189,11 @@ export default function App() {
         name: `${profileSource.prénom || ""} ${profileSource.nom || ""}`.trim() || "Utilisateur",
         email: profileSource.email,
         phone: profileSource.téléphone,
-        role: (profileSource.email === "urbain.traore@yahoo.fr" || profileSource.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : (profileSource.rôle as UserRole),
+        role: (profileSource.email === "urbain.traore@yahoo.fr" || profileSource.email === "urbain.traoreurb@gmail.com") 
+          ? UserRole.ADMIN 
+          : profileSource.email === "sayouba@ujkz.bf" 
+            ? UserRole.SEMI_WHOLESALER 
+            : (profileSource.rôle as UserRole),
         status: (profileSource.statut as any) || "ACTIVE",
         country: profileSource.pays || "Burkina Faso",
         region: profileSource.ville || "Ouagadougou",
@@ -408,6 +413,43 @@ export default function App() {
 
       const unsubConns = connectionService.subscribeToUserConnections(currentUser.id, (conns) => {
         setRealConnections(conns);
+
+        // Auto-add accepted connections to lightClients
+        const activePartnerIds = conns
+          .filter(c => c.status === "active")
+          .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
+
+        if (activePartnerIds.length > 0) {
+          setLightClients(prev => {
+            let updated = [...prev];
+            let modified = false;
+            activePartnerIds.forEach(partnerId => {
+              const existing = updated.find(lc => lc.linkedUserId === partnerId);
+              if (!existing) {
+                // Find the user to get their details
+                const partnerUser = db.getUsers().find(u => u.id === partnerId);
+                if (partnerUser) {
+                  updated.unshift({
+                    id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    ownerId: currentUser.id,
+                    name: partnerUser.companyName || partnerUser.name,
+                    phone: partnerUser.phone,
+                    email: partnerUser.email,
+                    notes: `Partenaire B2B [${partnerUser.role}]`,
+                    linkedUserId: partnerUser.id,
+                    createdAt: new Date().toISOString()
+                  });
+                  modified = true;
+                }
+              }
+            });
+            if (modified) {
+              db.saveLightClients(updated);
+              return updated;
+            }
+            return prev;
+          });
+        }
       });
 
       return () => {
@@ -482,9 +524,7 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      import("./services/syncService").then(({ syncService }) => {
-        syncService.processQueue();
-      });
+      syncService.processQueue();
     };
     const handleOffline = () => setIsOnline(false);
 
@@ -501,10 +541,8 @@ export default function App() {
   useEffect(() => {
     if (isOnline) {
       const interval = setInterval(() => {
-        import("./services/syncService").then(({ syncService }) => {
-          syncService.processQueue();
-          setSyncQueue(db.getSyncQueue());
-        });
+        syncService.processQueue();
+        setSyncQueue(db.getSyncQueue());
       }, 30000);
       return () => clearInterval(interval);
     }
@@ -602,83 +640,6 @@ export default function App() {
       setIsAuthScreen(false);
     } catch (err: any) {
       setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur de connexion Firebase.") });
-    }
-  };
-
-  const handleFastDemoLogin = async (role: UserRole) => {
-    setFbMsg(null);
-    setDemoLoadingRole(role);
-    const email = `${role.toLowerCase()}@wakat.com`;
-    const password = "Password123!";
-    
-    try {
-      console.log(`[FAST DEMO] Tentative de connexion pour le rôle ${role}...`);
-      await loginWithEmail(email, password);
-      setFbMsg({ type: "success", text: `Connexion Démo réussie en tant que ${role} !` });
-      setIsAuthScreen(false);
-    } catch (err: any) {
-      console.warn(`[FAST DEMO] Compte inexistant ou identifiants incorrects. Auto-inscription de ${email}...`);
-      try {
-        let firstName = "";
-        let lastName = "";
-        switch (role) {
-          case UserRole.ADMIN:
-            firstName = "Urbain";
-            lastName = "Admin";
-            break;
-          case UserRole.MANUFACTURER:
-            firstName = "Mamadou";
-            lastName = "Fabricant";
-            break;
-          case UserRole.WHOLESALER:
-            firstName = "Alassane";
-            lastName = "Grossiste";
-            break;
-          case UserRole.SEMI_WHOLESALER:
-            firstName = "Fatou";
-            lastName = "Demi-Grossiste";
-            break;
-          case UserRole.RETAILER:
-            firstName = "Awa";
-            lastName = "Détaillant";
-            break;
-          case UserRole.CLIENT:
-            firstName = "Moussa";
-            lastName = "Client";
-            break;
-          default:
-            firstName = "Sidi";
-            lastName = "Livreur";
-        }
-
-        // Auto-register in Firebase & Firestore
-        await registerWithEmail(
-          email,
-          password,
-          lastName,
-          firstName,
-          "+226 70 12 34 56",
-          role,
-          "Burkina Faso",
-          "Ouagadougou",
-          "Ouaga 2000",
-          12.3714,
-          -1.5197
-        );
-
-        // Try signing in again
-        await loginWithEmail(email, password);
-        setFbMsg({ type: "success", text: `Compte démo ${role} créé et connecté avec succès !` });
-        setIsAuthScreen(false);
-      } catch (regErr: any) {
-        console.error("[FAST DEMO] Erreur critique d'auto-inscription:", regErr);
-        setFbMsg({
-          type: "error",
-          text: `Impossible de connecter ou d'auto-enregistrer le compte démo ${role} : ${formatFirebaseError(regErr.message || "Erreur de création.")}`
-        });
-      }
-    } finally {
-      setDemoLoadingRole(null);
     }
   };
 
@@ -861,13 +822,15 @@ export default function App() {
     const cleanupUsers = async () => {
       if (users.length > 0) {
         const namesToDelete = ["Jean jacques Rousseaux", "Demigrossiste1"];
+        const emailsToDelete = ["sayouba@ujkz.bf"];
         const usersToDelete = users.filter(u => 
           namesToDelete.includes(u.name) || 
-          namesToDelete.includes(u.companyName || "")
+          namesToDelete.includes(u.companyName || "") ||
+          emailsToDelete.includes(u.email || "")
         );
         
         if (usersToDelete.length > 0) {
-          console.log("[Cleanup] Force deleting users:", usersToDelete.map(u => u.name));
+          console.log("[Cleanup] Force deleting users:", usersToDelete.map(u => u.name || u.email));
           const idsToDelete = usersToDelete.map(u => u.id);
           
           // 1. Update state
@@ -877,7 +840,7 @@ export default function App() {
           const currentLocalUsers = db.getUsers();
           const filteredLocal = currentLocalUsers.filter(u => !idsToDelete.includes(u.id));
           db.saveUsers(filteredLocal);
-
+ 
           // 3. Update Firestore if authenticated
           if (isRealUserAuthenticated) {
             for (const u of usersToDelete) {
@@ -958,126 +921,28 @@ export default function App() {
 
   const handleCreateLightClient = (identifier: string, notes?: string, role?: UserRole, isPartnerRegistration?: boolean) => {
     if (!currentUser) return;
-    const clientRole = role || (
-      currentUser.role === UserRole.MANUFACTURER ? UserRole.WHOLESALER :
-      currentUser.role === UserRole.WHOLESALER ? UserRole.SEMI_WHOLESALER :
-      currentUser.role === UserRole.SEMI_WHOLESALER ? UserRole.RETAILER :
-      UserRole.CLIENT
-    );
-
-    const trimmedInput = identifier.trim().toLowerCase();
-    const cleanId = trimmedInput.replace(/[\s\-\+]/g, '');
-    const allUsers = [...db.getUsers(), ...users];
     
-    // First try exact matches on ID, email or phone
-    let targetUser = allUsers.find(u => {
-      const uPhone = (u.phone || "").toLowerCase().replace(/[\s\-\+]/g, '');
-      const uEmail = (u.email || "").toLowerCase();
-      return u.id === identifier || uPhone === cleanId || uEmail === trimmedInput;
-    });
-
-    // If no exact match, try broader search
-    if (!targetUser) {
-      targetUser = allUsers.find(u => {
-        const uPhone = (u.phone || "").toLowerCase().replace(/[\s\-\+]/g, '');
-        const uEmail = (u.email || "").toLowerCase();
-        const uName = (u.name || "").toLowerCase();
-        const uEmailPrefix = uEmail.split('@')[0];
-        const searchPrefix = trimmedInput.split('@')[0];
-
-        return (
-          (uPhone && (uPhone.includes(cleanId) || cleanId.includes(uPhone))) ||
-          (uEmail && (uEmail.includes(trimmedInput) || trimmedInput.includes(uEmail))) ||
-          (uEmailPrefix && searchPrefix && uEmailPrefix === searchPrefix) ||
-          (uName && uName.includes(trimmedInput))
-        );
-      });
+    let clientRole = role;
+    if (!clientRole && isPartnerRegistration) {
+      clientRole = currentUser.role === UserRole.WHOLESALER ? UserRole.SEMI_WHOLESALER : UserRole.RETAILER;
+    } else if (!clientRole) {
+      clientRole = UserRole.CLIENT;
     }
 
-    let clientId = "";
-    let clientName = "";
-    let clientPhone = "";
-    let clientEmail = "";
-
-    if (targetUser) {
-      if (!isPartnerRegistration && !isRoleAllowed(currentUser.role, targetUser.role)) {
-        addNotification(`Contrainte de rôle : Un ${currentUser.role} ne peut pas ajouter un ${targetUser.role} (${targetUser.name}).`);
-        return;
-      }
-      clientId = targetUser.id;
-      clientName = targetUser.name;
-      clientPhone = targetUser.phone || "";
-      clientEmail = targetUser.email || "";
-      
-      if (!isRealUserAuthenticated) {
-        addNotification("Attention: Compte local. Demande transmise en temps réel à l'utilisateur.");
-      }
-
-      connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
-        addNotification(`Demande de connexion formelle (en attente) transmise à ${targetUser?.companyName || targetUser?.name}.`);
-      }).catch(err => {
-        console.error("Error creating connection request:", err);
-        addNotification("Erreur lors de l'envoi de la demande de connexion.");
-      });
-    } else {
-      if (!isPartnerRegistration && !isRoleAllowed(currentUser.role, clientRole)) {
-        addNotification(`Contrainte de rôle : Vous n'êtes pas autorisé à créer un client avec le rôle ${clientRole}.`);
-        return;
-      }
-      const isEmail = identifier.includes("@");
-      const generatedEmail = isEmail ? identifier : `${identifier.replace(/[^a-z0-9]/g, '')}@b2bhub.sn`;
-      const generatedPhone = isEmail ? "+22670000000" : identifier;
-      const newUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-      const derivedName = isEmail ? identifier.split("@")[0] : `Partenaire ${identifier}`;
-
-      const newUser: UserProfile = {
-        id: newUserId,
-        name: derivedName.charAt(0).toUpperCase() + derivedName.slice(1),
-        email: generatedEmail,
-        phone: generatedPhone,
-        role: clientRole,
-        status: "ACTIVE",
-        country: currentUser.country || "Burkina Faso",
-        region: currentUser.region || "Ouagadougou",
-        address: notes || "Non spécifié",
-        avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
-        companyName: `${derivedName} Entreprise`,
-        balance: 0
-      };
-      syncUsers([...users, newUser]);
-      targetUser = newUser;
-      clientId = newUserId;
-      clientName = newUser.name;
-      clientPhone = newUser.phone;
-      clientEmail = newUser.email;
-
-      // For newly created user profiles, send a connection request that remains pending
-      connectionService.createConnectionRequest(currentUser, newUser, notes || "Compte créé et invitation de partenariat").then(() => {
-        addNotification(`Compte créé et demande de connexion formelle transmise à ${newUser.name}.`);
-      }).catch(err => {
-        console.error("Error creating connection for new user:", err);
-      });
+    try {
+      relationService.envoyerDemandeConnexion(currentUser, identifier, notes)
+        .then((res) => {
+          addNotification(res.message);
+        })
+        .catch((err) => {
+          console.error("Error creating connection request:", err);
+          addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
+        });
+    } catch (err: any) {
+      addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
     }
-
-    const existingLc = lightClients.find(lc => lc.ownerId === currentUser.id && (lc.linkedUserId === clientId || lc.phone === clientPhone));
-    if (existingLc) {
-      addNotification(`Ce client est déjà dans votre carnet d'adresses.`);
-      return existingLc;
-    }
-
-    const newClient: LightClient = {
-      id: `lc-${Date.now()}`,
-      ownerId: currentUser.id,
-      name: clientName,
-      phone: clientPhone,
-      email: clientEmail,
-      notes: `${notes || ""} [Compte: ${clientRole}]`,
-      linkedUserId: clientId,
-      createdAt: new Date().toISOString()
-    };
-    syncLightClients([newClient, ...lightClients]);
-    addNotification(`Compte client lié et ajouté : ${clientName} (${clientRole})`);
-    return newClient;
+    
+    return undefined as any;
   };
 
   const onDeleteLightClient = (clientId: string) => {
@@ -1402,9 +1267,7 @@ export default function App() {
     }
 
     // 4. Add to sync queue
-    import("./services/syncService").then(({ syncService }) => {
-      syncService.addToQueue("CREATE_ORDER", newSale);
-    });
+    syncService.addToQueue("CREATE_ORDER", newSale);
 
     addNotification(`Vente enregistrée : ${formatCFA(totalAmount)}`);
   };
@@ -1446,9 +1309,7 @@ export default function App() {
     const orderRefText = orderId ? ` pour la facture #${orderId.split('-').pop()?.toUpperCase()}` : "";
     addNotification(`Règlement de ${formatCFA(amount)} enregistré avec succès${orderRefText}.`);
     
-    import("./services/syncService").then(({ syncService }) => {
-      syncService.addToQueue("ADD_PAYMENT", newPayment);
-    });
+    syncService.addToQueue("ADD_PAYMENT", newPayment);
   };
 
   // Order status flow & drivers assignations
@@ -2192,105 +2053,13 @@ export default function App() {
 
                   <button
                     type="submit"
-                    disabled={authLoading || !!demoLoadingRole}
+                    disabled={authLoading}
                     className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
                   >
-                    {authLoading && !demoLoadingRole ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
                     Se connecter à WakatMarket
                   </button>
                 </form>
-
-                {/* Fast Demo Login Section */}
-                <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 space-y-3">
-                  <div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse shrink-0" />
-                    <span className="font-bold text-[10px] uppercase tracking-wider">
-                      Connexion Rapide Démo (Création automatique s'il manque)
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.WHOLESALER)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.WHOLESALER ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <Landmark className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Grossiste</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">Procurement B2B</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.SEMI_WHOLESALER)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.SEMI_WHOLESALER ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <Compass className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Demi-Grossiste</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">Vente en gros & détail</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.RETAILER)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.RETAILER ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <ShoppingBag className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Détaillant</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">POS Boutique & Client</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.CLIENT)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.CLIENT ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <ShoppingCart className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Acheteur Client</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">B2C Market local</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.DRIVER_R2C)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.DRIVER_R2C ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Livreur</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">Gestion de livraison</p>
-                      </div>
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 

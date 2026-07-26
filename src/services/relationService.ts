@@ -134,8 +134,9 @@ export const relationService = {
           contenu: `${demandeurNom} (${demandeur.role}) vous a transmis une demande de connexion B2B.`
         });
       });
-    } catch (e) {
-      console.warn("[relationService] Transaction Firestore échouée ou hors-ligne, enregistrement local de secours:", e);
+    } catch (e: any) {
+      console.error("[relationService] Transaction Firestore échouée:", e);
+      throw e;
     }
 
     // Sauvegarde locale systématique (Mode Hors-Ligne)
@@ -264,8 +265,9 @@ export const relationService = {
           contenu: contenuNotif
         });
       });
-    } catch (e) {
-      console.warn("[relationService] Transaction de réponse Firestore échouée ou hors-ligne, mise à jour locale:", e);
+    } catch (e: any) {
+      console.error("[relationService] Transaction de réponse Firestore échouée:", e);
+      throw e;
     }
 
     // Traitement local systématique
