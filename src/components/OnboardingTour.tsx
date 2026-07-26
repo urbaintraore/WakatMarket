@@ -22,6 +22,7 @@ interface OnboardingTourProps {
   currentUser: UserProfile;
   isOpen: boolean;
   onClose: () => void;
+  onComplete?: () => void;
 }
 
 export function OnboardingTour({ currentUser, isOpen, onClose }: OnboardingTourProps) {

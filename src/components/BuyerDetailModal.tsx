@@ -121,24 +121,23 @@ export function BuyerDetailModal({
     try {
       const pdfUrl = await billingService.genererEtEnregistrerFacture({
         venteId: order.id,
-        acheteurNom: buyer.name,
+        vendeurId: currentUser.id,
         vendeurNom: currentUser.companyName || currentUser.name,
-        dateISO: order.createdAt,
-        articles: order.items.map((it) => {
+        vendeurRole: currentUser.role || "Grossiste",
+        acheteurId: buyer.id,
+        acheteurNom: buyer.name,
+        total: order.totalAmount,
+        typeVente: "GROS",
+        lignes: order.items.map((it) => {
           const p = products.find((prod) => prod.id === it.productId);
           return {
-            designation: p?.name || "Produit WakatMarket",
+            produitId: it.productId,
+            nom: p?.name || "Produit WakatMarket",
             quantite: it.quantity,
             prixUnitaire: it.priceAtOrder,
-            montantTotal: it.quantity * it.priceAtOrder,
+            sousTotal: it.quantity * it.priceAtOrder,
           };
         }),
-        sousTotal: order.totalAmount,
-        fraisLivraison: order.shippingFee || 0,
-        montantTotal: order.totalAmount + (order.shippingFee || 0),
-        montantPaye: order.amountPaid,
-        soldeRestant: Math.max(0, order.totalAmount - order.amountPaid),
-        modePaiement: order.paymentMethod,
       });
 
       const link = document.createElement("a");

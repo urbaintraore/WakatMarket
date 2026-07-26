@@ -1016,15 +1016,15 @@ export default function App() {
       }
 
       if (isPartnerRegistration) {
-        connectionService.createConnectionRequest(currentUser, targetUser, notes, "active").then(() => {
-          addNotification(`${targetUser?.companyName || targetUser?.name} ajouté à vos partenaires et accessible immédiatement.`);
+        connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
+          addNotification(`Demande de partenariat envoyée à ${targetUser?.companyName || targetUser?.name}. Une notification lui a été transmise pour validation.`);
         }).catch(err => {
           console.error("Error creating connection request:", err);
-          addNotification("Erreur lors de l'ajout du partenaire.");
+          addNotification("Erreur lors de la demande de partenariat.");
         });
       } else {
-        connectionService.createConnectionRequest(currentUser, targetUser, notes).then(() => {
-          addNotification(`Invitation envoyée à ${targetUser?.name}. Elle est en attente de validation.`);
+        connectionService.createConnectionRequest(currentUser, targetUser, notes, "en_attente").then(() => {
+          addNotification(`Invitation envoyée à ${targetUser?.companyName || targetUser?.name}. Notification transmise.`);
         }).catch(err => {
           console.error("Error creating connection request:", err);
           addNotification("Erreur lors de l'envoi de l'invitation.");
@@ -1452,7 +1452,7 @@ export default function App() {
     }
 
     // Trigger local push notification for seller
-    pushNotificationService.notifyPaymentReceived(amount, `Client ID: ${clientId}`, orderId);
+    pushNotificationService.notifyPaymentReceived(currentUser.id, amount, `Client ID: ${clientId}`, orderId || "DIRECT");
 
     const orderRefText = orderId ? ` pour la facture #${orderId.split('-').pop()?.toUpperCase()}` : "";
     addNotification(`Règlement de ${formatCFA(amount)} enregistré avec succès${orderRefText}.`);

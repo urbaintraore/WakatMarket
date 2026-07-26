@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
+import { PartnerStockModal } from './PartnerStockModal';
 
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
@@ -127,6 +128,9 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
     debtAmount?: number;
     isRealUser?: boolean;
   } | null>(null);
+
+  // Partner stock modal state
+  const [selectedPartnerForStock, setSelectedPartnerForStock] = useState<UserProfile | null>(null);
 
   const pendingReceived = useMemo(() => {
     if (!currentUser) return [];
@@ -681,7 +685,27 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                         </div>
                       </div>
                       
-                      <div className="flex gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                      <div className="flex flex-col sm:flex-row gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const partnerObj = allKnownUsers.find(u => u.id === otherPartyId) || {
+                              id: otherPartyId,
+                              name: otherPartyName,
+                              companyName: otherPartyName,
+                              role: otherPartyRole as any,
+                              country: currentUser?.country || "Burkina Faso",
+                              region: currentUser?.region || "Ouagadougou",
+                              status: "ACTIVE" as const,
+                              email: "",
+                              phone: ""
+                            };
+                            setSelectedPartnerForStock(partnerObj as UserProfile);
+                          }}
+                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                        >
+                          <Package className="w-3.5 h-3.5" /> Voir Stock & Établissement
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -692,9 +716,9 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                               isRealUser: true
                             });
                           }}
-                          className="flex-1 py-2 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="py-2 px-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <MessageSquare className="w-3.5 h-3.5" /> Envoyer un message
+                          <MessageSquare className="w-3.5 h-3.5" /> Message
                         </button>
                       </div>
                     </div>
@@ -914,6 +938,34 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
           onOpenGlobalChat={() => {
             const chatToggle = document.getElementById("header-chat-toggle") as HTMLButtonElement;
             if (chatToggle) chatToggle.click();
+          }}
+        />
+      )}
+
+      {/* Partner Stock & Establishment Modal */}
+      {selectedPartnerForStock && (
+        <PartnerStockModal
+          partner={selectedPartnerForStock}
+          currentUser={currentUser}
+          products={db.getProducts()}
+          inventory={db.getInventory()}
+          isOpen={true}
+          onClose={() => setSelectedPartnerForStock(null)}
+          onOpenChat={(partnerId) => {
+            setSelectedClientForMessage({
+              id: partnerId,
+              name: selectedPartnerForStock.companyName || selectedPartnerForStock.name,
+              role: selectedPartnerForStock.role,
+              isRealUser: true
+            });
+          }}
+          onInitiateOrder={(partnerId) => {
+            setSelectedClientForMessage({
+              id: partnerId,
+              name: selectedPartnerForStock.companyName || selectedPartnerForStock.name,
+              role: selectedPartnerForStock.role,
+              isRealUser: true
+            });
           }}
         />
       )}

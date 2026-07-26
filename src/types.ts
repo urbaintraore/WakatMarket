@@ -53,6 +53,8 @@ export interface DebtPayment {
   amount: number;
   date: string;
   saleId?: string; // Reference to the sale that generated the debt
+  orderId?: string;
+  method?: string;
   isSynced: boolean;
 }
 
