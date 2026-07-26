@@ -18,6 +18,7 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { supabase } from "../supabase";
 import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
+import { db as localDb } from "../data";
 
 export const chatService = {
   /**
@@ -121,24 +122,68 @@ export const chatService = {
   },
 
   /**
-   * Listens to messages in a conversation
+   * Listens to messages in a conversation with reliable local caching & real-time synchronization
    */
   subscribeToMessages(convId: string, callback: (msgs: ChatMessage[]) => void) {
+    const emitLocal = () => {
+      const localMsgs = localDb.getMessages()
+        .filter(m => m.conversationId === convId)
+        .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+      callback(localMsgs);
+    };
+
+    // Return cached local messages immediately for instant response
+    emitLocal();
+
+    const handleLocalUpdate = () => {
+      emitLocal();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_messages_updated", handleLocalUpdate);
+      window.addEventListener("storage", handleLocalUpdate);
+    }
+
     const q = query(
       collection(db, "conversations", convId, "messages"),
       orderBy("createdAt", "asc")
     );
 
-    return onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => doc.data() as ChatMessage);
-      callback(msgs);
+    const unsub = onSnapshot(q, (snapshot) => {
+      const firestoreMsgs = snapshot.docs.map(doc => doc.data() as ChatMessage);
+      
+      // Merge with existing local messages
+      const existingLocal = localDb.getMessages();
+      
+      // Replace or insert Firestore messages into local array by matching id
+      const map = new Map<string, ChatMessage>();
+      existingLocal.forEach(m => map.set(m.id, m));
+      firestoreMsgs.forEach(m => map.set(m.id, m));
+      
+      const allMsgs = Array.from(map.values());
+      localDb.saveMessages(allMsgs);
+      
+      // Filter current conversation's messages and pass to callback
+      const currentMsgs = allMsgs
+        .filter(m => m.conversationId === convId)
+        .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
+        
+      callback(currentMsgs);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, `conversations/${convId}/messages`);
+      console.warn("[chatService] Real-time message listener failed, using local cache:", error);
     });
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
+        window.removeEventListener("storage", handleLocalUpdate);
+      }
+      unsub();
+    };
   },
 
   /**
-   * Send a message
+   * Send a message with instant local persistence and Firestore replication
    */
   async sendMessage(
     convId: string, 
@@ -148,26 +193,38 @@ export const chatService = {
     extra?: Partial<ChatMessage>,
     participantsToNotify?: string[]
   ): Promise<void> {
-    console.log(`[chatService.sendMessage] Creating message for convId=${convId}, type=${type}, content length=${content?.length}, extra=${JSON.stringify(extra ? Object.keys(extra) : {})}`);
-    try {
-      const msgRef = doc(collection(db, "conversations", convId, "messages"));
-      
-      const newMsg: Partial<ChatMessage> = {
-        id: msgRef.id,
-        conversationId: convId,
-        senderId,
-        type,
-        content,
-        status: MessageStatus.SENT,
-        createdAt: new Date().toISOString(),
-        readBy: {
-          [senderId]: new Date().toISOString()
-        },
-        ...extra
-      };
+    console.log(`[chatService.sendMessage] Creating message for convId=${convId}, type=${type}`);
+    
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const nowIso = new Date().toISOString();
+    
+    const newMsg: ChatMessage = {
+      id: msgId,
+      conversationId: convId,
+      senderId,
+      type,
+      content,
+      status: MessageStatus.SENT,
+      createdAt: nowIso,
+      readBy: {
+        [senderId]: nowIso
+      },
+      ...extra
+    };
 
-      console.log(`[chatService.sendMessage] Writing to Firestore messages subcollection... Message ID=${msgRef.id}`);
-      // Add the message
+    // 1. Immediately save to localDb for instant offline responsiveness
+    const existingLocal = localDb.getMessages();
+    localDb.saveMessages([...existingLocal, newMsg]);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_messages_updated"));
+    }
+
+    try {
+      const msgRef = doc(db, "conversations", convId, "messages", msgId);
+      console.log(`[chatService.sendMessage] Writing to Firestore messages subcollection... Message ID=${msgId}`);
+      
+      // Save to Firestore
       await setDoc(msgRef, newMsg);
       console.log(`[chatService.sendMessage] Message written successfully.`);
 
@@ -176,8 +233,8 @@ export const chatService = {
       
       const updates: any = {
         lastMessage: type === MessageType.TEXT ? content : `[${type}]`,
-        lastMessageDate: newMsg.createdAt,
-        updatedAt: newMsg.createdAt
+        lastMessageDate: nowIso,
+        updatedAt: nowIso
       };
 
       if (participantsToNotify) {
@@ -192,9 +249,8 @@ export const chatService = {
       await setDoc(convRef, updates, { merge: true });
       console.log(`[chatService.sendMessage] Conversation document updated successfully.`);
     } catch (error: any) {
-      console.error("[chatService.sendMessage] Failed to send message:", error);
-      console.error("[chatService.sendMessage] Error details:", JSON.stringify(error));
-      handleFirestoreError(error, OperationType.CREATE, `conversations/${convId}/messages`);
+      console.warn("[chatService.sendMessage] Failed to send message to Firestore (using offline mode):", error);
+      // Don't throw so that offline user experience remains uninterrupted
     }
   },
 

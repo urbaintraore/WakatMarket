@@ -33,9 +33,7 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
   onOpenChatWithUser,
   onSelectPartnerProfile
 }) => {
-  const [incomingRequests, setIncomingRequests] = useState<Relation[]>([]);
   const [activeRelations, setActiveRelations] = useState<Relation[]>([]);
-  const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
   
   // Feedback messages
   const [statusMessage, setStatusMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
@@ -48,7 +46,6 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
 
   // Search filter
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"tous" | "attente" | "actifs">("tous");
 
   // Selected profile detail modal
   const [selectedPartner, setSelectedPartner] = useState<UserProfile | null>(null);
@@ -58,11 +55,6 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
   // 1. Setup real-time listeners with strict lifecycle cleanup (unsubscribe)
   useEffect(() => {
     if (!currentUser?.id) return;
-
-    // Listener for incoming pending requests
-    const unsubIncoming = relationService.subscribeToIncomingRequests(currentUser.id, (requests) => {
-      setIncomingRequests(requests);
-    });
 
     // Helper to refresh active relations list
     const refreshActiveRelations = () => {
@@ -98,49 +90,12 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
     }
 
     return () => {
-      unsubIncoming();
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
         window.removeEventListener("storage", handleLocalUpdate);
       }
     };
   }, [currentUser?.id]);
-
-  // Handle Response (Accepter ou Refuser)
-  const handleRepondre = async (relation: Relation, reponse: "accepter" | "refuser") => {
-    setLoadingActionId(relation.id);
-    setStatusMessage(null);
-
-    try {
-      await relationService.repondreDemandeConnexion(currentUser.id, relation.id, reponse);
-      
-      const partnerNom = relation.demandeurId === currentUser.id ? relation.destinataireNom : relation.demandeurNom;
-      
-      setStatusMessage({
-        type: "success",
-        text: reponse === "accepter" 
-          ? `Partenariat avec ${partnerNom || "le membre"} validé avec succès !`
-          : `Demande de connexion déclinée.`
-      });
-
-      // Local update UI state
-      setIncomingRequests(prev => prev.filter(r => r.id !== relation.id));
-      setActiveRelations(prev => prev.map(r => {
-        if (r.id === relation.id) {
-          return { ...r, statut: reponse === "accepter" ? "actif" : "refuse" };
-        }
-        return r;
-      }));
-    } catch (err: any) {
-      console.error("Erreur réponse demande connexion:", err);
-      setStatusMessage({
-        type: "error",
-        text: err.message || "Erreur lors du traitement de la demande."
-      });
-    } finally {
-      setLoadingActionId(null);
-    }
-  };
 
   // Submit New Relation Request
   const handleSendRequest = async (e: React.FormEvent) => {
@@ -218,8 +173,6 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
       (partnerName && partnerName.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (partnerRole && partnerRole.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    if (activeTab === "attente") return matchesSearch && r.statut === "en_attente";
-    if (activeTab === "actifs") return matchesSearch && r.statut === "actif";
     return matchesSearch;
   });
 
@@ -258,93 +211,6 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
         </div>
       )}
 
-      {/* 1. BANNIÈRE EN HAUT: Demandes de connexion EN ATTENTE */}
-      {incomingRequests.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border-2 border-amber-300/80 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="p-2.5 bg-amber-500 text-white rounded-xl shadow-md animate-bounce">
-                <Users className="w-5 h-5" />
-              </span>
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  Demandes de partenariat en attente ({incomingRequests.length})
-                </h3>
-                <p className="text-xs text-slate-600">
-                  Des acteurs B2B souhaitent se connecter avec vous pour échanger et consulter les catalogues.
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold px-3 py-1 bg-amber-200 text-amber-900 rounded-full">
-              Action requise
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {incomingRequests.map((req) => (
-              <div key={req.id} className="bg-white p-4 rounded-xl border border-amber-200 shadow-sm flex flex-col justify-between gap-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
-                      {req.demandeurNom ? req.demandeurNom.charAt(0).toUpperCase() : "P"}
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 text-sm">{req.demandeurNom || "Partenaire B2B"}</h4>
-                      <p className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md inline-block mt-0.5">
-                        {req.demandeurRole || "Partenaire"}
-                      </p>
-                      {req.notes && (
-                        <p className="text-xs italic text-slate-500 mt-1.5 bg-slate-50 p-1.5 rounded border border-slate-100">
-                          "{req.notes}"
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Action Buttons */}
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                  <button
-                    type="button"
-                    disabled={loadingActionId === req.id}
-                    onClick={() => handleRepondre(req, "accepter")}
-                    className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm disabled:opacity-50"
-                  >
-                    {loadingActionId === req.id ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        Accepter
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={loadingActionId === req.id}
-                    onClick={() => handleRepondre(req, "refuser")}
-                    className="py-2 px-3 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-700 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    Refuser
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenProfile(req.demandeurId)}
-                    className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                    title="Consulter le profil"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Main Header & Actions */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
@@ -363,7 +229,7 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
           className="w-full md:w-auto px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all focus:ring-2 focus:ring-amber-500"
         >
           <UserPlus className="w-4 h-4" />
-          Nouvelle Demande de Partenariat
+          Enregistrer un Partenaire
         </button>
       </div>
 
@@ -380,34 +246,8 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab("tous")}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === "tous" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Tous ({activeRelations.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("actifs")}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === "actifs" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Actifs ({activeRelations.filter(r => r.statut === "actif").length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("attente")}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-              activeTab === "attente" ? "bg-white text-amber-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            En attente ({activeRelations.filter(r => r.statut === "en_attente").length})
-          </button>
+        <div className="text-xs text-slate-500 font-semibold px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
+          Total : {activeRelations.length} partenaire(s) enregistré(s)
         </div>
       </div>
 
@@ -494,14 +334,14 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
         )}
       </div>
 
-      {/* MODAL: Nouvelle Demande de Partenariat */}
+      {/* MODAL: Enregistrer un Partenaire */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-amber-600" />
-                <h3 className="font-bold text-slate-900 text-base">Envoyer une demande</h3>
+                <h3 className="font-bold text-slate-900 text-base">Enregistrer un Partenaire</h3>
               </div>
               <button
                 type="button"
@@ -564,7 +404,7 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      Transmettre
+                      Enregistrer
                     </>
                   )}
                 </button>

@@ -8,7 +8,9 @@ import {
   onSnapshot, 
   getDocs, 
   getDoc,
-  deleteDoc
+  deleteDoc,
+  runTransaction,
+  serverTimestamp
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { Connection, Notification, UserProfile } from "../types";
@@ -22,7 +24,9 @@ export const connectionService = {
     console.log(`[ConnectionService] createConnectionRequest: from=${sender.id} (${sender.role}) to=${receiver.id} (${receiver.role}) with status=${initialStatus}`);
     const connectionId = [sender.id, receiver.id].sort().join('_');
     const connectionRef = doc(db, "connections", connectionId);
+    const relationRef = doc(db, "relations", connectionId);
 
+    const nowIso = new Date().toISOString();
     const newConnection: Connection = {
       id: connectionId,
       senderId: sender.id,
@@ -33,23 +37,111 @@ export const connectionService = {
       receiverName: receiver.companyName || receiver.name,
       receiverRole: receiver.role,
       notes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
     console.log(`[ConnectionService] Connection ID: ${connectionId}`);
 
-    // Save to Firestore (attempt)
+    // Generate notification IDs
+    const notifId = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const notifGlobalRef = doc(db, "notifications", notifId);
+    const notifSubRef = doc(collection(db, "notifications", receiver.id, "items"), notifId);
+
+    // Save to Firestore using atomic transaction
     try {
-      console.log(`[ConnectionService] Saving connection doc: connections/${connectionId}`);
-      await setDoc(connectionRef, newConnection);
-      console.log("[ConnectionService] Connection doc saved to Firestore.");
-    } catch (e) {
-      console.error("[ConnectionService] Firestore error on connection request:", e);
-      // Only throw if it's a permission error or similar fatal error
-      if (e instanceof Error && (e.message.includes("permission") || e.message.includes("auth"))) {
+      console.log(`[ConnectionService] Starting transaction for createConnectionRequest: ${connectionId}`);
+      await runTransaction(db, async (transaction) => {
+        // Read existing connection if any
+        const connDoc = await transaction.get(connectionRef);
+        if (connDoc.exists()) {
+          const data = connDoc.data() as Connection;
+          if (data.status === "active") {
+            throw new Error("Vous êtes déjà en relation active avec ce partenaire.");
+          }
+          if (data.status === "en_attente") {
+            throw new Error("Une demande de connexion est déjà en attente pour ce partenaire.");
+          }
+        }
+
+        // 1. Set connection document (Legacy and general query reference)
+        transaction.set(connectionRef, newConnection, { merge: true });
+
+        // 2. Set relations document (Strict B2B schema)
+        transaction.set(relationRef, {
+          demandeurId: sender.id,
+          destinataireId: receiver.id,
+          statut: initialStatus === "active" ? "actif" : "en_attente",
+          dateCreation: serverTimestamp(),
+          dateReponse: null,
+          participants: [sender.id, receiver.id],
+          notes: notes || "",
+          demandeurNom: sender.companyName || sender.name,
+          demandeurRole: sender.role,
+          destinataireNom: receiver.companyName || receiver.name,
+          destinataireRole: receiver.role
+        }, { merge: true });
+
+        // 3. Create notification documents if it is en_attente or active
+        if (initialStatus === "en_attente") {
+          const content = `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter à son carnet d'adresses.`;
+          
+          // Subcollection notification
+          transaction.set(notifSubRef, {
+            type: "demande_connexion",
+            relationId: connectionId,
+            expediteurId: sender.id,
+            lu: false,
+            dateCreation: serverTimestamp(),
+            contenu: content
+          });
+
+          // Global notification
+          transaction.set(notifGlobalRef, {
+            id: notifId,
+            userId: receiver.id,
+            senderId: sender.id,
+            title: "Demande de connexion",
+            message: content,
+            type: "CONNECTION_REQUEST",
+            read: false,
+            createdAt: nowIso,
+            relatedId: connectionId
+          });
+        } else if (initialStatus === "active") {
+          const content = `${sender.companyName || sender.name} (${sender.role}) vous a ajouté à ses partenaires.`;
+
+          // Subcollection notification
+          transaction.set(notifSubRef, {
+            type: "connexion_acceptee",
+            relationId: connectionId,
+            expediteurId: sender.id,
+            lu: false,
+            dateCreation: serverTimestamp(),
+            contenu: content
+          });
+
+          // Global notification
+          transaction.set(notifGlobalRef, {
+            id: notifId,
+            userId: receiver.id,
+            senderId: sender.id,
+            title: "Nouveau partenaire",
+            message: content,
+            type: "CONNECTION_ACCEPTED",
+            read: false,
+            createdAt: nowIso,
+            relatedId: connectionId
+          });
+        }
+      });
+      console.log("[ConnectionService] Atomic transaction for connection request completed successfully.");
+    } catch (e: any) {
+      console.error("[ConnectionService] Transaction Firestore error on connection request:", e);
+      if (e instanceof Error && (e.message.includes("déjà en relation") || e.message.includes("déjà en attente"))) {
         throw e;
       }
+      // If it is another error (e.g. network/offline), keep offline fallback
     }
 
     // Always update local storage for offline-first resilience
@@ -58,29 +150,34 @@ export const connectionService = {
     localDb.saveConnections([newConnection, ...filteredConns]);
     console.log("[ConnectionService] Local storage updated.");
 
-    // Only create a notification for the receiver if it's an 'en_attente' request
+    // Update local notifications if en_attente or active
     if (initialStatus === "en_attente") {
-      console.log(`[ConnectionService] Creating notification for receiver: ${receiver.id}`);
-      await this.createNotification(
-        receiver.id,
-        sender.id,
-        "Demande de connexion",
-        `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter à son carnet d'adresses.`,
-        "CONNECTION_REQUEST",
-        connectionId
-      );
+      const localNotifs = localDb.getNotifications();
+      localDb.saveNotifications([{
+        id: notifId,
+        userId: receiver.id,
+        senderId: sender.id,
+        title: "Demande de connexion",
+        message: `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter à son carnet d'adresses.`,
+        type: "CONNECTION_REQUEST",
+        read: false,
+        createdAt: nowIso,
+        relatedId: connectionId
+      }, ...localNotifs]);
     } else if (initialStatus === "active") {
-      // Notify them they've been added
-      console.log(`[ConnectionService] Creating notification for receiver: ${receiver.id} (Direct Add)`);
-      await this.createNotification(
-        receiver.id,
-        sender.id,
-        "Nouveau partenaire",
-        `${sender.companyName || sender.name} (${sender.role}) vous a ajouté à ses partenaires.`,
-        "CONNECTION_ACCEPTED",
-        connectionId
-      );
-      
+      const localNotifs = localDb.getNotifications();
+      localDb.saveNotifications([{
+        id: notifId,
+        userId: receiver.id,
+        senderId: sender.id,
+        title: "Nouveau partenaire",
+        message: `${sender.companyName || sender.name} (${sender.role}) vous a ajouté à ses partenaires.`,
+        type: "CONNECTION_ACCEPTED",
+        read: false,
+        createdAt: nowIso,
+        relatedId: connectionId
+      }, ...localNotifs]);
+
       // Auto-create chat conversation
       try {
         const { chatService } = await import("./chatService");
@@ -89,7 +186,7 @@ export const connectionService = {
         console.error("Error auto-creating chat:", err);
       }
     }
-    
+
     return newConnection;
   },
 
@@ -99,17 +196,71 @@ export const connectionService = {
   async respondToConnectionRequest(connection: Connection, status: "active" | "refusée"): Promise<void> {
     console.log(`[ConnectionService] respondToConnectionRequest: id=${connection.id}, status=${status}`);
     const connectionRef = doc(db, "connections", connection.id);
+    const relationRef = doc(db, "relations", connection.id);
+
+    const nowIso = new Date().toISOString();
     const updatedConnection: Connection = {
       ...connection,
       status,
-      updatedAt: new Date().toISOString()
+      updatedAt: nowIso
     };
 
-    // Save to Firestore (attempt)
+    const notifId = `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const notifGlobalRef = doc(db, "notifications", notifId);
+    const notifSubRef = doc(collection(db, "notifications", connection.senderId, "items"), notifId);
+
+    const title = status === "active" ? "Connexion acceptée" : "Connexion refusée";
+    const message = status === "active" 
+      ? `${connection.receiverName} a accepté votre demande de connexion. Vous pouvez désormais lui envoyer des messages.`
+      : `${connection.receiverName} a décliné votre demande de connexion.`;
+
+    const typeNotifSub = status === "active" ? "connexion_acceptee" : "connexion_refusee";
+    const typeNotifGlobal: Notification["type"] = status === "active" ? "CONNECTION_ACCEPTED" : "CONNECTION_REJECTED";
+
     try {
-      console.log(`[ConnectionService] Updating connection doc: connections/${connection.id}`);
-      await setDoc(connectionRef, updatedConnection, { merge: true });
-      console.log("[ConnectionService] Connection updated in Firestore.");
+      console.log(`[ConnectionService] Starting transaction for respondToConnectionRequest: ${connection.id}`);
+      await runTransaction(db, async (transaction) => {
+        const connDoc = await transaction.get(connectionRef);
+        if (!connDoc.exists()) {
+          throw new Error("La connexion spécifiée n'existe pas.");
+        }
+
+        // 1. Update connections doc
+        transaction.update(connectionRef, {
+          status,
+          updatedAt: nowIso
+        });
+
+        // 2. Update relations doc
+        transaction.update(relationRef, {
+          statut: status === "active" ? "actif" : "refuse",
+          dateReponse: serverTimestamp()
+        });
+
+        // 3. Subcollection notification for sender
+        transaction.set(notifSubRef, {
+          type: typeNotifSub,
+          relationId: connection.id,
+          expediteurId: connection.receiverId,
+          lu: false,
+          dateCreation: serverTimestamp(),
+          contenu: message
+        });
+
+        // 4. Global notification for sender
+        transaction.set(notifGlobalRef, {
+          id: notifId,
+          userId: connection.senderId,
+          senderId: connection.receiverId,
+          title,
+          message,
+          type: typeNotifGlobal,
+          read: false,
+          createdAt: nowIso,
+          relatedId: connection.id
+        });
+      });
+      console.log("[ConnectionService] Atomic transaction for respondToConnectionRequest completed successfully.");
     } catch (e) {
       console.warn("Firestore error on respondToConnectionRequest, using offline fallback:", e);
     }
@@ -120,21 +271,19 @@ export const connectionService = {
     localDb.saveConnections(updatedConns);
     console.log("[ConnectionService] Local storage updated.");
 
-    // Notify the sender about the response
-    const title = status === "active" ? "Connexion acceptée" : "Connexion refusée";
-    const message = status === "active" 
-      ? `${connection.receiverName} a accepté votre demande de connexion. Vous pouvez désormais lui envoyer des messages.`
-      : `${connection.receiverName} a décliné votre demande de connexion.`;
-
-    console.log(`[ConnectionService] Sending notification to original sender: ${connection.senderId}`);
-    await this.createNotification(
-      connection.senderId,
-      connection.receiverId, // Receiver becomes sender of the response notification
+    // Update local notifications
+    const localNotifs = localDb.getNotifications();
+    localDb.saveNotifications([{
+      id: notifId,
+      userId: connection.senderId,
+      senderId: connection.receiverId,
       title,
       message,
-      status === "active" ? "CONNECTION_ACCEPTED" : "CONNECTION_REJECTED",
-      connection.id
-    );
+      type: typeNotifGlobal,
+      read: false,
+      createdAt: nowIso,
+      relatedId: connection.id
+    }, ...localNotifs]);
 
     // If accepted, create a chat conversation automatically
     if (status === "active") {
@@ -146,7 +295,6 @@ export const connectionService = {
         console.error("[ConnectionService] Error creating chat conversation after acceptance:", chatErr);
       }
     }
-    console.log("[ConnectionService] Response notification triggered.");
   },
 
   /**

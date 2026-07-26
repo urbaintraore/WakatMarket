@@ -12,7 +12,7 @@ import {
   updateDoc
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { Relation, PartnerNotificationItem, UserProfile, Connection } from "../types";
+import { Relation, PartnerNotificationItem, UserProfile, Connection, UserRole } from "../types";
 import { db as localDb } from "../data";
 
 export const relationService = {
@@ -64,7 +64,31 @@ export const relationService = {
     }
 
     if (destinataire.id === demandeur.id) {
-      throw new Error("Vous ne pouvez pas vous envoyer une demande de connexion à vous-même.");
+      throw new Error("Vous ne pouvez pas vous enregistrer vous-même comme partenaire d'affaires.");
+    }
+
+    // --- COMPATIBILITY VALIDATION ---
+    const isRoleAllowed = (creatorRole: UserRole, targetRole: UserRole): boolean => {
+      if (creatorRole === UserRole.ADMIN || targetRole === UserRole.ADMIN) return true;
+      switch (creatorRole) {
+        case UserRole.MANUFACTURER:
+          return [UserRole.WHOLESALER].includes(targetRole);
+        case UserRole.WHOLESALER:
+          return [UserRole.MANUFACTURER, UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(targetRole);
+        case UserRole.SEMI_WHOLESALER:
+          return [UserRole.WHOLESALER, UserRole.RETAILER, UserRole.CLIENT].includes(targetRole);
+        case UserRole.RETAILER:
+          return [UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.CLIENT].includes(targetRole);
+        case UserRole.CLIENT:
+          return [UserRole.RETAILER, UserRole.SEMI_WHOLESALER].includes(targetRole);
+        default:
+          return true;
+      }
+    };
+
+    const isCompatible = isRoleAllowed(demandeur.role, destinataire.role) || isRoleAllowed(destinataire.role, demandeur.role);
+    if (!isCompatible) {
+      throw new Error(`Les profils ne sont pas compatibles pour une relation d'affaires B2B. Votre rôle (${demandeur.role}) n'est pas compatible avec celui de ce partenaire (${destinataire.role}).`);
     }
 
     const relationId = [demandeur.id, destinataire.id].sort().join('_');
@@ -86,9 +110,6 @@ export const relationService = {
           if (data.statut === "actif") {
             throw new Error("Vous êtes déjà en relation active avec ce partenaire.");
           }
-          if (data.statut === "en_attente") {
-            throw new Error("Une demande de connexion est déjà en attente pour ce partenaire.");
-          }
         }
 
         const now = serverTimestamp();
@@ -97,9 +118,9 @@ export const relationService = {
         const newRelation: Omit<Relation, "id"> = {
           demandeurId: demandeur.id,
           destinataireId: destinataire!.id,
-          statut: "en_attente",
+          statut: "actif",
           dateCreation: now,
-          dateReponse: null,
+          dateReponse: now,
           participants: [demandeur.id, destinataire!.id],
           notes,
           demandeurNom,
@@ -114,7 +135,7 @@ export const relationService = {
           id: relationId,
           senderId: demandeur.id,
           receiverId: destinataire!.id,
-          status: "en_attente",
+          status: "active",
           senderName: demandeurNom,
           senderRole: demandeur.role,
           receiverName: destinataireNom,
@@ -126,12 +147,12 @@ export const relationService = {
 
         // 2. Écriture sous-collection /notifications/{destinataireId}/items/{notifId}
         transaction.set(notifItemRef, {
-          type: "demande_connexion",
+          type: "connexion_acceptee",
           relationId,
           expediteurId: demandeur.id,
           lu: false,
           dateCreation: now,
-          contenu: `${demandeurNom} (${demandeur.role}) vous a transmis une demande de connexion B2B.`
+          contenu: `${demandeurNom} (${demandeur.role}) vous a enregistré directement comme partenaire d'affaires.`
         });
       });
     } catch (e: any) {
@@ -144,9 +165,9 @@ export const relationService = {
       id: relationId,
       demandeurId: demandeur.id,
       destinataireId: destinataire.id,
-      statut: "en_attente",
+      statut: "actif",
       dateCreation: new Date().toISOString(),
-      dateReponse: null,
+      dateReponse: new Date().toISOString(),
       participants: [demandeur.id, destinataire.id],
       notes,
       demandeurNom,
@@ -157,12 +178,12 @@ export const relationService = {
 
     const localNotif: PartnerNotificationItem = {
       id: notifItemRef.id,
-      type: "demande_connexion",
+      type: "connexion_acceptee",
       relationId,
       expediteurId: demandeur.id,
       lu: false,
       dateCreation: new Date().toISOString(),
-      contenu: `${demandeurNom} (${demandeur.role}) vous a transmis une demande de connexion B2B.`
+      contenu: `${demandeurNom} (${demandeur.role}) vous a enregistré directement comme partenaire d'affaires.`
     };
 
     // Mettre à jour localDb
@@ -171,7 +192,7 @@ export const relationService = {
       id: relationId,
       senderId: demandeur.id,
       receiverId: destinataire.id,
-      status: "en_attente",
+      status: "active",
       senderName: demandeurNom,
       senderRole: demandeur.role,
       receiverName: destinataireNom,
@@ -187,19 +208,33 @@ export const relationService = {
       id: localNotif.id,
       userId: destinataire.id,
       senderId: demandeur.id,
-      title: "Demande de connexion",
+      title: "Nouveau partenaire d'affaires",
       message: localNotif.contenu,
-      type: "demande_connexion",
+      type: "CONNECTION_ACCEPTED",
       read: false,
       createdAt: new Date().toISOString(),
       relatedId: relationId
     }, ...currentNotifs]);
 
+    // Déclencher les événements locaux
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+    }
+
+    // Auto-créer la conversation
+    try {
+      const { chatService } = await import("./chatService");
+      await chatService.getOrCreatePrivateConversation(demandeur.id, destinataire.id);
+    } catch (chatErr) {
+      console.error("[relationService] Erreur création conversation chat:", chatErr);
+    }
+
     return {
       success: true,
       relationId,
       destinataireNom,
-      message: `Demande de connexion transmise à ${destinataireNom}.`
+      message: `Félicitations ! ${destinataireNom} a été enregistré avec succès comme partenaire d'affaires.`
     };
   },
 
