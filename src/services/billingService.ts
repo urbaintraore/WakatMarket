@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { supabase } from "../supabase";
 
 // Définition des types pour la facture
 interface LigneFacture {
@@ -106,16 +106,30 @@ export const billingService = {
       // 2. Générer le blob (Blob)
       const pdfBlob = doc.output("blob");
 
-      // 3. Uploader le PDF sur Firebase Storage
-      // (On utilise try/catch spécifique au storage pour fallback si Firebase n'est pas configuré)
+      // 3. Uploader le PDF sur Supabase Storage
       let urlPDF = "";
       try {
-        const storage = getStorage();
-        const storageRef = ref(storage, `factures/${data.vendeurId}/${numeroFacture}.pdf`);
-        await uploadBytes(storageRef, pdfBlob);
-        urlPDF = await getDownloadURL(storageRef);
+        if (!supabase) {
+           throw new Error("Supabase is not configured.");
+        }
+        
+        const filePath = `factures/${data.vendeurId}/${numeroFacture}.pdf`;
+        const { error } = await supabase.storage
+          .from('chat') // Reuse the existing bucket or create a new one. Let's assume 'chat' or create a 'factures' bucket? I will use 'chat' for simplicity, or we can use 'factures'. Better just use 'chat' since it might be the only one created by the user, or let's use 'public' maybe? The user didn't specify. I'll use 'chat' as we did in chatService.
+          .upload(filePath, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: false
+          });
+          
+        if (error) throw error;
+        
+        const { data: publicUrlData } = supabase.storage
+          .from('chat')
+          .getPublicUrl(filePath);
+          
+        urlPDF = publicUrlData.publicUrl;
       } catch (storageError) {
-        console.warn("Firebase Storage non configuré ou erreur d'upload, le PDF ne sera pas sauvegardé en ligne.", storageError);
+        console.warn("Supabase Storage non configuré ou erreur d'upload, le PDF ne sera pas sauvegardé en ligne.", storageError);
         // Fallback pour la démo: Créer une URL blob locale
         urlPDF = URL.createObjectURL(pdfBlob);
       }

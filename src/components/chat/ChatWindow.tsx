@@ -203,19 +203,33 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
   ) => {
     if (!currentUser) return;
     
+    console.log(`[ChatModule] Initiating send message: type=${type}, hasFile=${!!file}, content=${content}`);
     try {
       let finalContent = content;
       let mediaUrl;
       let audioUrl;
 
       if (file) {
+        console.log(`[ChatModule] File selected for upload: name=${file.name}, size=${file.size} bytes, type=${file.type}`);
         let url;
         try {
+          console.log(`[ChatModule] Attempting to upload to Firebase Storage...`);
           url = await chatService.uploadMedia(file, type.toLowerCase() + 's', `${Date.now()}_${file.name}`);
+          console.log(`[ChatModule] Upload successful. URL obtained: ${url.substring(0, 50)}...`);
         } catch (e) {
+          console.warn("[ChatModule] Firebase Storage upload failed. Fallback to base64 encoding.", e);
+          if (file.size > 750000) {
+            console.error(`[ChatModule] File size (${file.size} bytes) exceeds limit for base64 fallback (750KB).`);
+            alert(`Impossible d'envoyer : le fichier de ${(file.size/1000000).toFixed(2)} Mo est trop volumineux pour le mode hors ligne/limité.`);
+            return;
+          }
+          console.log(`[ChatModule] Encoding file to base64...`);
           url = await new Promise<string>((resolve) => {
             const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
+            reader.onloadend = () => {
+              console.log(`[ChatModule] Base64 encoding complete. String length: ${(reader.result as string).length}`);
+              resolve(reader.result as string);
+            };
             reader.readAsDataURL(file);
           });
         }
@@ -223,6 +237,7 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         else mediaUrl = url;
       }
 
+      console.log(`[ChatModule] Sending message to chatService.sendMessage...`);
       await chatService.sendMessage(
         conversation.id,
         currentUser.id,
@@ -237,8 +252,10 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         },
         conversation.participants
       );
+      console.log(`[ChatModule] Message successfully persisted in database.`);
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("[ChatModule] Error sending message:", error);
+      alert("Une erreur s'est produite lors de l'envoi du message.");
     }
   };
 

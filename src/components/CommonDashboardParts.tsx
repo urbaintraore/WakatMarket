@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
 
-import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
 interface SyncStatusProps {
   isOnline: boolean;
@@ -1049,6 +1049,290 @@ export const WeeklySalesChart: React.FC<WeeklySalesChartProps> = ({ orders, curr
             />
           </RechartsBarChart>
         </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------
+// Analytical Module: Debt vs. Revenue Chart (Recharts)
+// ----------------------------------------------------------------------
+interface DebtVsRevenueChartProps {
+  orders: Order[];
+  payments: DebtPayment[];
+  currentUserId: string;
+}
+
+export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({ orders, payments, currentUserId }) => {
+  const [viewType, setViewType] = useState<'monthly' | 'weekly'>('monthly');
+
+  const chartData = useMemo(() => {
+    // Sales of this user (currentUserId as supplier/receiver of orders)
+    const mySales = orders.filter(o => o.receiverId === currentUserId);
+    const myPayments = payments; 
+
+    const periodsData = [];
+
+    if (viewType === 'monthly') {
+      const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+      const now = new Date();
+      
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const year = d.getFullYear();
+        const monthIndex = d.getMonth();
+        const label = `${months[monthIndex]} ${year}`;
+        
+        // Filter sales in this specific month
+        const periodSales = mySales.filter(o => {
+          if (!o.createdAt) return false;
+          const od = new Date(o.createdAt);
+          return od.getFullYear() === year && od.getMonth() === monthIndex;
+        });
+
+        // Chiffre d'Affaires (CA)
+        const ca = periodSales.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+        // Debt initially created in this period
+        const initialDebt = periodSales.reduce((sum, o) => sum + ((o.totalAmount || 0) - (o.amountPaid || 0)), 0);
+
+        // Subsequent payments registered in this month
+        const periodPayments = myPayments.filter(p => {
+          if (!p.date) return false;
+          const pd = new Date(p.date);
+          return pd.getFullYear() === year && pd.getMonth() === monthIndex;
+        });
+        const extraPaid = periodPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        // Remaining Debt on this month's transactions
+        const debt = Math.max(0, initialDebt - extraPaid);
+
+        periodsData.push({
+          label,
+          ca,
+          dette: debt,
+        });
+      }
+    } else {
+      // Weekly view (last 6 weeks)
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i * 7);
+        // Find week boundaries
+        const startOfWeek = new Date(d);
+        startOfWeek.setDate(d.getDate() - d.getDay() + 1); // Monday
+        startOfWeek.setHours(0, 0, 0, 0);
+
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        const label = `Sem. du ${startOfWeek.getDate()}/${startOfWeek.getMonth() + 1}`;
+
+        const periodSales = mySales.filter(o => {
+          if (!o.createdAt) return false;
+          const od = new Date(o.createdAt);
+          return od >= startOfWeek && od <= endOfWeek;
+        });
+
+        const ca = periodSales.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        const initialDebt = periodSales.reduce((sum, o) => sum + ((o.totalAmount || 0) - (o.amountPaid || 0)), 0);
+
+        const periodPayments = myPayments.filter(p => {
+          if (!p.date) return false;
+          const pd = new Date(p.date);
+          return pd >= startOfWeek && pd <= endOfWeek;
+        });
+        const extraPaid = periodPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        const debt = Math.max(0, initialDebt - extraPaid);
+
+        periodsData.push({
+          label,
+          ca,
+          dette: debt,
+        });
+      }
+    }
+
+    return periodsData;
+  }, [orders, payments, currentUserId, viewType]);
+
+  const totalCA = useMemo(() => chartData.reduce((sum, d) => sum + d.ca, 0), [chartData]);
+  const totalDette = useMemo(() => chartData.reduce((sum, d) => sum + d.dette, 0), [chartData]);
+  
+  const recoveryRate = useMemo(() => {
+    if (totalCA === 0) return 100;
+    return Math.max(0, Math.min(100, ((totalCA - totalDette) / totalCA) * 100));
+  }, [totalCA, totalDette]);
+
+  const ratioDetteCA = useMemo(() => {
+    if (totalCA === 0) return 0;
+    return (totalDette / totalCA) * 100;
+  }, [totalCA, totalDette]);
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-5" id="debt-vs-revenue-chart">
+      {/* Chart Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h3 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <TrendingDown className="w-4 h-4 text-emerald-600" />
+            Suivi Analytique : Chiffre d'Affaires vs. Dette Client
+          </h3>
+          <p className="text-[10px] text-zinc-500 mt-0.5">
+            Analyse comparative de vos encours de crédits par rapport à vos ventes réelles.
+          </p>
+        </div>
+
+        {/* View Switcher */}
+        <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl">
+          <button
+            onClick={() => setViewType('monthly')}
+            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+              viewType === 'monthly' 
+                ? 'bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-300 shadow-sm' 
+                : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+            }`}
+          >
+            Vue Mensuelle
+          </button>
+          <button
+            onClick={() => setViewType('weekly')}
+            className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+              viewType === 'weekly' 
+                ? 'bg-white dark:bg-zinc-700 text-emerald-600 dark:text-emerald-300 shadow-sm' 
+                : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+            }`}
+          >
+            Vue Hebdomadaire
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Analytics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-y border-zinc-100 dark:border-zinc-800 py-3">
+        <div className="space-y-0.5">
+          <p className="text-[9px] uppercase font-black tracking-wider text-zinc-400">CA Cumulé (Période)</p>
+          <p className="text-sm font-black text-zinc-900 dark:text-white font-mono">{formatCFA(totalCA)}</p>
+          <p className="text-[9.5px] text-zinc-500">Volume global des ventes</p>
+        </div>
+        <div className="space-y-0.5 border-t sm:border-t-0 sm:border-x border-zinc-100 dark:border-zinc-800 pt-3 sm:pt-0 sm:px-4">
+          <p className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Encours de Dette</p>
+          <p className={`text-sm font-black font-mono ${totalDette > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600'}`}>
+            {formatCFA(totalDette)}
+          </p>
+          <p className="text-[9.5px] text-zinc-500">
+            Ratio de {ratioDetteCA.toFixed(1)}% sur CA
+          </p>
+        </div>
+        <div className="space-y-0.5 border-t sm:border-t-0 pt-3 sm:pt-0 sm:pl-4">
+          <p className="text-[9px] uppercase font-black tracking-wider text-zinc-400">Taux de Recouvrement</p>
+          <p className="text-sm font-black text-emerald-600 font-mono">
+            {recoveryRate.toFixed(1)}%
+          </p>
+          <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-1.5 rounded-full mt-1 overflow-hidden">
+            <div 
+              className={`h-full rounded-full ${
+                recoveryRate >= 90 ? 'bg-emerald-500' : recoveryRate >= 75 ? 'bg-amber-500' : 'bg-rose-500'
+              }`} 
+              style={{ width: `${recoveryRate}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Recharts Bar Chart */}
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(120, 120, 120, 0.1)" />
+            <XAxis 
+              dataKey="label" 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: '#888888', fontSize: 9, fontWeight: 600 }}
+            />
+            <YAxis 
+              tickLine={false} 
+              axisLine={false} 
+              tick={{ fill: '#888888', fontSize: 9, fontWeight: 600 }}
+              tickFormatter={(v) => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
+            />
+            <Tooltip
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-zinc-900 text-white p-3 rounded-xl text-xs border border-zinc-800 shadow-xl font-sans space-y-1.5">
+                      <p className="font-bold text-[10px] text-zinc-400 uppercase tracking-wider">{data.label}</p>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-zinc-400">Chiffre d'Affaires :</span>
+                        <span className="font-mono font-bold text-emerald-400">{formatCFA(data.ca)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-zinc-400">Créance Client :</span>
+                        <span className="font-mono font-bold text-rose-400">{formatCFA(data.dette)}</span>
+                      </div>
+                      {data.ca > 0 && (
+                        <div className="border-t border-zinc-800 pt-1 flex justify-between gap-4 text-[10px] text-zinc-500 font-semibold">
+                          <span>Ratio Dette / CA :</span>
+                          <span>{((data.dette / data.ca) * 100).toFixed(1)}%</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend 
+              verticalAlign="bottom" 
+              height={36} 
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 10, fontWeight: 700 }}
+              formatter={(value) => {
+                if (value === 'ca') return <span className="text-zinc-600 dark:text-zinc-400 uppercase">Chiffre d'Affaires</span>;
+                if (value === 'dette') return <span className="text-zinc-600 dark:text-zinc-400 uppercase">Dette Client</span>;
+                return value;
+              }}
+            />
+            <Bar 
+              dataKey="ca" 
+              name="ca"
+              fill="#10b981" 
+              radius={[4, 4, 0, 0]} 
+            />
+            <Bar 
+              dataKey="dette" 
+              name="dette"
+              fill="#f43f5e" 
+              radius={[4, 4, 0, 0]} 
+            />
+          </RechartsBarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Recommendation alert */}
+      <div className={`p-3.5 rounded-xl border flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-wider ${
+        ratioDetteCA >= 20 
+          ? 'bg-rose-50 border-rose-100 text-rose-700 dark:bg-rose-950/20 dark:border-rose-900/30 dark:text-rose-400' 
+          : ratioDetteCA >= 10 
+            ? 'bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-400' 
+            : 'bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400'
+      }`}>
+        <span className="text-xs">
+          {ratioDetteCA >= 20 ? '⚠️' : ratioDetteCA >= 10 ? '⚡' : '✅'}
+        </span>
+        <span>
+          {ratioDetteCA >= 20 
+            ? "Attention : niveau de créances élevé (> 20% du CA). Veuillez restreindre les limites de crédit." 
+            : ratioDetteCA >= 10 
+              ? "Prudence : les encours de crédit approchent du seuil de tolérance (10% - 20% du CA)." 
+              : "Excellent : vos créances clients sont saines et inférieures à 10% de votre chiffre d'affaires."}
+        </span>
       </div>
     </div>
   );

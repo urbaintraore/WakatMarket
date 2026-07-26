@@ -7,7 +7,6 @@ import {
   memoryLocalCache,
   setLogLevel
 } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 // Silence Firestore connection warnings which are common in sandboxed preview environments
 setLogLevel('silent');
@@ -30,7 +29,6 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({}),
   experimentalForceLongPolling: true
 });
-export const storage = getStorage(app);
 
 export enum OperationType {
   CREATE = 'create',

@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff
+  UserCheck, UserX, WifiOff, Presentation
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -39,6 +39,7 @@ import BarcodeScanner from "./components/BarcodeScanner";
 import AICopilot from "./components/AICopilot";
 import ReportsModule from "./components/ReportsModule";
 import ChatModule from "./components/ChatModule";
+import PitchDeck from "./components/PitchDeck";
 
 export default function App() {
   // Theme state
@@ -344,6 +345,7 @@ export default function App() {
   const [showAICopilot, setShowAICopilot] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showPitchDeck, setShowPitchDeck] = useState(false);
 
   // States for user profile editing
   const [showProfileEdit, setShowProfileEdit] = useState(false);
@@ -1000,8 +1002,6 @@ export default function App() {
           addNotification("Erreur lors de l'envoi de l'invitation.");
         });
       }
-
-      return; 
     } else {
       if (!isRoleAllowed(currentUser.role, clientRole)) {
         addNotification(`Contrainte de rôle : Vous n'êtes pas autorisé à créer un client avec le rôle ${clientRole}.`);
@@ -1726,6 +1726,21 @@ export default function App() {
               <BarChart2 className="w-4 h-4" /> BI & Exports
             </button>
             <button
+              onClick={() => {
+                setShowPitchDeck(!showPitchDeck);
+                setShowScanner(false);
+                setShowAICopilot(false);
+                setShowReports(false);
+                setShowChat(false);
+              }}
+              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                showPitchDeck ? "bg-amber-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+              }`}
+              id="header-pitchdeck-toggle"
+            >
+              <Presentation className="w-4 h-4 text-amber-500 animate-pulse" /> Pitch Deck
+            </button>
+            <button
               onClick={() => setShowChat(!showChat)}
               className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
                 showChat ? "bg-blue-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
@@ -1898,7 +1913,7 @@ export default function App() {
               <p className="font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider mb-1">🔥 Firebase utilisé (Production)</p>
               <div><span className="font-semibold text-zinc-400">Project ID :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">campusbf</span></div>
               <div><span className="font-semibold text-zinc-400">Auth Domain :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">campusbf.firebaseapp.com</span></div>
-              <div><span className="font-semibold text-zinc-400">Storage :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">campusbf.firebasestorage.app</span></div>
+              <div><span className="font-semibold text-zinc-400">Storage :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">Supabase</span></div>
             </div>
 
             {/* Error/Success Feedbacks */}
@@ -2000,22 +2015,6 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <button
-                      onClick={() => handleFastDemoLogin(UserRole.ADMIN)}
-                      disabled={authLoading || !!demoLoadingRole}
-                      className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/50 bg-zinc-50 dark:bg-zinc-950 hover:bg-emerald-50/20 dark:hover:bg-emerald-950/20 text-zinc-700 dark:text-zinc-300 flex items-center gap-2 transition text-left font-semibold cursor-pointer disabled:opacity-50"
-                    >
-                      {demoLoadingRole === UserRole.ADMIN ? (
-                        <RefreshCw className="w-4 h-4 text-emerald-500 animate-spin shrink-0" />
-                      ) : (
-                        <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
-                      )}
-                      <div className="truncate">
-                        <p className="font-bold text-zinc-900 dark:text-white leading-tight text-[11px]">Administrateur</p>
-                        <p className="text-[9px] text-zinc-400 font-normal">Gestion ERP globale</p>
-                      </div>
-                    </button>
-
                     <button
                       onClick={() => handleFastDemoLogin(UserRole.WHOLESALER)}
                       disabled={authLoading || !!demoLoadingRole}
@@ -2168,7 +2167,6 @@ export default function App() {
                       <option value={UserRole.DRIVER_W2R}>Livreur Grossiste➔Détaillant</option>
                       <option value={UserRole.DRIVER_W2SG}>Livreur Grossiste➔Demi-Grossiste</option>
                       <option value={UserRole.DRIVER_SG2R}>Livreur Demi-Grossiste➔Détaillant</option>
-                      <option value={UserRole.ADMIN}>Administrateur</option>
                     </select>
                   </div>
                 </div>
@@ -2408,6 +2406,17 @@ export default function App() {
                     messages={messages} 
                     onSendMessage={handleSendMessage} 
                   />
+                </motion.div>
+              )}
+
+              {showPitchDeck && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="relative z-30 mb-8"
+                >
+                  <PitchDeck onClose={() => setShowPitchDeck(false)} />
                 </motion.div>
               )}
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Mic, Image as ImageIcon, FileText, X, Square, Play, Pause, MapPin, Sparkles, RefreshCw } from 'lucide-react';
+import { Send, Paperclip, Mic, Image as ImageIcon, FileText, X, Square, Play, Pause, MapPin, Sparkles, RefreshCw, Video } from 'lucide-react';
 import { MessageType } from '../../types';
 
 interface ChatInputProps {
@@ -69,7 +69,9 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const mimeType = mediaRecorder.mimeType || 'audio/webm';
+        console.log(`[ChatModule] Audio recording stopped. Encoding with MIME type: ${mimeType}`);
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         stream.getTracks().forEach(track => track.stop());
 
@@ -171,7 +173,9 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
 
   const sendAudio = () => {
     if (audioBlob) {
-      const file = new File([audioBlob], "voice-message.webm", { type: 'audio/webm' });
+      const ext = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+      const file = new File([audioBlob], `voice-message.${ext}`, { type: audioBlob.type });
+      console.log(`[ChatModule] Preparing to send audio file: ${file.name}, type=${file.type}, size=${file.size}`);
       onSendMessage(MessageType.AUDIO, "Audio message", file, undefined, voiceTranscript || undefined);
       cancelRecording();
     }
@@ -232,6 +236,16 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
               <ImageIcon size={20} />
             </div>
             <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">Photo</span>
+          </button>
+
+          <button 
+            onClick={() => triggerFileInput(MessageType.VIDEO, "video/*")}
+            className="flex flex-col items-center gap-1 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 text-rose-500 transition-colors"
+          >
+            <div className="bg-rose-100 dark:bg-rose-900/50 p-3 rounded-full">
+              <Video size={20} />
+            </div>
+            <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">Vidéo</span>
           </button>
           
           <button 

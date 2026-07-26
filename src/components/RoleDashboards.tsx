@@ -15,7 +15,7 @@ import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, Chat
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
-import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart } from "./CommonDashboardParts";
+import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart } from "./CommonDashboardParts";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
 import { CaisseModule } from "./CaisseModule";
@@ -487,12 +487,24 @@ export function ManufacturerDashboard({
   const myOrders = orders.filter((o) => o.receiverId === currentUser.id);
 
   // Unique Buyers
-  const myBuyers = Array.from(new Set(
-      orders
-        .filter(order => order.receiverId === currentUser.id)
-        .map(order => order.senderId)
-  )).map(buyerId => users.find(u => u.id === buyerId))
-    .filter((u): u is UserProfile => !!u);
+  const myBuyers = useMemo(() => {
+    const buyerIds = new Set<string>();
+    orders
+      .filter(order => order.receiverId === currentUser.id)
+      .forEach(order => {
+        if (order.senderId && order.senderId !== currentUser.id) {
+          buyerIds.add(order.senderId);
+        }
+      });
+    lightClients
+      .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
+      .forEach(lc => {
+        buyerIds.add(lc.linkedUserId!);
+      });
+    return Array.from(buyerIds)
+      .map(id => users.find(u => u.id === id))
+      .filter((u): u is UserProfile => !!u && u.role === UserRole.WHOLESALER);
+  }, [orders, lightClients, users, currentUser.id]);
 
   const handlePOSAddToCart = (prodId: string, qty: number) => {
     setPosCart((prev) => ({
@@ -1181,12 +1193,24 @@ export function WholesalerDashboard({
   const incomingRetailerOrders = orders.filter((o) => o.receiverId === currentUser.id && (o.orderType === "B2B_W2R" || o.orderType === "B2B_W2SG"));
 
   // Unique Buyers
-  const myBuyers = Array.from(new Set(
-      orders
-        .filter(order => order.receiverId === currentUser.id)
-        .map(order => order.senderId)
-  )).map(buyerId => users.find(u => u.id === buyerId))
-    .filter((u): u is UserProfile => !!u);
+  const myBuyers = useMemo(() => {
+    const buyerIds = new Set<string>();
+    orders
+      .filter(order => order.receiverId === currentUser.id)
+      .forEach(order => {
+        if (order.senderId && order.senderId !== currentUser.id) {
+          buyerIds.add(order.senderId);
+        }
+      });
+    lightClients
+      .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
+      .forEach(lc => {
+        buyerIds.add(lc.linkedUserId!);
+      });
+    return Array.from(buyerIds)
+      .map(id => users.find(u => u.id === id))
+      .filter((u): u is UserProfile => !!u && [UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(u.role));
+  }, [orders, lightClients, users, currentUser.id]);
 
   // Outgoing B2B orders to Manufacturers
   const myB2BOrders = orders.filter((o) => o.senderId === currentUser.id && o.orderType === "B2B_M2W");
@@ -1324,6 +1348,8 @@ export function WholesalerDashboard({
               </div>
             </div>
 
+            <DebtVsRevenueChart orders={orders} payments={payments} currentUserId={currentUser.id} />
+
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-4">
                 <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider">Dernières commandes B2B</h4>
@@ -1424,6 +1450,7 @@ export function WholesalerDashboard({
             products={products}
             onAddPayment={onAddPayment}
             onUpdateCreditLimit={onUpdateCreditLimit}
+            onCreateLightClient={onCreateLightClient}
           />
         </div>
       )}
@@ -2186,13 +2213,25 @@ export function RetailerDashboard({
   const myB2BOrders = useMemo(() => orders.filter((o) => o.senderId === currentUser.id && (o.orderType === "B2B_W2R" || o.orderType === "B2B_SG2R")), [orders, currentUser.id]);
   
   // Unique Buyers (B2B and B2C)
-  const myBuyers = useMemo(() => Array.from(new Set(
-      orders
-        .filter(order => order.receiverId === currentUser.id || (order.senderId === currentUser.id && order.orderType === "B2C_R2C"))
-        .map(order => order.senderId === currentUser.id ? order.receiverId : order.senderId)
-  )).filter(id => id && id !== currentUser.id)
-    .map(buyerId => users.find(u => u.id === buyerId))
-    .filter((u): u is UserProfile => !!u), [orders, users, currentUser.id]);
+  const myBuyers = useMemo(() => {
+    const buyerIds = new Set<string>();
+    orders
+      .filter(order => order.receiverId === currentUser.id || (order.senderId === currentUser.id && order.orderType === "B2C_R2C"))
+      .forEach(order => {
+        const id = order.senderId === currentUser.id ? order.receiverId : order.senderId;
+        if (id && id !== currentUser.id && id !== "CASH_CLIENT") {
+          buyerIds.add(id);
+        }
+      });
+    lightClients
+      .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
+      .forEach(lc => {
+        buyerIds.add(lc.linkedUserId!);
+      });
+    return Array.from(buyerIds)
+      .map(id => users.find(u => u.id === id))
+      .filter((u): u is UserProfile => !!u && u.role === UserRole.CLIENT);
+  }, [orders, lightClients, users, currentUser.id]);
 
   const handleAddToCartProcure = (prodId: string, qty: number) => {
     setProcureCart((prev) => ({
@@ -2287,6 +2326,7 @@ export function RetailerDashboard({
             products={products}
             onAddPayment={onAddPayment}
             onUpdateCreditLimit={onUpdateCreditLimit}
+            onCreateLightClient={onCreateLightClient}
           />
         </div>
       )}
@@ -3898,13 +3938,25 @@ export function SemiWholesalerDashboard({
   const activeAlerts = myInventory.filter((item) => item.stock <= item.threshold);
 
   // Unique Buyers (B2B and B2C)
-  const myBuyers = Array.from(new Set(
-      orders
-        .filter(order => order.receiverId === currentUser.id || (order.senderId === currentUser.id && (order.orderType === "B2C_SG2C" || order.orderType === "B2B_SG2R")))
-        .map(order => order.senderId === currentUser.id ? order.receiverId : order.senderId)
-  )).filter(id => id && id !== currentUser.id)
-    .map(buyerId => users.find(u => u.id === buyerId))
-    .filter((u): u is UserProfile => !!u);
+  const myBuyers = useMemo(() => {
+    const buyerIds = new Set<string>();
+    orders
+      .filter(order => order.receiverId === currentUser.id || (order.senderId === currentUser.id && (order.orderType === "B2C_SG2C" || order.orderType === "B2B_SG2R")))
+      .forEach(order => {
+        const id = order.senderId === currentUser.id ? order.receiverId : order.senderId;
+        if (id && id !== currentUser.id && id !== "CASH_CLIENT") {
+          buyerIds.add(id);
+        }
+      });
+    lightClients
+      .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
+      .forEach(lc => {
+        buyerIds.add(lc.linkedUserId!);
+      });
+    return Array.from(buyerIds)
+      .map(id => users.find(u => u.id === id))
+      .filter((u): u is UserProfile => !!u && [UserRole.RETAILER, UserRole.CLIENT].includes(u.role));
+  }, [orders, lightClients, users, currentUser.id]);
 
   const handleAddToCartProcure = (prodId: string, qty: number) => {
     setProcureCart((prev) => ({
@@ -4076,6 +4128,7 @@ export function SemiWholesalerDashboard({
             products={products}
             onAddPayment={onAddPayment}
             onUpdateCreditLimit={onUpdateCreditLimit}
+            onCreateLightClient={onCreateLightClient}
           />
         </div>
       )}
@@ -4109,6 +4162,8 @@ export function SemiWholesalerDashboard({
                 <p className="text-[10px] text-zinc-500 mt-1">Cumul d'achats de gros</p>
               </div>
             </div>
+
+            <DebtVsRevenueChart orders={orders} payments={payments} currentUserId={currentUser.id} />
 
             {/* Quick stats on sales type ratio */}
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">

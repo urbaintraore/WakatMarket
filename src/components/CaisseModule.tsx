@@ -35,6 +35,7 @@ export function CaisseModule({
 }: CaisseModuleProps) {
   // 1. Core component state
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Tous");
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customerType, setCustomerType] = useState<"ANONYME" | "FIDÈLE" | "PARTENAIRE">("ANONYME");
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -43,6 +44,19 @@ export function CaisseModule({
   const [successBillUrl, setSuccessBillUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [bypassCreditLimit, setBypassCreditLimit] = useState(false);
+
+  // Credit alerts and push notifications state
+  const [showNotification, setShowNotification] = useState(false);
+  const [lastNotifiedBuyer, setLastNotifiedBuyer] = useState<string | null>(null);
+
+  // Request browser Notification permission on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
 
   // Reset selected client and bypass toggle when customer type changes
   useEffect(() => {
@@ -102,14 +116,30 @@ export function CaisseModule({
     return null;
   }, [selectedClientId, users, lightClients]);
 
-  // 2. Compute available products from current inventory
+  // Extract unique categories from products (capitalized for visual elegance)
+  const categories = useMemo(() => {
+    const list = products.map((p) => {
+      const cat = p.category ? p.category.trim() : "Général";
+      return cat.charAt(0).toUpperCase() + cat.slice(1);
+    });
+    return ["Tous", ...Array.from(new Set(list))];
+  }, [products]);
+
+  // 2. Compute available products from current inventory filtered by query and category
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) => {
       const prod = products.find((p) => p.id === item.productId);
       if (!prod) return false;
-      return prod.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const prodCat = prod.category ? prod.category.trim() : "Général";
+      const normalizedProdCat = prodCat.charAt(0).toUpperCase() + prodCat.slice(1);
+      const matchesCategory = selectedCategory === "Tous" || normalizedProdCat === selectedCategory;
+
+      return matchesSearch && matchesCategory;
     });
-  }, [inventory, products, searchQuery]);
+  }, [inventory, products, searchQuery, selectedCategory]);
 
   // Helper to resolve unit price according to selected pricing model
   const getProductPrice = (item: InventoryItem) => {
@@ -261,6 +291,48 @@ export function CaisseModule({
     return projectedDebt > selectedBuyerDetails.limit;
   }, [selectedBuyerDetails, projectedDebt]);
 
+  // Monitor selected buyer's credit limit and trigger alerts/notifications when they reach 80% or more
+  useEffect(() => {
+    if (!selectedClientId || !selectedBuyerDetails) {
+      setShowNotification(false);
+      return;
+    }
+
+    const limit = selectedBuyerDetails.limit;
+    if (limit <= 0) {
+      setShowNotification(false);
+      return;
+    }
+
+    const currentPercent = (selectedBuyerDebt / limit) * 100;
+    const projectedPercent = (projectedDebt / limit) * 100;
+
+    // Trigger alert if usage is >= 80%
+    if (projectedPercent >= 80) {
+      const key = `${selectedClientId}_${Math.floor(projectedPercent)}`;
+      if (lastNotifiedBuyer !== key) {
+        setShowNotification(true);
+        setLastNotifiedBuyer(key);
+
+        // Try to trigger real browser Push Notification
+        if (typeof window !== "undefined" && "Notification" in window) {
+          if (Notification.permission === "granted") {
+            try {
+              new Notification("Seuil de Crédit Critique - 80%+", {
+                body: `Attention : l'acheteur ${selectedBuyerDetails.name} a atteint ${projectedPercent.toFixed(0)}% de sa limite de crédit (${formatCFA(selectedBuyerDebt)} en cours + ${formatCFA(unpaidPortion)} projeté).`,
+                tag: "credit-alert-" + selectedClientId
+              });
+            } catch (e) {
+              console.log("Error launching native notification:", e);
+            }
+          }
+        }
+      }
+    } else {
+      setShowNotification(false);
+    }
+  }, [selectedClientId, selectedBuyerDebt, projectedDebt, selectedBuyerDetails, lastNotifiedBuyer, unpaidPortion]);
+
   // 4. Validate and execute checkout
   const handleCheckout = async () => {
     if (Object.keys(cart).length === 0) return;
@@ -375,8 +447,49 @@ export function CaisseModule({
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" id="caisse-module">
       {/* 1. Catalog & Selection Section */}
       <div className="lg:col-span-2 space-y-4">
+        {/* Visual warning notification banner for 80%+ credit limit usage */}
+        {showNotification && selectedBuyerDetails && (
+          <div 
+            className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl flex items-start justify-between gap-3 shadow-md animate-pulse" 
+            id="credit-limit-80-warning-banner"
+          >
+            <div className="flex gap-3 items-start">
+              <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-[10px] text-amber-800 dark:text-amber-300 uppercase tracking-widest">
+                  ⚠️ SEUIL DE CRÉDIT CRITIQUE ATTEINT
+                </h4>
+                <p className="text-xs text-amber-700 dark:text-amber-400 font-bold leading-normal">
+                  L'acheteur <span className="underline">{selectedBuyerDetails.name}</span> a consommé{" "}
+                  <span className="text-rose-600 dark:text-rose-400 font-extrabold text-sm">
+                    {((projectedDebt / selectedBuyerDetails.limit) * 100).toFixed(0)}%
+                  </span>{" "}
+                  de sa limite de crédit autorisée.
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-[10px] text-zinc-500 font-bold">
+                  <span>Limite : <strong className="font-mono text-zinc-800 dark:text-zinc-200">{formatCFA(selectedBuyerDetails.limit)}</strong></span>
+                  <span>En cours : <strong className="font-mono text-zinc-800 dark:text-zinc-200">{formatCFA(selectedBuyerDebt)}</strong></span>
+                  {unpaidPortion > 0 && (
+                    <span>Nouveau : <strong className="font-mono text-zinc-800 dark:text-zinc-200">+{formatCFA(unpaidPortion)}</strong></span>
+                  )}
+                  <span className="text-rose-600 dark:text-rose-400">Total Projeté : <strong className="font-mono">{formatCFA(projectedDebt)}</strong></span>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowNotification(false)}
+              className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 font-extrabold text-sm p-1.5 cursor-pointer leading-none hover:bg-amber-100/40 rounded-lg transition-colors"
+              title="Fermer cette notification"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {errorMsg && (
-          <div className="p-3.5 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-950/30 rounded-xl flex items-center gap-2.5 text-xs text-rose-700 dark:text-rose-400 font-bold">
+          <div className="p-3.5 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:text-rose-400 border-rose-950/30 rounded-xl flex items-center gap-2.5 text-xs text-rose-700 font-bold">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <p>{errorMsg}</p>
           </div>
@@ -419,6 +532,27 @@ export function CaisseModule({
               Tarif Détail
             </button>
           </div>
+        </div>
+
+        {/* Product Category Filters */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 scrollbar-none pt-0.5" id="caisse-categories-filter">
+          {categories.map((cat) => {
+            const isSelected = selectedCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer border ${
+                  isSelected
+                    ? "bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/25"
+                    : "bg-white dark:bg-zinc-900 border-zinc-150 dark:border-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700"
+                }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
         </div>
 
         {/* Product Grid */}

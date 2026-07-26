@@ -103,12 +103,36 @@ export function MessageBubble({ message, isOwn, showAvatar, avatarUrl, senderNam
         
       case MessageType.IMAGE:
         return (
-          <div className="space-y-2">
-            <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer" className="block relative group rounded-lg overflow-hidden">
+          <div className="space-y-2 relative group">
+            <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer" className="block relative rounded-lg overflow-hidden">
               <img src={message.mediaUrl} alt="Pièce jointe" className="max-w-full sm:max-w-xs rounded-lg object-cover" loading="lazy" />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <ImageIcon className="text-white" size={24} />
               </div>
+            </a>
+            <a 
+              href={`${message.mediaUrl}?download=`} 
+              download={message.content}
+              className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+              title="Télécharger"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </a>
+            {message.content && <p className="text-sm">{message.content}</p>}
+          </div>
+        );
+
+      case MessageType.VIDEO:
+        return (
+          <div className="space-y-2 relative group">
+            <video controls src={message.mediaUrl} className="max-w-full sm:max-w-xs rounded-lg object-cover" preload="metadata" />
+            <a 
+              href={`${message.mediaUrl}?download=`} 
+              download={message.content}
+              className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 z-10"
+              title="Télécharger"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             </a>
             {message.content && <p className="text-sm">{message.content}</p>}
           </div>
@@ -117,17 +141,21 @@ export function MessageBubble({ message, isOwn, showAvatar, avatarUrl, senderNam
       case MessageType.DOCUMENT:
         return (
           <a 
-            href={message.mediaUrl} 
+            href={`${message.mediaUrl}?download=`} 
+            download={message.content}
             target="_blank" 
             rel="noopener noreferrer"
-            className={`flex items-center gap-3 p-3 rounded-lg ${isOwn ? 'bg-emerald-600/50 hover:bg-emerald-600' : 'bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600'} transition-colors`}
+            className={`flex items-center gap-3 p-3 rounded-lg ${isOwn ? 'bg-emerald-600/50 hover:bg-emerald-600' : 'bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600'} transition-colors group`}
           >
             <div className="bg-white/20 p-2 rounded-lg text-current">
               <FileText size={24} />
             </div>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 pr-4">
               <p className="text-sm font-medium truncate">{message.content}</p>
               <p className="text-xs opacity-70">Document</p>
+            </div>
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             </div>
           </a>
         );

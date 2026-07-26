@@ -15,8 +15,8 @@ import {
   Timestamp,
   increment
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { db, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { supabase } from "../supabase";
 import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
 
 export const chatService = {
@@ -148,6 +148,7 @@ export const chatService = {
     extra?: Partial<ChatMessage>,
     participantsToNotify?: string[]
   ): Promise<void> {
+    console.log(`[chatService.sendMessage] Creating message for convId=${convId}, type=${type}, content length=${content?.length}, extra=${JSON.stringify(extra ? Object.keys(extra) : {})}`);
     try {
       const msgRef = doc(collection(db, "conversations", convId, "messages"));
       
@@ -165,8 +166,10 @@ export const chatService = {
         ...extra
       };
 
+      console.log(`[chatService.sendMessage] Writing to Firestore messages subcollection... Message ID=${msgRef.id}`);
       // Add the message
       await setDoc(msgRef, newMsg);
+      console.log(`[chatService.sendMessage] Message written successfully.`);
 
       // Update the conversation's last message and unread counts
       const convRef = doc(db, "conversations", convId);
@@ -185,9 +188,12 @@ export const chatService = {
         });
       }
 
+      console.log(`[chatService.sendMessage] Updating conversation document (convId=${convId}) with lastMessage info...`);
       await setDoc(convRef, updates, { merge: true });
-
-    } catch (error) {
+      console.log(`[chatService.sendMessage] Conversation document updated successfully.`);
+    } catch (error: any) {
+      console.error("[chatService.sendMessage] Failed to send message:", error);
+      console.error("[chatService.sendMessage] Error details:", JSON.stringify(error));
       handleFirestoreError(error, OperationType.CREATE, `conversations/${convId}/messages`);
     }
   },
@@ -210,13 +216,38 @@ export const chatService = {
    * Upload media file (Image, Video, Document, Voice note)
    */
   async uploadMedia(file: File | Blob, folder: string, filename: string): Promise<string> {
+    console.log(`[chatService.uploadMedia] Start upload to folder=${folder}, filename=${filename}, type=${file.type}, size=${file.size}`);
     try {
-      const fileRef = ref(storage, `chat/${folder}/${filename}`);
-      await uploadBytes(fileRef, file);
-      const url = await getDownloadURL(fileRef);
+      if (!supabase) {
+        throw new Error("Supabase is not configured (VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing).");
+      }
+
+      const filePath = `${folder}/${filename}`;
+      console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
+      
+      const { data, error } = await supabase.storage
+        .from('chat')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+        
+      if (error) {
+        console.error("[chatService.uploadMedia] Supabase Storage upload error:", error);
+        throw error;
+      }
+      
+      console.log(`[chatService.uploadMedia] upload successful. Getting public URL...`);
+      const { data: publicUrlData } = supabase.storage
+        .from('chat')
+        .getPublicUrl(filePath);
+        
+      const url = publicUrlData.publicUrl;
+      console.log(`[chatService.uploadMedia] Public URL generated: ${url.substring(0, 50)}...`);
       return url;
-    } catch (error) {
-      console.error("Storage upload error", error);
+    } catch (error: any) {
+      console.error("[chatService.uploadMedia] Storage upload error:", error);
+      console.error("[chatService.uploadMedia] Error details:", JSON.stringify(error));
       throw error;
     }
   },
