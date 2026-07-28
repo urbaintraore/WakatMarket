@@ -36,5 +36,33 @@ export const orderService = {
     } catch (error: any) {
       console.warn("Firestore error during updateOrder:", error);
     }
+  },
+
+  async updateOrder(orderId: string, fields: Partial<Order>): Promise<void> {
+    try {
+      await updateDoc(doc(db, COLLECTION_NAME, orderId), fields as any);
+    } catch (error: any) {
+      console.warn("Firestore error during updateOrder:", error);
+    }
+  },
+
+  subscribeToOrders(callback: (orders: Order[]) => void) {
+    const unsub = import("firebase/firestore").then(({ onSnapshot, collection }) => {
+      return onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
+        const list: Order[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            list.push(docSnap.data() as Order);
+          }
+        });
+        callback(filterMockData(list));
+      }, (error) => {
+        console.warn("Firestore error during subscribeToOrders:", error);
+      });
+    });
+    
+    return () => {
+      unsub.then(u => u && u());
+    };
   }
 };

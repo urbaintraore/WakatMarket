@@ -216,8 +216,16 @@ export function AdminDashboard({
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [newRate, setNewRate] = useState(commissionRate.toString());
   const [userPage, setUserPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const usersPerPage = 10;
-  const paginatedUsers = users.slice((userPage - 1) * usersPerPage, userPage * usersPerPage);
+  
+  const filteredUsers = users.filter(u => 
+    u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (u.phone && u.phone.includes(searchQuery)) ||
+    (u.companyName && u.companyName.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+  const paginatedUsers = filteredUsers.slice((userPage - 1) * usersPerPage, userPage * usersPerPage);
 
   const stats = {
     m: users.filter((u) => u.role === UserRole.MANUFACTURER).length,
@@ -311,7 +319,19 @@ export function AdminDashboard({
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
           <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Base des Comptes de Distribution</h4>
-            <span className="text-[10px] text-zinc-500 font-mono">Total : {users.length}</span>
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                placeholder="Rechercher (nom, email...)"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setUserPage(1);
+                }}
+                className="w-48 text-xs bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <span className="text-[10px] text-zinc-500 font-mono">Total : {filteredUsers.length}</span>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
@@ -332,6 +352,7 @@ export function AdminDashboard({
                       <img loading="lazy" src={u.avatar} alt={u.name} className="w-8 h-8 rounded-full object-cover" />
                       <div>
                         <p className="font-bold text-zinc-950 dark:text-white">{u.companyName || u.name}</p>
+                        <p className="text-[10px] text-zinc-400 font-mono">{u.email}</p>
                         <p className="text-[10px] text-zinc-400 font-mono">{u.phone}</p>
                       </div>
                     </td>
@@ -427,8 +448,8 @@ export function AdminDashboard({
               </button>
               <span className="text-xs text-zinc-500">Page {userPage}</span>
               <button 
-                onClick={() => setUserPage(p => Math.min(Math.ceil(users.length / usersPerPage), p + 1))}
-                disabled={userPage >= Math.ceil(users.length / usersPerPage)}
+                onClick={() => setUserPage(p => Math.min(Math.ceil(filteredUsers.length / usersPerPage), p + 1))}
+                disabled={userPage >= Math.ceil(filteredUsers.length / usersPerPage)}
                 className="text-xs px-3 py-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg disabled:opacity-50"
               >
                 Suivant
@@ -1382,12 +1403,18 @@ export function WholesalerDashboard({
   };
 
   const handleCheckoutProcure = () => {
-    if (!selectedManufacturer) return;
+    if (!selectedManufacturer) {
+      alert("Veuillez sélectionner un fabricant avant de passer commande.");
+      return;
+    }
     const items = Object.keys(procureCart)
       .filter((prodId) => procureCart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: procureCart[prodId] }));
 
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert("Votre panier d'approvisionnement est vide.");
+      return;
+    }
 
     onPlaceB2BOrder(selectedManufacturer, items);
     setProcureCart({});
@@ -2389,12 +2416,18 @@ export function RetailerDashboard({
   };
 
   const handleCheckoutProcure = () => {
-    if (!selectedWholesaler) return;
+    if (!selectedWholesaler) {
+      alert("Veuillez sélectionner un fournisseur (grossiste ou demi-grossiste) avant de passer commande.");
+      return;
+    }
     const items = Object.keys(procureCart)
       .filter((prodId) => procureCart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: procureCart[prodId] }));
 
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert("Votre panier d'approvisionnement est vide.");
+      return;
+    }
 
     onPlaceB2BOrder(selectedWholesaler, items);
     setProcureCart({});
@@ -3288,12 +3321,18 @@ export function ClientDashboard({
   };
 
   const handleCheckout = () => {
-    if (!selectedRetailer) return;
+    if (!selectedRetailer) {
+      alert("Veuillez sélectionner un commerce (boutique ou demi-gros) avant de passer commande.");
+      return;
+    }
     const items = Object.keys(cart)
       .filter((prodId) => cart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: cart[prodId] }));
 
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert("Votre panier est vide.");
+      return;
+    }
 
     onPlaceB2COrder(selectedRetailer, items, shippingAddress, paymentMethod);
     setCart({});
@@ -4178,12 +4217,18 @@ export function SemiWholesalerDashboard({
   };
 
   const handleCheckoutProcure = () => {
-    if (!selectedWholesaler) return;
+    if (!selectedWholesaler) {
+      alert("Veuillez sélectionner un grossiste avant de passer commande.");
+      return;
+    }
     const items = Object.keys(procureCart)
       .filter((id) => procureCart[id] > 0)
       .map((id) => ({ productId: id, quantity: procureCart[id] }));
 
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      alert("Votre panier d'approvisionnement est vide.");
+      return;
+    }
     onPlaceB2BOrder(selectedWholesaler, items);
     setProcureCart({});
     alert("Votre commande d'approvisionnement B2B auprès du grossiste a été envoyée !");

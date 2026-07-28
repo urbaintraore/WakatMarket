@@ -463,10 +463,17 @@ export const relationService = {
     let unsub = () => {};
     try {
       unsub = onSnapshot(q, (snapshot) => {
-        const items: PartnerNotificationItem[] = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        } as PartnerNotificationItem));
+        const localMap = new Map(localDb.getNotifications().map(n => [n.id, n]));
+        const items: PartnerNotificationItem[] = snapshot.docs.map(doc => {
+          const data = doc.data() as any;
+          const local = localMap.get(doc.id);
+          const isRead = local?.read || data.lu || data.read || false;
+          return {
+            id: doc.id,
+            ...data,
+            lu: isRead
+          } as PartnerNotificationItem;
+        });
         callback(items);
       }, (err) => {
         console.warn("[relationService] Listener notifications error, using fallback:", err);
@@ -493,17 +500,21 @@ export const relationService = {
    * 5. Marquer une notification comme lue dans /notifications/{userId}/items/{notifId}
    */
   async marquerNotificationCommeLue(userId: string, notifId: string): Promise<void> {
-    try {
-      const notifRef = doc(db, "notifications", userId, "items", notifId);
-      await updateDoc(notifRef, { lu: true });
-    } catch (e) {
-      console.warn("[relationService] Error marking notification as read:", e);
-    }
-
     const localNotifs = localDb.getNotifications().map(n => {
       if (n.id === notifId) return { ...n, read: true };
       return n;
     });
     localDb.saveNotifications(localNotifs);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+    }
+
+    try {
+      const notifRef = doc(db, "notifications", userId, "items", notifId);
+      await updateDoc(notifRef, { lu: true, read: true });
+    } catch (e) {
+      console.warn("[relationService] Error marking notification as read:", e);
+    }
   }
 };

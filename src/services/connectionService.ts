@@ -460,14 +460,20 @@ export const connectionService = {
     let unsub = () => {};
     try {
       unsub = onSnapshot(q, (snapshot) => {
-        const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+        const localMap = new Map(localDb.getNotifications().map(n => [n.id, n]));
+        const notifs = snapshot.docs.map(doc => {
+          const data = doc.data() as any;
+          const local = localMap.get(doc.id);
+          const isRead = local?.read || data.read || data.lu || false;
+          return { id: doc.id, ...data, read: isRead } as Notification;
+        });
         // Sort by date desc
         const sorted = notifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         const existingLocal = localDb.getNotifications();
         const map = new Map<string, Notification>();
         existingLocal.forEach(n => map.set(n.id, n));
-        sorted.forEach(n => map.set(n.id, n));
+        sorted.forEach(n => map.set(n.id, { ...n, read: localMap.get(n.id)?.read || n.read }));
         const allNotifs = Array.from(map.values());
         localDb.saveNotifications(allNotifs);
 
@@ -499,16 +505,20 @@ export const connectionService = {
    * Mark a notification as read
    */
   async markNotificationAsRead(notificationId: string): Promise<void> {
-    try {
-      const ref = doc(db, "notifications", notificationId);
-      await updateDoc(ref, { read: true });
-    } catch (e) {
-      console.warn("Error marking notification read in Firestore, fallback to local:", e);
-    }
-
     const localNotifs = localDb.getNotifications();
     const updated = localNotifs.map(n => n.id === notificationId ? { ...n, read: true } : n);
     localDb.saveNotifications(updated);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+    }
+
+    try {
+      const ref = doc(db, "notifications", notificationId);
+      await updateDoc(ref, { read: true, lu: true });
+    } catch (e) {
+      console.warn("Error marking notification read in Firestore, fallback to local:", e);
+    }
   },
 
   /**

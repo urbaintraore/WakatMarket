@@ -104,7 +104,7 @@ export const userService = {
       );
       const snap = await Promise.race([snapPromise, timeoutPromise]);
       if (snap.exists()) {
-        const data = snap.data() as FirebaseUser;
+        const data = { uid: snap.id, ...snap.data() } as FirebaseUser;
         if ((data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") && data.rôle !== "ADMIN") {
           data.rôle = "ADMIN" as any;
           try { await setDoc(doc(db, "users", uid), { rôle: "ADMIN" }, { merge: true }); } catch (e) {}
@@ -247,7 +247,7 @@ export const userService = {
       const snap = await getDocs(collection(db, "users"));
       snap.forEach((docSnap) => {
         if (docSnap.exists()) {
-          firestoreUsers.push(docSnap.data() as FirebaseUser);
+          firestoreUsers.push({ uid: docSnap.id, ...docSnap.data() } as FirebaseUser);
         }
       });
     } catch (error: any) {
@@ -282,7 +282,8 @@ export const userService = {
               téléphone: eu.phone || "",
               rôle: eu.role || "CLIENT",
               dateCréation: new Date().toISOString(),
-              statut: eu.status || "ACTIVE"
+              statut: eu.status || "ACTIVE",
+              companyName: eu.companyName
             });
           }
         });
@@ -334,7 +335,7 @@ export const userService = {
       unsub = onSnapshot(firestoreCollection, (snapshot) => {
         const users: FirebaseUser[] = [];
         snapshot.forEach((doc: any) => {
-          users.push(doc.data() as FirebaseUser);
+          users.push({ uid: doc.id, ...doc.data() } as FirebaseUser);
         });
         
         // Merge with local users for a complete picture

@@ -93,7 +93,7 @@ export default function App() {
           country: u.pays || "Burkina Faso",
           region: u.ville || "Ouagadougou",
           avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-          companyName: `${u.nom} Entreprise`
+          companyName: u.companyName || `${u.nom} Entreprise`
         }));
         setUsers(mappedUsers);
       });
@@ -116,6 +116,29 @@ export default function App() {
             });
             const nextList = Array.from(updatedMap.values());
             db.saveInventory(nextList);
+            return nextList;
+          });
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [isRealUserAuthenticated]);
+
+  // Firestore Sync for orders
+  useEffect(() => {
+    if (isRealUserAuthenticated) {
+      const unsubscribe = orderService.subscribeToOrders((fbOrders) => {
+        if (fbOrders && fbOrders.length > 0) {
+          setOrders(prev => {
+            const updatedMap = new Map<string, Order>();
+            prev.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            fbOrders.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            const nextList = Array.from(updatedMap.values());
+            db.saveOrders(nextList);
             return nextList;
           });
         }
@@ -512,17 +535,11 @@ export default function App() {
   const syncInventory = (list: InventoryItem[]) => {
     setInventory(list);
     db.saveInventory(list);
-    if (isRealUserAuthenticated) {
-      list.forEach(i => inventoryService.updateInventoryItem(i));
-    }
   };
 
   const syncOrders = (list: Order[]) => {
     setOrders(list);
     db.saveOrders(list);
-    if (isRealUserAuthenticated) {
-      list.forEach(o => orderService.createOrder(o));
-    }
   };
 
   const syncMessages = (list: ChatMessage[]) => {
@@ -847,7 +864,7 @@ export default function App() {
     const cleanupUsers = async () => {
       if (users.length > 0) {
         const namesToDelete = ["Jean jacques Rousseaux", "Demigrossiste1"];
-        const emailsToDelete = ["sayouba@ujkz.bf"];
+        const emailsToDelete: string[] = []; // Removed sayouba@ujkz.bf
         const usersToDelete = users.filter(u => 
           namesToDelete.includes(u.name) || 
           namesToDelete.includes(u.companyName || "") ||
@@ -922,6 +939,7 @@ export default function App() {
     };
 
     syncProducts([...products, newProd]);
+    if (isRealUserAuthenticated) inventoryService.updateInventoryItem(newInvItem);
     syncInventory([...inventory, newInvItem]);
     addNotification(`Nouveau produit créé : ${p.name}`);
   };
@@ -1016,6 +1034,7 @@ export default function App() {
     const targetItem = existingById || existingByProd;
 
     if (targetItem) {
+      let changedItem: InventoryItem | undefined;
       const updated = inventory.map(item => {
         if (item.id === targetItem.id) {
           if (stock === 0) {
@@ -1029,7 +1048,7 @@ export default function App() {
           if (delta !== 0) {
             recordStockMovement(item.productId, delta > 0 ? "IN" : "OUT", Math.abs(delta), "Ajustement manuel");
           }
-          return {
+          changedItem = {
             ...item,
             stock,
             price: price !== undefined ? price : item.price,
@@ -1037,9 +1056,13 @@ export default function App() {
             prixDetail: prixDetail !== undefined ? prixDetail : item.prixDetail,
             quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : item.quantiteMinimum
           };
+          return changedItem;
         }
         return item;
       });
+      if (changedItem && isRealUserAuthenticated) {
+        inventoryService.updateInventoryItem(changedItem);
+      }
       syncInventory(updated);
       addNotification("Stock mis à jour avec succès.");
     } else {
@@ -1049,11 +1072,12 @@ export default function App() {
         ownerId: currentUser.id,
         stock,
         threshold: Math.max(5, Math.round(stock * 0.15)),
-        price: price,
+        price: price || 1000,
         prixGros: prixGros,
         prixDetail: prixDetail,
         quantiteMinimum: quantiteMinimum || 1
       };
+      if (isRealUserAuthenticated) inventoryService.updateInventoryItem(newItem);
       syncInventory([...inventory, newItem]);
       addNotification(`Nouveau produit ajouté à votre stock.`);
     }
@@ -1158,6 +1182,7 @@ export default function App() {
       deliveryAddress: currentUser.address || "Dakar Medina"
     };
 
+    if (isRealUserAuthenticated) orderService.createOrder(newOrder);
     syncOrders([newOrder, ...orders]);
     addNotification(`Nouvelle commande B2B passée auprès de ${vendorObj?.companyName || vendorObj?.name}`);
   };
@@ -1212,6 +1237,7 @@ export default function App() {
       otpCode
     };
 
+    if (isRealUserAuthenticated) orderService.createOrder(newOrder);
     syncOrders([newOrder, ...orders]);
     addNotification(`Votre commande client ${newOrder.id} a été validée ! Suivi en cours.`);
   };
@@ -1221,14 +1247,18 @@ export default function App() {
     if (!currentUser) return;
 
     // Deduct stock immediately
+    const changedItems: InventoryItem[] = [];
     const updatedInv = inventory.map((invItem) => {
       const matched = items.find((i) => i.productId === invItem.productId && invItem.ownerId === currentUser.id);
       if (matched) {
-        return { ...invItem, stock: Math.max(0, invItem.stock - matched.quantity) };
+        const changed = { ...invItem, stock: Math.max(0, invItem.stock - matched.quantity) };
+        changedItems.push(changed);
+        return changed;
       }
       return invItem;
     });
 
+    if (isRealUserAuthenticated) { changedItems.forEach(item => inventoryService.updateInventoryItem(item)); }
     syncInventory(updatedInv);
     addNotification("Vente comptoir boutique enregistrée. Stocks synchronisés.");
   };
@@ -1287,18 +1317,23 @@ export default function App() {
     };
 
     // 1. Save Sale
+    if (isRealUserAuthenticated) orderService.createOrder(newSale);
     syncOrders([newSale, ...orders]);
 
     // 2. Decrement Stock & Record movements
+    const changedItems: InventoryItem[] = [];
     const updatedInv = inventory.map(item => {
       const saleItem = items.find(si => si.productId === item.productId && item.ownerId === currentUser.id);
       if (saleItem) {
         const newStock = item.stock - saleItem.quantity;
         recordStockMovement(item.productId, "OUT", saleItem.quantity, "Vente", saleId);
-        return { ...item, stock: newStock };
+        const changed = { ...item, stock: newStock };
+        changedItems.push(changed);
+        return changed;
       }
       return item;
     });
+    if (isRealUserAuthenticated) { changedItems.forEach(item => inventoryService.updateInventoryItem(item)); }
     syncInventory(updatedInv);
 
     // 3. Record Payment if any
@@ -1361,6 +1396,7 @@ export default function App() {
 
   // Order status flow & drivers assignations
   const handleUpdateOrderStatus = (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => {
+    let changedOrder: Order | undefined;
     const updated = orders.map((o) => {
       if (o.id === orderId) {
         const payload: Partial<Order> = { status, updatedAt: new Date().toISOString() };
@@ -1375,10 +1411,15 @@ export default function App() {
           addNotification(`Réclamation ajoutée à la commande ${orderId}`);
         }
         addNotification(`Commande ${orderId} passée au statut : ${status}`);
-        return { ...o, ...payload };
+        changedOrder = { ...o, ...payload };
+        return changedOrder;
       }
       return o;
     });
+    
+    if (changedOrder && isRealUserAuthenticated) {
+      orderService.updateOrder(changedOrder.id, changedOrder);
+    }
     syncOrders(updated);
   };
 
@@ -1432,6 +1473,10 @@ export default function App() {
     });
     
     if (success) {
+      const changedOrder = updatedOrders.find(o => o.id === orderId);
+      if (changedOrder && isRealUserAuthenticated) {
+        orderService.updateOrder(changedOrder.id, changedOrder);
+      }
       syncOrders(updatedOrders);
       alert("Paiement par solde effectué avec succès !");
     }
@@ -1457,30 +1502,35 @@ export default function App() {
     if (orderToDeliver) {
       const o = orderToDeliver;
       let newInventory = [...inventory];
+      const changedItems: InventoryItem[] = [];
       
       // Update inventory based on order items
       o.items.forEach(item => {
         // Reduce stock for the seller (receiverId)
         const sellerInvIndex = newInventory.findIndex(inv => inv.ownerId === o.receiverId && inv.productId === item.productId);
         if (sellerInvIndex !== -1) {
-          newInventory[sellerInvIndex] = {
+          const changed = {
             ...newInventory[sellerInvIndex],
             stock: Math.max(0, newInventory[sellerInvIndex].stock - item.quantity)
           };
+          newInventory[sellerInvIndex] = changed;
+          changedItems.push(changed);
         }
         
         // If it's a B2B order, the buyer (senderId) gets restocked (with quantity incrementation without duplication)
         if (o.orderType.startsWith("B2B")) {
           const buyerInvIndex = newInventory.findIndex(inv => inv.ownerId === o.senderId && inv.productId === item.productId);
           if (buyerInvIndex !== -1) {
-            newInventory[buyerInvIndex] = {
+            const changed = {
               ...newInventory[buyerInvIndex],
               stock: newInventory[buyerInvIndex].stock + item.quantity
             };
+            newInventory[buyerInvIndex] = changed;
+            changedItems.push(changed);
           } else {
             // Buyer doesn't have this product in their inventory yet. Add it.
             const sellerItem = sellerInvIndex !== -1 ? newInventory[sellerInvIndex] : undefined;
-            newInventory.push({
+            const newItem = {
               id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
               ownerId: o.senderId,
               productId: item.productId,
@@ -1490,13 +1540,22 @@ export default function App() {
               prixDetail: sellerItem?.prixDetail ? Math.round(sellerItem.prixDetail * 1.1) : undefined,
               quantiteMinimum: 5,
               lastUpdated: new Date().toISOString()
-            });
+            };
+            newInventory.push(newItem);
+            changedItems.push(newItem);
           }
         }
       });
       
+      if (isRealUserAuthenticated) {
+        changedItems.forEach(item => inventoryService.updateInventoryItem(item));
+      }
       syncInventory(newInventory);
       addNotification(`Acheminement finalisé pour ${orderId}. Les stocks ont été transférés.`);
+      const changedOrder = updated.find(o => o.id === orderId);
+      if (changedOrder && isRealUserAuthenticated) {
+        orderService.updateOrder(changedOrder.id, changedOrder);
+      }
       syncOrders(updated);
     }
   };
