@@ -24,6 +24,7 @@ export interface LightClient {
   companyName?: string;
   phone: string;
   email?: string;
+  role?: UserRole | string;
   notes?: string;
   linkedUserId?: string; // Optional reference to a real UserProfile if they join the platform
   createdAt: string;

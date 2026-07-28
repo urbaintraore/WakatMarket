@@ -2533,9 +2533,9 @@ export function RetailerDashboard({
               setProcureCart({});
             }}
             onCreateLightClient={onCreateLightClient}
-            targetRoles={[UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER]}
-            title="S'approvisionner : Achat auprès des Grossistes / Demi-Grossistes"
-            description="Sélectionnez un fournisseur existant dans votre carnet d'adresses ou tapez son numéro de téléphone ou son email."
+            targetRoles={[UserRole.MANUFACTURER, UserRole.WHOLESALER]}
+            title="S'approvisionner : Achat auprès des Usines & Grossistes"
+            description="Sélectionnez une usine ou un grossiste dans votre carnet d'adresses ou tapez son numéro ou email."
           />
 
           {selectedWholesaler && (
@@ -3215,8 +3215,16 @@ export function RetailerDashboard({
           currentUser={currentUser}
           users={users}
           connections={connections}
-          selectedSupplier={selectedWholesaler}
-          onSelectSupplier={setSelectedWholesaler}
+          lightClients={lightClients}
+          selectedSupplierId={selectedWholesaler}
+          onSelectSupplier={(id) => {
+            setSelectedWholesaler(id);
+            setProcureCart({});
+          }}
+          onCreateLightClient={onCreateLightClient}
+          targetRoles={[UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.MANUFACTURER]}
+          title="S'approvisionner : Achat auprès des Grossistes & Demi-Grossistes"
+          description="Choisissez votre fournisseur (Grossiste, Demi-Grossiste ou Usine) dans votre carnet d'adresses."
         />
       )}
 
@@ -4684,8 +4692,8 @@ export function SemiWholesalerDashboard({
               setProcureCart({});
             }}
             onCreateLightClient={onCreateLightClient}
-            targetRoles={[UserRole.WHOLESALER, UserRole.MANUFACTURER]}
-            title="S'approvisionner : Achat auprès des Grossistes & Usines"
+            targetRoles={[UserRole.WHOLESALER, UserRole.MANUFACTURER, UserRole.SEMI_WHOLESALER]}
+            title="S'approvisionner : Achat auprès des Grossistes, Usines & Demi-Grossistes"
             description="Choisissez un fournisseur dans votre carnet d'adresses ou entrez son numéro de téléphone / email."
           />
 

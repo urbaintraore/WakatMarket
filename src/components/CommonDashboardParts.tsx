@@ -1559,6 +1559,44 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     return lightClients.filter(lc => lc.ownerId === currentUser.id);
   }, [lightClients, currentUser.id]);
 
+  // Helper to test if a candidate role is forbidden (e.g. Retailer/Customer for Wholesaler or SemiWholesaler)
+  const isForbiddenSupplier = (candidateRole?: UserRole | string, linkedUserRole?: UserRole | string): boolean => {
+    const rolesToTest = [candidateRole, linkedUserRole].filter(Boolean) as (UserRole | string)[];
+    
+    // 1. Grossiste or Demi-Grossiste cannot procure from Retailer or Client
+    if (currentUser.role === UserRole.WHOLESALER || currentUser.role === UserRole.SEMI_WHOLESALER) {
+      for (const r of rolesToTest) {
+        const rStr = r.toString().toUpperCase();
+        if (
+          rStr === UserRole.RETAILER ||
+          rStr === UserRole.CLIENT ||
+          rStr === "RETAILER" ||
+          rStr === "CLIENT" ||
+          rStr.includes("DÉTAILLANT") ||
+          rStr.includes("DETAILLANT") ||
+          rStr.includes("BOUTIQUE") ||
+          rStr.includes("CLIENT")
+        ) {
+          return true;
+        }
+      }
+    }
+
+    // 2. If targetRoles is specified, candidate must match targetRoles
+    if (targetRoles && targetRoles.length > 0) {
+      const hasTargetMatch = rolesToTest.some(r => {
+        const rStr = r.toString().toUpperCase();
+        return targetRoles.some(tr => tr.toString().toUpperCase() === rStr);
+      });
+      // If we know the role and it doesn't match targetRoles, forbid it
+      if (rolesToTest.length > 0 && !hasTargetMatch) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   // Combine users & light clients into unified list
   const allSuppliers = useMemo(() => {
     const items: Array<{
@@ -1578,10 +1616,17 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
     const addedIds = new Set<string>();
 
-    // 1. Address book light clients
+    // 1. Address book light clients (filter out retailers/incompatible roles)
     addressBookEntries.forEach(lc => {
       const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
       const itemId = lc.linkedUserId || lc.id;
+      if (addedIds.has(itemId)) return;
+
+      const effectiveRole = linkedUser?.role || lc.role;
+      if (isForbiddenSupplier(effectiveRole, linkedUser?.role)) {
+        return; // Exclude retailers or non-matching roles from supplier list
+      }
+
       addedIds.add(itemId);
 
       items.push({
@@ -1590,7 +1635,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         companyName: lc.companyName || linkedUser?.companyName,
         phone: lc.phone || linkedUser?.phone,
         email: lc.email || linkedUser?.email,
-        role: linkedUser?.role || "Partenaire Carnet",
+        role: effectiveRole || "Partenaire Carnet",
         region: linkedUser?.region || "Local",
         country: linkedUser?.country || "",
         isAddressBook: true,
@@ -1605,10 +1650,14 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       if (u.id === currentUser.id) return;
       if (addedIds.has(u.id)) return;
 
+      if (isForbiddenSupplier(u.role)) {
+        return; // Exclude retailers or forbidden roles
+      }
+
       const isConnected = connectedPartnerUserIds.has(u.id);
       const matchesRole = !targetRoles || targetRoles.length === 0 || targetRoles.includes(u.role);
 
-      if (isConnected || matchesRole) {
+      if (matchesRole || isConnected) {
         addedIds.add(u.id);
         items.push({
           id: u.id,
@@ -1628,7 +1677,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     });
 
     return items;
-  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser.id]);
+  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser.id, currentUser.role]);
 
   // Filter address book / connected suppliers for quick selector
   const addressBookSuppliers = useMemo(() => {
@@ -1661,10 +1710,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       }
     });
 
-    // 2. Search in all users (in case targetRoles filtered them out)
+    // 2. Search in all users (only if matching targetRoles and not forbidden)
     users.forEach(u => {
       if (u.id === currentUser.id) return;
       if (matchedSupplierIds.has(u.id)) return;
+      if (isForbiddenSupplier(u.role)) return;
 
       const uPhoneClean = cleanPhone(u.phone);
       const matchesName = u.name.toLowerCase().includes(term);
@@ -1698,6 +1748,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       const itemId = lc.linkedUserId || lc.id;
       if (matchedSupplierIds.has(itemId)) return;
 
+      const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
+      const effectiveRole = linkedUser?.role || lc.role;
+
+      if (isForbiddenSupplier(effectiveRole, linkedUser?.role)) return;
+
       const lcPhoneClean = cleanPhone(lc.phone);
       const matchesName = lc.name.toLowerCase().includes(term);
       const matchesCompany = lc.companyName?.toLowerCase().includes(term);
@@ -1713,7 +1768,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           companyName: lc.companyName,
           phone: lc.phone,
           email: lc.email,
-          role: "Carnet d'adresses",
+          role: effectiveRole || "Carnet d'adresses",
           region: "Local",
           country: "",
           isAddressBook: true,
@@ -1725,7 +1780,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     });
 
     return results;
-  }, [allSuppliers, users, lightClients, searchTerm, connectedPartnerUserIds, currentUser.id]);
+  }, [allSuppliers, users, lightClients, searchTerm, connectedPartnerUserIds, currentUser.id, currentUser.role]);
 
   const typedInputTrimmed = searchTerm.trim();
   const isInputEmail = typedInputTrimmed.includes('@') && typedInputTrimmed.includes('.');
@@ -1747,6 +1802,10 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     );
 
     if (existingUser) {
+      if (isForbiddenSupplier(existingUser.role)) {
+        alert("Action impossible : Les grossistes et demi-grossistes ne peuvent pas s'approvisionner auprès des détaillants.");
+        return;
+      }
       onSelectSupplier(existingUser.id);
       setSearchTerm("");
       return;
@@ -1764,12 +1823,18 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     );
 
     if (existingClient) {
+      const linkedUser = existingClient.linkedUserId ? users.find(u => u.id === existingClient.linkedUserId) : null;
+      if (isForbiddenSupplier(existingClient.role || linkedUser?.role, linkedUser?.role)) {
+        alert("Action impossible : Les grossistes et demi-grossistes ne peuvent pas s'approvisionner auprès des détaillants.");
+        return;
+      }
       onSelectSupplier(existingClient.linkedUserId || existingClient.id);
       setSearchTerm("");
       return;
     }
 
     // Create a new supplier in address book
+    const defaultSupplierRole = (targetRoles && targetRoles[0]) || UserRole.WHOLESALER;
     const newClientId = `lc-supplier-${Date.now()}`;
     const newClient: LightClient = {
       id: newClientId,
@@ -1778,6 +1843,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       companyName: `Fournisseur ${typedInputTrimmed}`,
       email: isInputEmail ? typedInputTrimmed : undefined,
       phone: isInputPhone ? typedInputTrimmed : (typedInputTrimmed.replace(/[^0-9]/g, '') || "00000000"),
+      role: defaultSupplierRole,
       notes: "Ajouté via réapprovisionnement direct",
       createdAt: new Date().toISOString()
     };
@@ -1786,7 +1852,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     db.saveLightClients(updatedClients);
 
     if (onCreateLightClient) {
-      onCreateLightClient(typedInputTrimmed, "Fournisseur réapprovisionnement direct", UserRole.WHOLESALER, true);
+      onCreateLightClient(typedInputTrimmed, "Fournisseur réapprovisionnement direct", defaultSupplierRole, true);
     }
 
     onSelectSupplier(newClient.id);
