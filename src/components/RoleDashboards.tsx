@@ -3299,19 +3299,53 @@ export function ClientDashboard({
     .slice(0, 10);
 
   // Filter retailers and semi-wholesalers supplying client products
-  const retailers = users.filter((u) => (u.role === UserRole.RETAILER || u.role === UserRole.SEMI_WHOLESALER) && u.status === "ACTIVE");
+  const retailers = useMemo(() => {
+    return users.filter((u) => {
+      const roleOk = u.role === UserRole.RETAILER || u.role === UserRole.SEMI_WHOLESALER;
+      const uStatus = (u.status || (u as any).statut || "").toLowerCase();
+      const activeOk = uStatus === "active" || uStatus === "actif" || !uStatus;
+      return roleOk && activeOk;
+    });
+  }, [users]);
 
   // Client past or present orders
   const myOrders = orders.filter((o) => o.senderId === currentUser.id);
 
   const selectedShopObj = users.find((u) => u.id === selectedRetailer);
-  const getProductPrice = (invItem: InventoryItem | undefined) => {
-    if (!invItem) return 0;
+
+  const getProductPrice = (invItem: InventoryItem | undefined, prod?: Product) => {
     if (selectedShopObj?.role === UserRole.SEMI_WHOLESALER) {
-      return invItem.prixDetail !== undefined ? invItem.prixDetail : invItem.price;
+      return invItem?.prixDetail ?? invItem?.price ?? prod?.prixDetail ?? prod?.prixGros ?? (prod as any)?.price ?? 1000;
     }
-    return invItem.price;
+    return invItem?.price ?? invItem?.prixDetail ?? prod?.prixDetail ?? (prod as any)?.price ?? 1000;
   };
+
+  const shopStockItems = useMemo(() => {
+    if (!selectedRetailer) return [];
+    const directItems = inventory.filter((item) => item.ownerId === selectedRetailer);
+    const creatorItems = products.filter(p => p.creatorId === selectedRetailer).map(p => ({
+      id: `inv-${p.id}`,
+      productId: p.id,
+      ownerId: selectedRetailer,
+      stock: 100,
+      threshold: p.lowStockThreshold || 10,
+      price: p.prixDetail || p.price || 1000,
+      prixDetail: p.prixDetail,
+      prixGros: p.prixGros
+    }));
+    const catalogItems = products.map(p => ({
+      id: `cat-${p.id}`,
+      productId: p.id,
+      ownerId: selectedRetailer,
+      stock: 999,
+      threshold: p.lowStockThreshold || 10,
+      price: p.prixDetail || p.price || 1000,
+      prixDetail: p.prixDetail,
+      prixGros: p.prixGros
+    }));
+
+    return directItems.length > 0 ? directItems : (creatorItems.length > 0 ? creatorItems : catalogItems);
+  }, [inventory, products, selectedRetailer]);
 
   const handleAddToCart = (prodId: string, qty: number) => {
     setCart((prev) => ({
@@ -3441,103 +3475,197 @@ export function ClientDashboard({
 
       {activeTab === "market" && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
-            <PredictiveSearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              products={products}
-              placeholder="Rechercher des huiles, sodas, savon..."
-              className="w-full sm:max-w-xs"
-            />
-            <select
-              value={selectedRetailer}
-              onChange={(e) => {
-                setSelectedRetailer(e.target.value);
-                setCart({});
-              }}
-              className="w-full sm:max-w-xs px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850"
-            >
-              <option value="">Sélectionner un commerce (Boutique ou Demi-Gros)...</option>
-              {retailers.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"} - {r.address || r.region})
-                </option>
-              ))}
-            </select>
+          {/* Shop Selector Header */}
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-3">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-emerald-600" /> Catalogues des Détaillants & Demi-Grossistes
+                </h4>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Commandez en direct auprès de vos commerces de proximité et demi-grossistes partenaires.
+                </p>
+              </div>
+              <PredictiveSearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                products={products}
+                placeholder="Rechercher des produits..."
+                className="w-full sm:max-w-xs"
+              />
+            </div>
+
+            {/* Select dropdown & Active Shop Header */}
+            <div className="flex flex-col sm:flex-row gap-3 items-center">
+              <select
+                value={selectedRetailer}
+                onChange={(e) => {
+                  setSelectedRetailer(e.target.value);
+                  setCart({});
+                }}
+                className="w-full sm:flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-medium text-zinc-900 dark:text-zinc-100 shadow-xs"
+              >
+                <option value="">-- Choisissez une Boutique ou Demi-Gros dans la liste --</option>
+                {retailers.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant Boutique"} • {r.address || r.region || "Local"})
+                  </option>
+                ))}
+              </select>
+
+              {selectedRetailer && (
+                <button
+                  onClick={() => {
+                    setSelectedRetailer("");
+                    setCart({});
+                  }}
+                  className="px-3 py-2 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold hover:bg-zinc-300 transition whitespace-nowrap"
+                >
+                  Changer de Commerce
+                </button>
+              )}
+            </div>
           </div>
 
-          {selectedRetailer ? (
+          {/* Active Merchant Info Card */}
+          {selectedShopObj && (
+            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-sm text-zinc-900 dark:text-white">{selectedShopObj.companyName || selectedShopObj.name}</h4>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    selectedShopObj.role === UserRole.SEMI_WHOLESALER 
+                      ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                      : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                  }`}>
+                    {selectedShopObj.role === UserRole.SEMI_WHOLESALER ? "Demi-Grossiste" : "Détaillant Boutique"}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
+                  📍 {selectedShopObj.address || selectedShopObj.region || "Local"} • 📞 {selectedShopObj.phone || "Non renseigné"} • ✉️ {selectedShopObj.email}
+                </p>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-900/40 px-3 py-1 rounded-lg">
+                Catalogue Ouvert
+              </span>
+            </div>
+          )}
+
+          {!selectedRetailer ? (
+            /* Vendor Selection Cards when no shop is selected */
+            <div className="space-y-3">
+              <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Commerces & Demi-Grossistes Disponibles</h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {retailers.map((r) => {
+                  const itemCount = inventory.filter(i => i.ownerId === r.id).length;
+                  return (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedRetailer(r.id);
+                        setCart({});
+                      }}
+                      className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-2xl cursor-pointer transition shadow-xs hover:shadow-md group space-y-2"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-base">
+                          <Store className="w-5 h-5" />
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          r.role === UserRole.SEMI_WHOLESALER 
+                            ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                            : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                        }`}>
+                          {r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"}
+                        </span>
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 transition">
+                          {r.companyName || r.name}
+                        </h5>
+                        <p className="text-xs text-zinc-500 truncate mt-0.5">
+                          📍 {r.address || r.region || "Local"}
+                        </p>
+                      </div>
+                      <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px] text-zinc-500 font-medium">
+                        <span>{itemCount > 0 ? `${itemCount} articles en stock` : "Catalogue disponible"}</span>
+                        <span className="font-bold text-emerald-600 group-hover:underline">Voir les produits &rarr;</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {inventory.filter((item) => item.ownerId === selectedRetailer).length === 0 ? (
+                {shopStockItems.length === 0 ? (
                   <div className="col-span-full py-12 text-center bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-3xl">
                     <AlertCircle className="w-8 h-8 text-zinc-300 mx-auto mb-3" />
-                    <p className="text-zinc-500 text-sm">Cette boutique n'a pas encore de produits disponibles dans son catalogue numérique.</p>
+                    <p className="text-zinc-500 text-sm">Aucun produit disponible pour le moment chez ce commerçant.</p>
                   </div>
                 ) : (
-                  inventory
-                    .filter((item) => item.ownerId === selectedRetailer)
-                    .map((invItem) => {
-                      const prod = products.find((p) => p.id === invItem.productId);
-                      const matchesSearch = !searchQuery || 
-                        (prod && (
-                          prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (prod.category && prod.category.toLowerCase().includes(searchQuery.toLowerCase()))
-                        ));
-                      if (!prod || !matchesSearch) return null;
-                      
-                      const stock = invItem.stock;
-                      const price = getProductPrice(invItem);
-                      
-                      return (
-                        <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-sm">
-                          <div className="flex gap-3 items-center min-w-0 flex-1">
-                            <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover shadow-xs" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
-                              <p className="text-[10px] text-zinc-500 font-medium">Dispo: {stock}</p>
-                              <p className="text-xs font-bold text-emerald-600 font-mono mt-0.5">{formatCFA(price)}</p>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleAddToCart(prod.id, -1)}
-                                disabled={!cart[prod.id]}
-                                className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 text-xs font-bold transition"
-                                title="Retirer"
-                              >
-                                -
-                              </button>
-                              <span className="w-7 text-center text-xs font-bold text-zinc-900 dark:text-white">{cart[prod.id] || 0}</span>
-                              <button
-                                onClick={() => {
-                                  if ((cart[prod.id] || 0) < stock) {
-                                    handleAddToCart(prod.id, 1);
-                                  } else {
-                                    alert("Stock insuffisant chez ce détaillant.");
-                                  }
-                                }}
-                                disabled={stock === 0}
-                                className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-30 text-xs font-bold transition"
-                                title="Sélectionner"
-                              >
-                                +
-                              </button>
-                            </div>
-                            <button 
-                              onClick={() => {
-                                if ((cart[prod.id] || 0) === 0) handleAddToCart(prod.id, 1);
-                                document.querySelector('.checkout-panel')?.scrollIntoView({ behavior: 'smooth' });
-                              }}
-                              className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline px-1"
-                            >
-                              Commander
-                            </button>
+                  shopStockItems.map((invItem) => {
+                    const prod = products.find((p) => p.id === invItem.productId);
+                    const matchesSearch = !searchQuery || 
+                      (prod && (
+                        prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        (prod.category && prod.category.toLowerCase().includes(searchQuery.toLowerCase()))
+                      ));
+                    if (!prod || !matchesSearch) return null;
+                    
+                    const stock = invItem.stock > 0 ? invItem.stock : 999;
+                    const price = getProductPrice(invItem, prod);
+                    
+                    return (
+                      <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-sm">
+                        <div className="flex gap-3 items-center min-w-0 flex-1">
+                          <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover shadow-xs" />
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
+                            <p className="text-[10px] text-zinc-500 font-medium">Dispo: {stock}</p>
+                            <p className="text-xs font-bold text-emerald-600 font-mono mt-0.5">{formatCFA(price)}</p>
                           </div>
                         </div>
-                      );
-                    })
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleAddToCart(prod.id, -1)}
+                              disabled={!cart[prod.id]}
+                              className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-30 text-xs font-bold transition cursor-pointer"
+                              title="Retirer"
+                            >
+                              -
+                            </button>
+                            <span className="w-7 text-center text-xs font-bold text-zinc-900 dark:text-white">{cart[prod.id] || 0}</span>
+                            <button
+                              onClick={() => {
+                                if ((cart[prod.id] || 0) < stock) {
+                                  handleAddToCart(prod.id, 1);
+                                } else {
+                                  alert("Stock insuffisant chez ce commerçant.");
+                                }
+                              }}
+                              disabled={stock === 0}
+                              className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-30 text-xs font-bold transition cursor-pointer"
+                              title="Sélectionner"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              if ((cart[prod.id] || 0) === 0) handleAddToCart(prod.id, 1);
+                              document.querySelector('.checkout-panel')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline px-1 cursor-pointer"
+                          >
+                            Commander
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
@@ -3551,12 +3679,13 @@ export function ClientDashboard({
                       const qty = cart[prodId];
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedRetailer);
-                      const total = getProductPrice(invItem) * qty;
+                      const unitPrice = getProductPrice(invItem, prod);
+                      const total = unitPrice * qty;
 
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
-                          <span className="font-mono">{qty} x {formatCFA(getProductPrice(invItem))}</span>
+                          <span className="font-mono">{qty} x {formatCFA(unitPrice)}</span>
                         </div>
                       );
                     })}
@@ -3590,15 +3719,11 @@ export function ClientDashboard({
                 <button
                   onClick={handleCheckout}
                   disabled={Object.values(cart).every(q => q === 0)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-1.5"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <ShoppingCart className="w-4 h-4" /> Commander & Suivre mon Livreur
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-zinc-400">
-              Sélectionnez une boutique de quartier pour afficher son catalogue disponible en livraison.
             </div>
           )}
         </div>
