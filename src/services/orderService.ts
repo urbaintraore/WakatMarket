@@ -38,14 +38,6 @@ export const orderService = {
     }
   },
 
-  async updateOrder(orderId: string, fields: Partial<Order>): Promise<void> {
-    try {
-      await updateDoc(doc(db, COLLECTION_NAME, orderId), fields as any);
-    } catch (error: any) {
-      console.warn("Firestore error during updateOrder:", error);
-    }
-  },
-
   subscribeToOrders(callback: (orders: Order[]) => void) {
     const unsub = import("firebase/firestore").then(({ onSnapshot, collection }) => {
       return onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
