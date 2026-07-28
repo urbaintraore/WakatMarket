@@ -93,7 +93,7 @@ export default function App() {
           country: u.pays || "Burkina Faso",
           region: u.ville || "Ouagadougou",
           avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-          companyName: u.companyName || `${u.nom} Entreprise`
+          companyName: u.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
         }));
         setUsers(mappedUsers);
       });
@@ -177,7 +177,7 @@ export default function App() {
         country: dbUser.pays || "Burkina Faso",
         region: dbUser.ville || "Ouagadougou",
         avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-        companyName: `${dbUser.nom} Entreprise`
+        companyName: dbUser.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
       };
       setCurrentUser(mapped);
     }
@@ -249,7 +249,7 @@ export default function App() {
         longitude: profileSource.longitude,
         avatar: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         balance: existingUser?.balance || 0,
-        companyName: profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`,
+        companyName: profileSource.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`),
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
       };
       
@@ -312,7 +312,7 @@ export default function App() {
               longitude: u.longitude,
               avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
               balance: existing?.balance || 0,
-              companyName: `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`,
+              companyName: u.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`),
               address: u.ville && u.quartier ? `${u.quartier}, ${u.ville}, ${u.pays || ""}` : "Non spécifié"
             };
             combinedMap.set(mappedUser.id, mappedUser);

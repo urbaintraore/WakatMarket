@@ -4165,8 +4165,27 @@ export function SemiWholesalerDashboard({
     return filtered;
   }, [users, connections, currentUser.id]);
   const myInventory = inventory.filter((i) => i.ownerId === currentUser.id);
-  const incomingOrders = orders.filter((o) => o.receiverId === currentUser.id && (o.orderType === "B2B_SG2R" || o.orderType === "B2C_SG2C"));
-  const myPurchases = orders.filter((o) => o.senderId === currentUser.id && o.orderType === "B2B_W2SG");
+
+  const myLightClientIds = useMemo(() => {
+    return new Set(
+      lightClients
+        .filter(lc => lc.ownerId === currentUser.id || lc.linkedUserId === currentUser.id)
+        .map(lc => lc.id)
+    );
+  }, [lightClients, currentUser.id]);
+
+  const incomingOrders = useMemo(() => {
+    return orders.filter((o) => 
+      o.receiverId === currentUser.id || 
+      myLightClientIds.has(o.receiverId) ||
+      (currentUser.email && o.receiverId === currentUser.email)
+    );
+  }, [orders, currentUser.id, myLightClientIds, currentUser.email]);
+
+  const myPurchases = useMemo(() => {
+    return orders.filter((o) => o.senderId === currentUser.id && (o.orderType === "B2B_W2SG" || o.orderType === "B2B_M2W"));
+  }, [orders, currentUser.id]);
+
   const sg2rDrivers = users.filter((u) => u.role === UserRole.DRIVER_SG2R && u.status === "ACTIVE");
   const r2cDrivers = users.filter((u) => u.role === UserRole.DRIVER_R2C && u.status === "ACTIVE");
 
@@ -4321,12 +4340,33 @@ export function SemiWholesalerDashboard({
           <BarChart className="w-4 h-4 inline mr-1.5" /> Tableau de Bord
         </button>
         <button
+          onClick={() => setActiveTab("incoming")}
+          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
+            activeTab === "incoming" ? "border-orange-600 text-orange-600 font-bold" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <FileText className="w-4 h-4 inline mr-1.5 text-emerald-600" /> Commandes Clients Reçues
+          {incomingOrders.length > 0 && (
+            <span className="ml-1.5 text-[10px] bg-emerald-600 text-white rounded-full px-2 py-0.5 font-bold shadow-xs">
+              {incomingOrders.length}
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab("procure")}
           className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
             activeTab === "procure" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
           }`}
         >
           <ShoppingCart className="w-4 h-4 inline mr-1.5" /> S'approvisionner
+        </button>
+        <button
+          onClick={() => setActiveTab("purchases")}
+          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+            activeTab === "purchases" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4 inline mr-1.5" /> Mes Achats Grossiste
         </button>
         <button
           onClick={() => setActiveTab("pos")}
@@ -4395,6 +4435,52 @@ export function SemiWholesalerDashboard({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
           {/* Left Column: Inventory & Alerts (Takes 2 columns) */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Quick summary card for Incoming Orders */}
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4 shadow-xs">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-emerald-600" /> Commandes Clients Reçues ({incomingOrders.length})
+                </h4>
+                <button
+                  onClick={() => setActiveTab("incoming")}
+                  className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  Gérer tout ({incomingOrders.length}) &rarr;
+                </button>
+              </div>
+              {incomingOrders.length === 0 ? (
+                <p className="text-xs text-zinc-400 py-4 text-center italic">Aucune commande cliente reçue pour le moment.</p>
+              ) : (
+                <div className="space-y-3">
+                  {incomingOrders.slice(0, 4).map((order) => {
+                    const buyerObj = users.find((u) => u.id === order.senderId);
+                    return (
+                      <div key={order.id} className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl flex items-center justify-between border border-zinc-100 dark:border-zinc-800">
+                        <div>
+                          <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100">
+                            {buyerObj?.companyName || buyerObj?.name || "Client Particulier"} ({order.orderType === "B2B_SG2R" ? "Détaillant B2B" : "Client Particulier B2C"})
+                          </p>
+                          <p className="text-[10px] text-zinc-500 mt-0.5">
+                            N° {order.id} • {new Date(order.createdAt).toLocaleDateString('fr-FR')} • <span className="font-bold text-amber-600">{order.status}</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-emerald-600">{formatCFA(order.totalAmount)}</span>
+                          <button
+                            onClick={() => handleDownloadOrderPDF(order, products)}
+                            className="px-2 py-1 bg-white dark:bg-zinc-700 border border-zinc-200 dark:border-zinc-600 rounded-lg text-[10px] font-bold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 flex items-center gap-1 cursor-pointer"
+                            title="Télécharger Facture PDF"
+                          >
+                            <FileText className="w-3 h-3 text-emerald-600" /> Facture PDF
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
           </div>
 
@@ -4688,18 +4774,36 @@ export function SemiWholesalerDashboard({
                       })}
                     </div>
 
-                    <div className="flex justify-between items-center text-xs pt-2 font-bold">
+                    <div className="flex justify-between items-center text-xs pt-2 font-bold border-t border-zinc-100 dark:border-zinc-800">
                       <span>Total :</span>
-                      <span className="font-mono text-emerald-600">{formatCFA(order.totalAmount)}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-emerald-600 text-sm">{formatCFA(order.totalAmount)}</span>
+                        <button
+                          onClick={() => handleDownloadOrderPDF(order, products)}
+                          className="px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                          title="Télécharger ou imprimer la facture officielle"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-emerald-600" /> Facture PDF
+                        </button>
+                      </div>
                     </div>
 
                     {order.status === OrderStatus.PENDING && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] py-1.5 rounded-lg font-bold transition"
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] py-1.5 px-3 rounded-lg font-bold transition"
                         >
-                          Accepter la commande
+                          Valider la commande
+                        </button>
+                        <button
+                          onClick={() => {
+                            onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED);
+                            handleDownloadOrderPDF(order, products);
+                          }}
+                          className="bg-orange-600 hover:bg-orange-500 text-white text-[11px] py-1.5 px-3 rounded-lg font-bold transition flex items-center gap-1"
+                        >
+                          <Printer className="w-3.5 h-3.5" /> Valider & Imprimer Facture
                         </button>
                         <button
                           onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CANCELLED)}
