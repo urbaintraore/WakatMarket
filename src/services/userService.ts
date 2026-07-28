@@ -16,6 +16,7 @@ export interface FirebaseUser {
   quartier?: string;
   latitude?: number;
   longitude?: number;
+  companyName?: string;
 }
 
 const LOCAL_STORAGE_PREFIX = "wakat_fb_users_v2_";
@@ -97,22 +98,26 @@ export const userService = {
     const currentEmail = currentUser?.email || "";
 
     try {
-      const snap = await getDoc(doc(db, "users", uid));
+      const snapPromise = getDoc(doc(db, "users", uid));
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout getUser")), 2500)
+      );
+      const snap = await Promise.race([snapPromise, timeoutPromise]);
       if (snap.exists()) {
         const data = snap.data() as FirebaseUser;
         if ((data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") && data.rôle !== "ADMIN") {
           data.rôle = "ADMIN" as any;
-          try { await updateDoc(doc(db, "users", uid), { rôle: "ADMIN" }); } catch (e) {}
+          try { await setDoc(doc(db, "users", uid), { rôle: "ADMIN" }, { merge: true }); } catch (e) {}
         }
         if (data.email === "sayouba@ujkz.bf" && data.rôle !== "SEMI_WHOLESALER") {
           data.rôle = "SEMI_WHOLESALER" as any;
-          try { await updateDoc(doc(db, "users", uid), { rôle: "SEMI_WHOLESALER" }); } catch (e) {}
+          try { await setDoc(doc(db, "users", uid), { rôle: "SEMI_WHOLESALER" }, { merge: true }); } catch (e) {}
         }
         saveLocalUser(uid, data);
         return data;
       }
     } catch (error: any) {
-      console.warn("Firestore error during getUser:", error);
+      console.warn("Firestore error/timeout during getUser (using local fallback):", error.message || error);
     }
 
     const local = getLocalUser(uid);
@@ -167,14 +172,48 @@ export const userService = {
 
   async updateUser(uid: string, fields: Partial<FirebaseUser>): Promise<void> {
     const local = getLocalUser(uid);
-    if (local) { if ((local.email === "urbain.traore@yahoo.fr" || local.email === "urbain.traoreurb@gmail.com") && local.rôle !== "ADMIN") { local.rôle = "ADMIN"; saveLocalUser(uid, local); }
+    if (local) {
+      if ((local.email === "urbain.traore@yahoo.fr" || local.email === "urbain.traoreurb@gmail.com") && local.rôle !== "ADMIN") {
+        local.rôle = "ADMIN";
+      }
       saveLocalUser(uid, { ...local, ...fields });
     }
+
+    try {
+      const erpUsersRaw = localStorage.getItem("wakat_erp_v2_users");
+      if (erpUsersRaw) {
+        const erpList: any[] = JSON.parse(erpUsersRaw);
+        const idx = erpList.findIndex((u: any) => u.id === uid);
+        if (idx !== -1) {
+          if (fields.nom !== undefined || fields.prénom !== undefined) {
+            const first = fields.prénom !== undefined ? fields.prénom : (erpList[idx].name?.split(" ")[0] || "");
+            const last = fields.nom !== undefined ? fields.nom : (erpList[idx].name?.split(" ").slice(1).join(" ") || "");
+            erpList[idx].name = `${first} ${last}`.trim();
+          }
+          if (fields.téléphone !== undefined) erpList[idx].phone = fields.téléphone;
+          if (fields.companyName !== undefined) erpList[idx].companyName = fields.companyName;
+          if (fields.pays !== undefined) erpList[idx].country = fields.pays;
+          if (fields.ville !== undefined) erpList[idx].region = fields.ville;
+          if (fields.quartier !== undefined) erpList[idx].sector = fields.quartier;
+          if (fields.latitude !== undefined) erpList[idx].latitude = fields.latitude;
+          if (fields.longitude !== undefined) erpList[idx].longitude = fields.longitude;
+          if (fields.rôle !== undefined) erpList[idx].role = fields.rôle;
+          localStorage.setItem("wakat_erp_v2_users", JSON.stringify(erpList));
+        }
+      }
+    } catch (e) {
+      console.error("Error updating local ERP users in updateUser:", e);
+    }
+
     try {
       const sanitized = sanitizeForFirestore(fields);
-      await updateDoc(doc(db, "users", uid), sanitized);
+      const firestorePromise = setDoc(doc(db, "users", uid), sanitized, { merge: true });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Firestore timeout - fallback local")), 2500)
+      );
+      await Promise.race([firestorePromise, timeoutPromise]);
     } catch (error: any) {
-      console.warn("Firestore updateDoc failed during updateUser (relying on offline fallback):", error.message || error);
+      console.warn("Firestore setDoc failed during updateUser (relying on offline fallback):", error.message || error);
     }
   },
 

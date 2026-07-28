@@ -21,6 +21,7 @@ export interface LightClient {
   id: string;
   ownerId: string; // The user (Manufacturer/Wholesaler/etc.) who owns this client entry
   name: string;
+  companyName?: string;
   phone: string;
   email?: string;
   notes?: string;

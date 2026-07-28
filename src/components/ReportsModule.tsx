@@ -4,17 +4,20 @@
  */
 
 import React, { useState } from "react";
-import { Download, FileSpreadsheet, FileText, Calendar, TrendingUp, DollarSign, ShoppingBag, Receipt, ArrowUpRight, BarChart2 } from "lucide-react";
-import { Order, Product } from "../types";
+import { Download, FileSpreadsheet, FileText, Calendar, TrendingUp, DollarSign, ShoppingBag, Receipt, ArrowUpRight, BarChart2, Package, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { Order, Product, InventoryItem, UserProfile } from "../types";
 import { formatCFA } from "../data";
 
 interface ReportsModuleProps {
   orders: Order[];
   products: Product[];
+  inventory?: InventoryItem[];
+  currentUser?: UserProfile;
 }
 
-export default function ReportsModule({ orders, products }: ReportsModuleProps) {
+export default function ReportsModule({ orders, products, inventory, currentUser }: ReportsModuleProps) {
   const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "yearly">("monthly");
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
 
   // Compute stats based on period
   const totalSales = orders
@@ -24,7 +27,7 @@ export default function ReportsModule({ orders, products }: ReportsModuleProps) 
   const totalCommissions = totalSales * 0.05; // 5% platform fee
   const deliveryCount = orders.filter((o) => o.status === "DELIVERED").length;
 
-  // Simple dataset simulation based on periods
+  // Dataset simulation based on periods
   const getPeriodData = () => {
     switch (period) {
       case "daily":
@@ -56,27 +59,137 @@ export default function ReportsModule({ orders, products }: ReportsModuleProps) 
 
   const activeData = getPeriodData();
 
-  // Export to CSV
-  const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Periode;Chiffre d Affaires (FCFA);Nombre de Commandes;Commissions Plateforme (FCFA)\n";
+  // Robust CSV Download Utility with UTF-8 BOM for Excel Compatibility
+  const downloadCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {
+    const processCell = (val: string | number | boolean | undefined | null) => {
+      let cell = val === null || val === undefined ? "" : String(val);
+      cell = cell.replace(/"/g, '""');
+      if (cell.includes(";") || cell.includes("\n") || cell.includes('"')) {
+        cell = `"${cell}"`;
+      }
+      return cell;
+    };
 
-    activeData.forEach((row) => {
-      csvContent += `${row.name};${row.ventes};${row.commandes};${row.commission}\n`;
-    });
+    const csvLines = [
+      headers.map(processCell).join(";"),
+      ...rows.map((row) => row.map(processCell).join(";")),
+    ];
 
-    const encodedUri = encodeURI(csvContent);
+    // UTF-8 BOM byte sequence ensures Excel opens French accented text correctly
+    const csvContent = "\uFEFF" + csvLines.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Rapport_Distribution_SupplyChain_${period}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-  // Export to Excel (represented as tab-separated spreadsheet)
+  const triggerToast = (msg: string) => {
+    setExportSuccessMessage(msg);
+    setTimeout(() => setExportSuccessMessage(null), 3500);
+  };
+
+  // 1. Export Inventory & Products CSV
+  const handleExportInventoryCSV = () => {
+    const headers = [
+      "ID Article / Produit",
+      "Nom du Produit",
+      "Catégorie",
+      "Marque",
+      "Unité de Conditionnement",
+      "Prix de Gros (FCFA)",
+      "Prix Détail (FCFA)",
+      "Code-Barres",
+      "Stock Disponible",
+      "Seuil d'Alerte"
+    ];
+
+    const sourceData = inventory && inventory.length > 0 ? inventory : products;
+
+    const rows = sourceData.map((item: any) => {
+      const prod = products.find((p) => p.id === (item.productId || item.id)) || (item.name ? item : null);
+      const name = prod?.name || item.name || "Produit Inconnu";
+      const category = prod?.category || item.category || "Général";
+      const brand = prod?.brand || item.brand || "—";
+      const unit = prod?.unit || item.unit || "Unité";
+      const prixGros = item.prixGros || prod?.prixGros || item.price || 0;
+      const prixDetail = item.prixDetail || prod?.prixDetail || item.price || 0;
+      const barcode = prod?.barcode || item.barcode || "—";
+      const stock = item.stock !== undefined ? item.stock : "Illimité";
+      const threshold = item.threshold !== undefined ? item.threshold : (prod?.lowStockThreshold || "—");
+
+      return [
+        item.id,
+        name,
+        category,
+        brand,
+        unit,
+        prixGros,
+        prixDetail,
+        barcode,
+        stock,
+        threshold
+      ];
+    });
+
+    const dateStr = new Date().toISOString().split("T")[0];
+    const filename = `Export_Inventaires_${currentUser?.companyName || "Gestionnaire"}_${dateStr}.csv`;
+    downloadCSV(filename, headers, rows);
+    triggerToast(`Exportation de ${rows.length} article(s) de stock réussie !`);
+  };
+
+  // 2. Export Sales History CSV
+  const handleExportSalesCSV = () => {
+    const headers = [
+      "ID Commande",
+      "Date & Heure",
+      "Rôle Expéditeur",
+      "Rôle Destinataire",
+      "Montant Total (FCFA)",
+      "Statut de Commande",
+      "Mode de Paiement",
+      "Paiement à la Livraison",
+      "Nombre d'Articles"
+    ];
+
+    const rows = orders.map((o) => {
+      const itemCount = o.items ? o.items.reduce((sum, i) => sum + i.quantity, 0) : 0;
+      const dateFormatted = o.createdAt ? new Date(o.createdAt).toLocaleString("fr-FR") : "—";
+      return [
+        o.id,
+        dateFormatted,
+        o.senderId || "Anonyme",
+        o.receiverId || "Client",
+        o.totalAmount,
+        o.status,
+        o.paymentMethod || "CASH",
+        o.paymentMethod === "CASH" ? "Oui" : "Non",
+        itemCount
+      ];
+    });
+
+    const dateStr = new Date().toISOString().split("T")[0];
+    const filename = `Export_Historique_Ventes_${currentUser?.companyName || "Gestionnaire"}_${dateStr}.csv`;
+    downloadCSV(filename, headers, rows);
+    triggerToast(`Exportation de ${rows.length} commande(s) enregistrée(s) réussie !`);
+  };
+
+  // 3. Export BI Summary CSV
+  const handleExportCSV = () => {
+    const headers = ["Période", "Chiffre d'Affaires (FCFA)", "Nombre de Commandes", "Commissions Plateforme (FCFA)"];
+    const rows = activeData.map((row) => [row.name, row.ventes, row.commandes, row.commission]);
+    const filename = `Rapport_BI_Synthese_${period}_${new Date().toISOString().split("T")[0]}.csv`;
+    downloadCSV(filename, headers, rows);
+    triggerToast(`Exportation de la synthèse BI (${period}) réussie !`);
+  };
+
+  // Export to Excel (tab-separated format)
   const handleExportExcel = () => {
-    let excelContent = "data:application/vnd.ms-excel;charset=utf-8,";
+    let excelContent = "data:application/vnd.ms-excel;charset=utf-8,\uFEFF";
     excelContent += "Période\tChiffre d'Affaires (FCFA)\tCommandes\tCommissions (FCFA)\n";
 
     activeData.forEach((row) => {
@@ -90,6 +203,7 @@ export default function ReportsModule({ orders, products }: ReportsModuleProps) 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    triggerToast(`Exportation Excel générée avec succès !`);
   };
 
   const [pdfGenerating, setPdfGenerating] = useState(false);
@@ -97,7 +211,7 @@ export default function ReportsModule({ orders, products }: ReportsModuleProps) 
     setPdfGenerating(true);
     setTimeout(() => {
       setPdfGenerating(false);
-      window.print(); // Native client side PDF/print trigger, extremely elegant!
+      window.print();
     }, 1200);
   };
 
@@ -181,6 +295,73 @@ export default function ReportsModule({ orders, products }: ReportsModuleProps) 
           <p className="text-lg font-bold text-zinc-900 dark:text-white font-mono mt-0.5">
             {formatCFA(totalCommissions)}
           </p>
+        </div>
+      </div>
+
+      {/* Toast Notification for Export */}
+      {exportSuccessMessage && (
+        <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2 animate-fade-in shadow-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+          <span>{exportSuccessMessage}</span>
+        </div>
+      )}
+
+      {/* Dedicated CSV Exports Section for Managers */}
+      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-850/60 border border-zinc-200 dark:border-zinc-800 rounded-xl space-y-3">
+        <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-750 pb-2.5">
+          <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+            <Download className="w-4 h-4 text-emerald-600" />
+            Centre d'Exportation CSV & Téléchargements
+          </h4>
+          <span className="text-[10px] text-zinc-500 font-semibold">Format universel UTF-8 avec séparateurs point-virgule</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Inventory Export Card */}
+          <div className="p-3.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <Package className="w-5 h-5" />
+              </div>
+              <div>
+                <h5 className="text-xs font-bold text-zinc-900 dark:text-white">Rapport d'Inventaire & Stock</h5>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {(inventory && inventory.length > 0 ? inventory.length : products.length)} références en catalogue
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleExportInventoryCSV}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs flex-shrink-0"
+              id="export-inventory-csv-btn"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Inventaire CSV</span>
+            </button>
+          </div>
+
+          {/* Sales History Export Card */}
+          <div className="p-3.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-100 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <ShoppingCart className="w-5 h-5" />
+              </div>
+              <div>
+                <h5 className="text-xs font-bold text-zinc-900 dark:text-white">Historique des Ventes</h5>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {orders.length} transaction(s) de commande
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleExportSalesCSV}
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs flex-shrink-0"
+              id="export-sales-csv-btn"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Ventes CSV</span>
+            </button>
+          </div>
         </div>
       </div>
 

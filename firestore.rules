@@ -29,13 +29,13 @@ service cloud.firestore {
       let relId1 = request.auth.uid + "_" + autreUid;
       let relId2 = autreUid + "_" + request.auth.uid;
       return (exists(/databases/$(database)/documents/relations/$(relId1)) && 
-              get(/databases/$(database)/documents/relations/$(relId1)).data.statut == 'actif')
+              (get(/databases/$(database)/documents/relations/$(relId1)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(relId1)).data.statut == 'active'))
           || (exists(/databases/$(database)/documents/relations/$(relId2)) && 
-              get(/databases/$(database)/documents/relations/$(relId2)).data.statut == 'actif')
+              (get(/databases/$(database)/documents/relations/$(relId2)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(relId2)).data.statut == 'active'))
           || (exists(/databases/$(database)/documents/connections/$(relId1)) && 
-              get(/databases/$(database)/documents/connections/$(relId1)).data.status == 'active')
+              (get(/databases/$(database)/documents/connections/$(relId1)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(relId1)).data.status == 'actif'))
           || (exists(/databases/$(database)/documents/connections/$(relId2)) && 
-              get(/databases/$(database)/documents/connections/$(relId2)).data.status == 'active');
+              (get(/databases/$(database)/documents/connections/$(relId2)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(relId2)).data.status == 'actif'));
     }
 
     // 1. Profils Utilisateurs
@@ -59,11 +59,11 @@ service cloud.firestore {
         request.auth.uid == resource.data.destinataireId
       );
 
-      // Création de demande de connexion
+      // Création de demande de connexion ou enregistrement direct de partenaire
       allow create: if isAuthenticated() && 
         request.auth.uid == request.resource.data.demandeurId &&
         request.auth.uid in request.resource.data.participants &&
-        request.resource.data.statut == 'en_attente';
+        (request.resource.data.statut == 'en_attente' || request.resource.data.statut == 'actif' || request.resource.data.statut == 'active');
 
       // Réponse par le destinataire, renvoi par le demandeur, ou admin
       allow update: if isAuthenticated() && (
@@ -141,10 +141,18 @@ service cloud.firestore {
 
     match /inventory/{inventoryId} {
       allow read: if isAuthenticated() && (
+        resource == null ||
         request.auth.uid == resource.data.userId || 
-        estPartenaireActif(resource.data.userId)
+        request.auth.uid == resource.data.ownerId || 
+        ('userId' in resource.data && estPartenaireActif(resource.data.userId)) ||
+        ('ownerId' in resource.data && estPartenaireActif(resource.data.ownerId))
       );
-      allow write: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource == null ||
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.ownerId
+      );
     }
 
     match /products/{productId} {

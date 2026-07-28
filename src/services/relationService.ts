@@ -98,21 +98,8 @@ export const relationService = {
 
     // --- COMPATIBILITY VALIDATION ---
     const isRoleAllowed = (creatorRole: UserRole, targetRole: UserRole): boolean => {
-      if (creatorRole === UserRole.ADMIN || targetRole === UserRole.ADMIN) return true;
-      switch (creatorRole) {
-        case UserRole.MANUFACTURER:
-          return [UserRole.WHOLESALER].includes(targetRole);
-        case UserRole.WHOLESALER:
-          return [UserRole.MANUFACTURER, UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(targetRole);
-        case UserRole.SEMI_WHOLESALER:
-          return [UserRole.WHOLESALER, UserRole.RETAILER, UserRole.CLIENT].includes(targetRole);
-        case UserRole.RETAILER:
-          return [UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.CLIENT].includes(targetRole);
-        case UserRole.CLIENT:
-          return [UserRole.RETAILER, UserRole.SEMI_WHOLESALER].includes(targetRole);
-        default:
-          return true;
-      }
+      // All active platform roles are compatible for business connections and trading
+      return true;
     };
 
     const isCompatible = isRoleAllowed(demandeur.role, destinataire.role) || isRoleAllowed(destinataire.role, demandeur.role);
@@ -185,17 +172,17 @@ export const relationService = {
         });
       });
     } catch (e: any) {
-      console.error("[relationService] Transaction Firestore échouée:", e);
+      const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof Error && (
-        e.message.includes("déjà en relation") || 
-        e.message.includes("non compatibles") || 
-        e.message.includes("enregistrer vous-même") ||
-        e.message.includes("n'existe pas") ||
-        e.message.includes("Seul le destinataire")
+        msg.includes("déjà en relation") || 
+        msg.includes("non compatibles") || 
+        msg.includes("enregistrer vous-même") ||
+        msg.includes("La relation spécifiée n'existe pas") ||
+        msg.includes("Seul le destinataire")
       )) {
         throw e;
       }
-      console.warn("[relationService] Falling back to offline local storage because of Firestore failure:", e.message || e);
+      console.warn("[relationService] Firestore offline fallback:", msg);
     }
 
     // Sauvegarde locale systématique (Mode Hors-Ligne)
@@ -317,10 +304,10 @@ export const relationService = {
           dateReponse: now
         });
 
-        transaction.update(legacyConnRef, {
+        transaction.set(legacyConnRef, {
           status: legacyStatus,
           updatedAt: new Date().toISOString()
-        });
+        }, { merge: true });
 
         // 2. Création notification dans /notifications/{demandeurId}/items/{notifId}
         const notifDemandeurRef = doc(collection(db, "notifications", demandeurId, "items"));
@@ -339,14 +326,14 @@ export const relationService = {
         });
       });
     } catch (e: any) {
-      console.error("[relationService] Transaction de réponse Firestore échouée:", e);
+      const msg = e instanceof Error ? e.message : String(e);
       if (e instanceof Error && (
-        e.message.includes("n'existe pas") ||
-        e.message.includes("Seul le destinataire")
+        msg.includes("La relation spécifiée n'existe pas") ||
+        msg.includes("Seul le destinataire")
       )) {
         throw e;
       }
-      console.warn("[relationService] Falling back to offline local storage for response because of Firestore failure:", e.message || e);
+      console.warn("[relationService] Firestore offline fallback for response:", msg);
     }
 
     // Traitement local systématique

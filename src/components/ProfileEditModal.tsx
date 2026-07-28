@@ -58,11 +58,13 @@ export function ProfileEditModal({
     }
 
     setProfileSaving(true);
+    setFbMsg(null);
     try {
       const updatedFields: Partial<FirebaseUser> = {
         nom: editNom,
         prénom: editPrenom,
         téléphone: editPhone,
+        companyName: editCompanyName,
         pays: editCountry,
         ville: editRegion,
         quartier: editSector,
@@ -91,7 +93,7 @@ export function ProfileEditModal({
       
       setTimeout(() => {
         onClose();
-      }, 1000);
+      }, 800);
     } catch (err: any) {
       console.error("Error saving profile:", err);
       setFbMsg({ type: "error", text: err.message || "Erreur lors de la mise à jour du profil." });

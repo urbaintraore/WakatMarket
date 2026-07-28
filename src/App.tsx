@@ -46,6 +46,7 @@ import AICopilot from "./components/AICopilot";
 import ReportsModule from "./components/ReportsModule";
 import ChatModule from "./components/ChatModule";
 import PitchDeck from "./components/PitchDeck";
+import SupportModal from "./components/SupportModal";
 
 export default function App() {
   // Theme state
@@ -225,7 +226,7 @@ export default function App() {
         longitude: profileSource.longitude,
         avatar: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         balance: existingUser?.balance || 0,
-        companyName: `${profileSource.nom || "Entreprise"} Entreprise`,
+        companyName: profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`,
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
       };
       
@@ -378,6 +379,7 @@ export default function App() {
   const [showReports, setShowReports] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showPitchDeck, setShowPitchDeck] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
   const [showMobileToolsMenu, setShowMobileToolsMenu] = useState(false);
 
   // States for user profile editing
@@ -925,21 +927,7 @@ export default function App() {
   };
 
   const isRoleAllowed = (creatorRole: UserRole, targetRole: UserRole): boolean => {
-    if (creatorRole === UserRole.ADMIN) return true;
-    switch (creatorRole) {
-      case UserRole.MANUFACTURER:
-        return [UserRole.WHOLESALER].includes(targetRole);
-      case UserRole.WHOLESALER:
-        return [UserRole.MANUFACTURER, UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(targetRole);
-      case UserRole.SEMI_WHOLESALER:
-        return [UserRole.WHOLESALER, UserRole.RETAILER, UserRole.CLIENT].includes(targetRole);
-      case UserRole.RETAILER:
-        return [UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.CLIENT].includes(targetRole);
-      case UserRole.CLIENT:
-        return [UserRole.RETAILER, UserRole.SEMI_WHOLESALER].includes(targetRole);
-      default:
-        return true;
-    }
+    return true;
   };
 
   const handleCreateLightClient = (identifier: string, notes?: string, role?: UserRole, isPartnerRegistration?: boolean) => {
@@ -1089,16 +1077,52 @@ export default function App() {
   const handlePlaceB2BOrder = (receiverId: string, items: { productId: string; quantity: number }[]) => {
     if (!currentUser) return;
 
+    // Resolve vendor/supplier object
+    const userVendor = users.find((u) => u.id === receiverId);
+    const lcVendor = lightClients.find((lc) => lc.id === receiverId || lc.linkedUserId === receiverId);
+
+    const vendorObj = userVendor || (lcVendor ? {
+      id: lcVendor.id,
+      name: lcVendor.name,
+      companyName: lcVendor.companyName || lcVendor.name,
+      role: UserRole.WHOLESALER,
+      region: "Local",
+      phone: lcVendor.phone,
+      email: lcVendor.email
+    } as any : {
+      id: receiverId,
+      name: `Fournisseur ${receiverId}`,
+      companyName: `Fournisseur Direct`,
+      role: UserRole.WHOLESALER,
+      region: "Local"
+    } as any);
+
     // Estimate shipping metrics
-    const vendorObj = users.find((u) => u.id === receiverId);
     const shippingInfo = estimateShipping(
       currentUser.region || "Abidjan",
       vendorObj?.region || "Abidjan"
     );
 
+    // Helper to resolve unit price for an item
+    const getItemPrice = (productId: string) => {
+      const invItem = inventory.find((i) => i.productId === productId && i.ownerId === receiverId);
+      if (invItem && invItem.price) return invItem.price;
+      if (invItem && invItem.prixGros) return invItem.prixGros;
+
+      const prod = products.find((p) => p.id === productId);
+      if (prod) {
+        return prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
+      }
+
+      const anyInv = inventory.find((i) => i.productId === productId);
+      if (anyInv) return anyInv.price || anyInv.prixGros || 1000;
+
+      return 1000;
+    };
+
     const totalAmount = items.reduce((sum, item) => {
-      const invItem = inventory.find((i) => i.productId === item.productId && i.ownerId === receiverId);
-      return sum + (invItem?.price || 0) * item.quantity;
+      const unitPrice = getItemPrice(item.productId);
+      return sum + unitPrice * item.quantity;
     }, 0) + shippingInfo.fee;
 
     const newOrder: Order = {
@@ -1114,11 +1138,11 @@ export default function App() {
       senderId: currentUser.id,
       receiverId,
       items: items.map((i) => {
-        const invItem = inventory.find((inv) => inv.productId === i.productId && inv.ownerId === receiverId);
+        const unitPrice = getItemPrice(i.productId);
         return {
           productId: i.productId,
           quantity: i.quantity,
-          priceAtOrder: invItem?.price || 0
+          priceAtOrder: unitPrice
         };
       }),
       totalAmount,
@@ -1560,9 +1584,16 @@ export default function App() {
           isConnectionActive(c)
         );
 
-        return hasOrder || hasConnection;
+        const isLightClient = lightClients.some(lc => 
+          lc.ownerId === currentUser.id && lc.linkedUserId === u.id
+        );
+
+        const isWholesalerSupplier = (currentUser.role === UserRole.RETAILER || currentUser.role === UserRole.SEMI_WHOLESALER || currentUser.role === UserRole.CLIENT) && 
+          (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER);
+
+        return hasOrder || hasConnection || isLightClient || isWholesalerSupplier;
       })
-    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, realConnections]);
+    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, realConnections, lightClients]);
 
   const displayProducts = useMemo(() => deduplicate(isRealUserAuthenticated
     ? products.filter(p => {
@@ -1571,24 +1602,45 @@ export default function App() {
         const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
         if (isMine) return true;
         
-        // Include products from partners we are connected to
-        return inventory.some(i => i.productId === p.id && realConnections.some(c => 
-          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
+        // Include products from partners we are connected to or linked in lightClients
+        const isPartnerInventory = inventory.some(i => i.productId === p.id && (
+          realConnections.some(c => 
+            ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
+          ) ||
+          lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId)
         ));
-      })
-    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, realConnections]);
 
-  const displayInventory = useMemo(() => deduplicate(isRealUserAuthenticated
-    ? inventory.filter(i => {
-        if (!currentUser) return false;
-        if (i.ownerId === currentUser.id) return true;
-        
-        // Include inventory from partners we are connected to
-        return realConnections.some(c => 
-          ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
-        );
+        // Also allow products from Wholesalers/Semi-Wholesalers so Retailers can browse and order
+        const isWholesalerProd = inventory.some(i => i.productId === p.id && users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER))) ||
+          users.some(u => u.id === p.creatorId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
+
+        return isPartnerInventory || isWholesalerProd;
       })
-    : inventory) as InventoryItem[], [isRealUserAuthenticated, inventory, currentUser, realConnections]);
+    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, realConnections, lightClients, users]);
+
+  const displayInventory = useMemo(() => {
+    console.log("[DEBUG displayInventory] currentUser:", currentUser?.id, "realConnections:", realConnections);
+    return deduplicate(isRealUserAuthenticated
+      ? inventory.filter(i => {
+          if (!currentUser) return false;
+          if (i.ownerId === currentUser.id) return true;
+          
+          // Include inventory from partners we are connected to or linked in lightClients
+          const isConnectedPartner = realConnections.some(c => 
+            ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
+          );
+
+          const isLightClientPartner = lightClients.some(lc => 
+            lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId
+          );
+
+          // Include inventory from Wholesalers/Semi-Wholesalers for Retailer replenishment
+          const isWholesalerOwner = users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
+
+          return isConnectedPartner || isLightClientPartner || isWholesalerOwner;
+        })
+      : inventory) as InventoryItem[];
+  }, [isRealUserAuthenticated, inventory, currentUser, realConnections, lightClients, users]);
 
   const displayOrders = useMemo(() => deduplicate(isRealUserAuthenticated
     ? orders.filter(o => o.senderId === currentUser?.id || o.receiverId === currentUser?.id)
@@ -1653,6 +1705,15 @@ export default function App() {
               id="header-ai-toggle"
             >
               <Sparkles className="w-4 h-4 text-amber-500" /> IA Forecasting
+            </button>
+            <button
+              onClick={() => setShowSupportModal(true)}
+              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                showSupportModal ? "bg-emerald-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+              }`}
+              id="header-support-toggle"
+            >
+              <HelpCircle className="w-4 h-4 text-emerald-500" /> Support
             </button>
             <button
               onClick={() => setShowReports(!showReports)}
@@ -1726,6 +1787,15 @@ export default function App() {
                     >
                       <Sparkles className="w-4 h-4 text-amber-500" />
                       <span>IA Forecasting</span>
+                    </button>
+                    <button
+                      onClick={() => { setShowSupportModal(true); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showSupportModal ? "bg-emerald-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <HelpCircle className="w-4 h-4 text-emerald-500" />
+                      <span>Support & FAQ IA</span>
                     </button>
                     <button
                       onClick={() => { setShowReports(!showReports); setShowMobileToolsMenu(false); }}
@@ -2365,7 +2435,7 @@ export default function App() {
                   exit={{ opacity: 0, y: -20 }}
                   className="relative z-30"
                 >
-                  <ReportsModule orders={displayOrders} products={products} />
+                  <ReportsModule orders={displayOrders} products={products} inventory={displayInventory} currentUser={currentUser} />
                 </motion.div>
               )}
 
@@ -2594,6 +2664,14 @@ export default function App() {
             }}
           />
         )}
+
+        {/* Support & AI FAQ Modal */}
+        <SupportModal
+          isOpen={showSupportModal}
+          onClose={() => setShowSupportModal(false)}
+          userRole={currentUser?.role}
+          userName={currentUser?.name}
+        />
 
       </main>
 

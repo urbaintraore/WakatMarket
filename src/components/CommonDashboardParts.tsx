@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2 } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
@@ -74,9 +74,11 @@ interface ClientListProps {
   onDeleteClient: (clientId: string) => void;
   currentUserRole?: UserRole;
   users?: UserProfile[];
+  products?: Product[];
+  inventory?: InventoryItem[];
 }
 
-export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, payments, onCreateClient, onAddPayment, onDeleteClient, currentUserRole, users = [] }) => {
+export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, payments, onCreateClient, onAddPayment, onDeleteClient, currentUserRole, users = [], products = [], inventory = [] }) => {
   const { dbUser } = useAuthContext();
   const currentUser: UserProfile | null = useMemo(() => {
     if (!dbUser) return null;
@@ -116,6 +118,8 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
   const [isRegisteringPartner, setIsRegisteringPartner] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [txStartDate, setTxStartDate] = useState<string>("");
+  const [txEndDate, setTxEndDate] = useState<string>("");
 
   // Message modal state
   const [selectedClientForMessage, setSelectedClientForMessage] = useState<{
@@ -886,6 +890,35 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                 </div>
               </div>
               
+              <div className="flex flex-wrap items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-750 text-xs mb-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-zinc-500">Du :</span>
+                  <input
+                    type="date"
+                    value={txStartDate}
+                    onChange={(e) => setTxStartDate(e.target.value)}
+                    className="px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-medium"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-zinc-500">Au :</span>
+                  <input
+                    type="date"
+                    value={txEndDate}
+                    onChange={(e) => setTxEndDate(e.target.value)}
+                    className="px-2.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-medium"
+                  />
+                </div>
+                {(txStartDate || txEndDate) && (
+                  <button
+                    onClick={() => { setTxStartDate(""); setTxEndDate(""); }}
+                    className="text-xs text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer ml-auto"
+                  >
+                    Réinitialiser
+                  </button>
+                )}
+              </div>
+
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-sm">
                 <table className="w-full text-[11px] text-left">
                   <thead className="bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700">
@@ -897,38 +930,62 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {[
-                      ...orders.filter(o => o.clientId === selectedClientId).map(o => ({
-                        date: o.createdAt,
-                        type: 'VENTE',
-                        detail: `Commande #${o.id.split('-').pop()}`,
-                        amount: o.totalAmount,
-                        isDebt: true
-                      })),
-                      ...payments.filter(p => p.clientId === selectedClientId).map(p => ({
-                        date: p.date,
-                        type: 'PAIEMENT',
-                        detail: p.saleId ? `Paiement Vente #${p.saleId.split('-').pop()}` : 'Paiement libre',
-                        amount: p.amount,
-                        isDebt: false
-                      }))
-                    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .map((row, idx) => (
-                      <tr key={idx} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
-                        <td className="px-4 py-3 text-zinc-500">{new Date(row.date).toLocaleDateString()}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
-                            row.type === 'VENTE' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'
-                          }`}>
-                            {row.type}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium">{row.detail}</td>
-                        <td className={`px-4 py-3 text-right font-bold font-mono ${row.isDebt ? 'text-red-500' : 'text-emerald-500'}`}>
-                          {row.isDebt ? '-' : '+'}{formatCFA(row.amount)}
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const allTx = [
+                        ...orders.filter(o => o.clientId === selectedClientId).map(o => ({
+                          date: o.createdAt,
+                          type: 'VENTE',
+                          detail: `Commande #${o.id.split('-').pop()}`,
+                          amount: o.totalAmount,
+                          isDebt: true
+                        })),
+                        ...payments.filter(p => p.clientId === selectedClientId).map(p => ({
+                          date: p.date,
+                          type: 'PAIEMENT',
+                          detail: p.saleId ? `Paiement Vente #${p.saleId.split('-').pop()}` : 'Paiement libre',
+                          amount: p.amount,
+                          isDebt: false
+                        }))
+                      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                      const filtered = allTx.filter(row => {
+                        const d = new Date(row.date).getTime();
+                        if (txStartDate && d < new Date(txStartDate).getTime()) return false;
+                        if (txEndDate) {
+                          const end = new Date(txEndDate);
+                          end.setHours(23, 59, 59, 999);
+                          if (d > end.getTime()) return false;
+                        }
+                        return true;
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-zinc-400 italic">
+                              Aucune transaction trouvée pour cette période.
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return filtered.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                          <td className="px-4 py-3 text-zinc-500">{new Date(row.date).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
+                              row.type === 'VENTE' ? 'bg-orange-100 text-orange-600' : 'bg-emerald-100 text-emerald-600'
+                            }`}>
+                              {row.type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-medium">{row.detail}</td>
+                          <td className={`px-4 py-3 text-right font-bold font-mono ${row.isDebt ? 'text-red-500' : 'text-emerald-500'}`}>
+                            {row.isDebt ? '-' : '+'}{formatCFA(row.amount)}
+                          </td>
+                        </tr>
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -956,8 +1013,8 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
         <PartnerStockModal
           partner={selectedPartnerForStock}
           currentUser={currentUser}
-          products={db.getProducts()}
-          inventory={db.getInventory()}
+          products={products && products.length > 0 ? products : db.getProducts()}
+          inventory={inventory && inventory.length > 0 ? inventory : db.getInventory()}
           isOpen={true}
           onClose={() => setSelectedPartnerForStock(null)}
           onOpenChat={(partnerId) => {
@@ -1457,4 +1514,537 @@ export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({ orders, 
     </div>
   );
 };
+
+export interface SupplierSelectorProps {
+  currentUser: UserProfile;
+  users: UserProfile[];
+  connections?: Connection[];
+  lightClients?: LightClient[];
+  selectedSupplierId: string;
+  onSelectSupplier: (supplierId: string) => void;
+  targetRoles?: UserRole[];
+  title?: string;
+  description?: string;
+  onCreateLightClient?: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
+}
+
+export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
+  currentUser,
+  users = [],
+  connections = [],
+  lightClients = [],
+  selectedSupplierId,
+  onSelectSupplier,
+  targetRoles,
+  title = "Sélection du Fournisseur",
+  description = "Choisissez un fournisseur dans votre carnet d'adresses ou tapez son numéro ou son email.",
+  onCreateLightClient
+}) => {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Determine active connection IDs
+  const connectedPartnerUserIds = useMemo(() => {
+    const set = new Set<string>();
+    connections.forEach(c => {
+      if (isConnectionActive(c)) {
+        if (c.senderId === currentUser.id) set.add(c.receiverId);
+        if (c.receiverId === currentUser.id) set.add(c.senderId);
+      }
+    });
+    return set;
+  }, [connections, currentUser.id]);
+
+  // Address book entries owned by current user
+  const addressBookEntries = useMemo(() => {
+    return lightClients.filter(lc => lc.ownerId === currentUser.id);
+  }, [lightClients, currentUser.id]);
+
+  // Combine users & light clients into unified list
+  const allSuppliers = useMemo(() => {
+    const items: Array<{
+      id: string;
+      name: string;
+      companyName?: string;
+      phone?: string;
+      email?: string;
+      role?: UserRole | string;
+      region?: string;
+      country?: string;
+      isAddressBook: boolean;
+      isConnected: boolean;
+      isUser: boolean;
+      realUserId?: string;
+    }> = [];
+
+    const addedIds = new Set<string>();
+
+    // 1. Address book light clients
+    addressBookEntries.forEach(lc => {
+      const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
+      const itemId = lc.linkedUserId || lc.id;
+      addedIds.add(itemId);
+
+      items.push({
+        id: itemId,
+        name: lc.name,
+        companyName: lc.companyName || linkedUser?.companyName,
+        phone: lc.phone || linkedUser?.phone,
+        email: lc.email || linkedUser?.email,
+        role: linkedUser?.role || "Partenaire Carnet",
+        region: linkedUser?.region || "Local",
+        country: linkedUser?.country || "",
+        isAddressBook: true,
+        isConnected: lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false,
+        isUser: !!linkedUser,
+        realUserId: lc.linkedUserId
+      });
+    });
+
+    // 2. Connected partners & target role users
+    users.forEach(u => {
+      if (u.id === currentUser.id) return;
+      if (addedIds.has(u.id)) return;
+
+      const isConnected = connectedPartnerUserIds.has(u.id);
+      const matchesRole = !targetRoles || targetRoles.length === 0 || targetRoles.includes(u.role);
+
+      if (isConnected || matchesRole) {
+        addedIds.add(u.id);
+        items.push({
+          id: u.id,
+          name: u.name,
+          companyName: u.companyName,
+          phone: u.phone,
+          email: u.email,
+          role: u.role,
+          region: u.region,
+          country: u.country,
+          isAddressBook: false,
+          isConnected: isConnected,
+          isUser: true,
+          realUserId: u.id
+        });
+      }
+    });
+
+    return items;
+  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser.id]);
+
+  // Filter address book / connected suppliers for quick selector
+  const addressBookSuppliers = useMemo(() => {
+    return allSuppliers.filter(s => s.isAddressBook || s.isConnected);
+  }, [allSuppliers]);
+
+  // Filtered suppliers based on search query
+  const cleanPhone = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
+
+  const filteredSuppliers = useMemo(() => {
+    if (!searchTerm.trim()) return allSuppliers;
+    const term = searchTerm.toLowerCase().trim();
+    const termNum = cleanPhone(term);
+
+    const matchedSupplierIds = new Set<string>();
+    const results: typeof allSuppliers = [];
+
+    // 1. Search in allSuppliers
+    allSuppliers.forEach(s => {
+      const sPhoneClean = cleanPhone(s.phone);
+      const matchesName = s.name.toLowerCase().includes(term);
+      const matchesCompany = s.companyName?.toLowerCase().includes(term);
+      const matchesEmail = s.email?.toLowerCase().includes(term);
+      const matchesPhoneRaw = s.phone?.toLowerCase().includes(term);
+      const matchesPhoneClean = termNum.length >= 3 && sPhoneClean.includes(termNum);
+
+      if (matchesName || matchesCompany || matchesEmail || matchesPhoneRaw || matchesPhoneClean) {
+        matchedSupplierIds.add(s.id);
+        results.push(s);
+      }
+    });
+
+    // 2. Search in all users (in case targetRoles filtered them out)
+    users.forEach(u => {
+      if (u.id === currentUser.id) return;
+      if (matchedSupplierIds.has(u.id)) return;
+
+      const uPhoneClean = cleanPhone(u.phone);
+      const matchesName = u.name.toLowerCase().includes(term);
+      const matchesCompany = u.companyName?.toLowerCase().includes(term);
+      const matchesEmail = u.email?.toLowerCase().includes(term);
+      const matchesPhoneRaw = u.phone?.toLowerCase().includes(term);
+      const matchesPhoneClean = termNum.length >= 3 && uPhoneClean.includes(termNum);
+
+      if (matchesName || matchesCompany || matchesEmail || matchesPhoneRaw || matchesPhoneClean) {
+        matchedSupplierIds.add(u.id);
+        results.push({
+          id: u.id,
+          name: u.name,
+          companyName: u.companyName,
+          phone: u.phone,
+          email: u.email,
+          role: u.role,
+          region: u.region,
+          country: u.country,
+          isAddressBook: false,
+          isConnected: connectedPartnerUserIds.has(u.id),
+          isUser: true,
+          realUserId: u.id
+        });
+      }
+    });
+
+    // 3. Search in light clients
+    lightClients.forEach(lc => {
+      if (lc.ownerId !== currentUser.id) return;
+      const itemId = lc.linkedUserId || lc.id;
+      if (matchedSupplierIds.has(itemId)) return;
+
+      const lcPhoneClean = cleanPhone(lc.phone);
+      const matchesName = lc.name.toLowerCase().includes(term);
+      const matchesCompany = lc.companyName?.toLowerCase().includes(term);
+      const matchesEmail = lc.email?.toLowerCase().includes(term);
+      const matchesPhoneRaw = lc.phone?.toLowerCase().includes(term);
+      const matchesPhoneClean = termNum.length >= 3 && lcPhoneClean.includes(termNum);
+
+      if (matchesName || matchesCompany || matchesEmail || matchesPhoneRaw || matchesPhoneClean) {
+        matchedSupplierIds.add(itemId);
+        results.push({
+          id: itemId,
+          name: lc.name,
+          companyName: lc.companyName,
+          phone: lc.phone,
+          email: lc.email,
+          role: "Carnet d'adresses",
+          region: "Local",
+          country: "",
+          isAddressBook: true,
+          isConnected: lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false,
+          isUser: !!lc.linkedUserId,
+          realUserId: lc.linkedUserId
+        });
+      }
+    });
+
+    return results;
+  }, [allSuppliers, users, lightClients, searchTerm, connectedPartnerUserIds, currentUser.id]);
+
+  const typedInputTrimmed = searchTerm.trim();
+  const isInputEmail = typedInputTrimmed.includes('@') && typedInputTrimmed.includes('.');
+  const isInputPhone = /^[+0-9\s-]{6,}$/.test(typedInputTrimmed);
+  const isDirectSearchMode = (isInputEmail || isInputPhone || typedInputTrimmed.length >= 3) && filteredSuppliers.length === 0;
+
+  const handleCreateOrSelectDirectSupplier = () => {
+    if (!typedInputTrimmed) return;
+
+    const termNum = cleanPhone(typedInputTrimmed);
+
+    // Search by email or phone in registered users
+    const existingUser = users.find(u => 
+      (u.email && u.email.toLowerCase() === typedInputTrimmed.toLowerCase()) ||
+      (u.phone && (
+        u.phone.toLowerCase().replace(/\s+/g, '') === typedInputTrimmed.toLowerCase().replace(/\s+/g, '') ||
+        (termNum.length >= 6 && cleanPhone(u.phone).includes(termNum))
+      ))
+    );
+
+    if (existingUser) {
+      onSelectSupplier(existingUser.id);
+      setSearchTerm("");
+      return;
+    }
+
+    // Search by email or phone in light clients
+    const existingClient = lightClients.find(lc => 
+      lc.ownerId === currentUser.id && (
+        (lc.email && lc.email.toLowerCase() === typedInputTrimmed.toLowerCase()) ||
+        (lc.phone && (
+          lc.phone.toLowerCase().replace(/\s+/g, '') === typedInputTrimmed.toLowerCase().replace(/\s+/g, '') ||
+          (termNum.length >= 6 && cleanPhone(lc.phone).includes(termNum))
+        ))
+      )
+    );
+
+    if (existingClient) {
+      onSelectSupplier(existingClient.linkedUserId || existingClient.id);
+      setSearchTerm("");
+      return;
+    }
+
+    // Create a new supplier in address book
+    const newClientId = `lc-supplier-${Date.now()}`;
+    const newClient: LightClient = {
+      id: newClientId,
+      ownerId: currentUser.id,
+      name: isInputEmail ? typedInputTrimmed.split('@')[0] : `Fournisseur (${typedInputTrimmed})`,
+      companyName: `Fournisseur ${typedInputTrimmed}`,
+      email: isInputEmail ? typedInputTrimmed : undefined,
+      phone: isInputPhone ? typedInputTrimmed : (typedInputTrimmed.replace(/[^0-9]/g, '') || "00000000"),
+      notes: "Ajouté via réapprovisionnement direct",
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedClients = [...lightClients, newClient];
+    db.saveLightClients(updatedClients);
+
+    if (onCreateLightClient) {
+      onCreateLightClient(typedInputTrimmed, "Fournisseur réapprovisionnement direct", UserRole.WHOLESALER, true);
+    }
+
+    onSelectSupplier(newClient.id);
+    setSearchTerm("");
+  };
+
+  const selectedSupplierObj = useMemo(() => {
+    const found = allSuppliers.find(s => s.id === selectedSupplierId);
+    if (found) return found;
+
+    const lc = lightClients.find(l => l.id === selectedSupplierId || l.linkedUserId === selectedSupplierId);
+    if (lc) {
+      return {
+        id: lc.linkedUserId || lc.id,
+        name: lc.name,
+        companyName: lc.companyName,
+        phone: lc.phone,
+        email: lc.email,
+        role: "Carnet d'adresses",
+        region: "Local",
+        country: "",
+        isAddressBook: true,
+        isConnected: false,
+        isUser: !!lc.linkedUserId,
+        realUserId: lc.linkedUserId
+      };
+    }
+
+    const u = users.find(usr => usr.id === selectedSupplierId);
+    if (u) {
+      return {
+        id: u.id,
+        name: u.name,
+        companyName: u.companyName,
+        phone: u.phone,
+        email: u.email,
+        role: u.role,
+        region: u.region,
+        country: u.country,
+        isAddressBook: false,
+        isConnected: connectedPartnerUserIds.has(u.id),
+        isUser: true,
+        realUserId: u.id
+      };
+    }
+
+    if (selectedSupplierId) {
+      return {
+        id: selectedSupplierId,
+        name: `Fournisseur (${selectedSupplierId})`,
+        companyName: "Contact Direct",
+        phone: "",
+        email: "",
+        role: "Contact Direct",
+        region: "Local",
+        isAddressBook: true,
+        isConnected: false,
+        isUser: false
+      };
+    }
+
+    return null;
+  }, [allSuppliers, lightClients, users, selectedSupplierId, connectedPartnerUserIds]);
+
+  return (
+    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider flex items-center gap-2">
+            <Landmark className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            {title}
+          </h4>
+          <p className="text-[11px] text-zinc-500 mt-0.5">{description}</p>
+        </div>
+
+        {/* Dropdown selector */}
+        <select
+          value={selectedSupplierId}
+          onChange={(e) => onSelectSupplier(e.target.value)}
+          className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-semibold text-zinc-900 dark:text-zinc-100 min-w-[220px]"
+        >
+          <option value="">-- Choisir un fournisseur --</option>
+          {addressBookSuppliers.length > 0 && (
+            <optgroup label="📍 Carnet d'adresses & Partenaires">
+              {addressBookSuppliers.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.phone || s.email || s.region}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="🌐 Tous les Fournisseurs du réseau">
+            {allSuppliers.map(s => (
+              <option key={s.id} value={s.id}>
+                [{s.role}] {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.region || 'National'}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+      </div>
+
+      {/* Address Book Quick Selection Chips */}
+      {addressBookSuppliers.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+            Sélection rapide (Carnet d'adresses & Partenaires) :
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {addressBookSuppliers.map(s => {
+              const isSelected = selectedSupplierId === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onSelectSupplier(s.id)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs transition-all flex items-center gap-2 ${
+                    isSelected
+                      ? "bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs"
+                      : "bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700 hover:border-emerald-500"
+                  }`}
+                >
+                  <span className="font-semibold">{s.name || s.companyName}</span>
+                  {s.phone && <span className="text-[10px] opacity-80">📞 {s.phone}</span>}
+                  {s.isAddressBook && (
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"}`}>
+                      Carnet
+                    </span>
+                  )}
+                  {s.isConnected && !s.isAddressBook && (
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300"}`}>
+                      Partenaire
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Direct Typing Input (Phone or Email) */}
+      <div className="space-y-2 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60">
+        <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+          <Search className="w-3.5 h-3.5 text-zinc-400" />
+          Rechercher ou Tapez le Numéro de Téléphone / Email du Fournisseur :
+        </label>
+        
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tapez un numéro de téléphone (ex: 70001122), un email ou un nom..."
+              className="w-full pl-9 pr-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+
+          {typedInputTrimmed && (
+            <button
+              type="button"
+              onClick={handleCreateOrSelectDirectSupplier}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Sélectionner / Utiliser {isInputPhone ? "ce numéro" : isInputEmail ? "cet email" : "cette saisie"}
+            </button>
+          )}
+        </div>
+
+        {/* Live Filter Results */}
+        {searchTerm.trim() && filteredSuppliers.length > 0 && (
+          <div className="p-2 bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 max-h-48 overflow-y-auto space-y-1 shadow-md">
+            <p className="text-[10px] font-bold text-zinc-400 uppercase px-2 py-0.5">Fournisseurs correspondants ({filteredSuppliers.length}) :</p>
+            {filteredSuppliers.map(s => (
+              <div
+                key={s.id}
+                onClick={() => {
+                  onSelectSupplier(s.id);
+                  setSearchTerm("");
+                }}
+                className={`p-2 rounded-lg cursor-pointer flex items-center justify-between text-xs transition-colors ${
+                  selectedSupplierId === s.id
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold"
+                    : "hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-zinc-800 dark:text-zinc-200"
+                }`}
+              >
+                <div>
+                  <span className="font-semibold">{s.name} {s.companyName ? `(${s.companyName})` : ''}</span>
+                  <div className="text-[10px] text-zinc-500 flex gap-2 mt-0.5">
+                    {s.phone && <span>📞 {s.phone}</span>}
+                    {s.email && <span>✉️ {s.email}</span>}
+                    {s.region && <span>📍 {s.region}</span>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {s.isAddressBook && <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded text-[9px] font-bold">Carnet</span>}
+                  {s.isConnected && <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded text-[9px] font-bold">Connecté</span>}
+                  <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">Choisir →</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Direct Input Warning when no existing supplier matches */}
+        {isDirectSearchMode && (
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                Aucun fournisseur trouvé avec "{typedInputTrimmed}" dans votre carnet d'adresses.
+              </p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                Vous pouvez directement vous approvisionner auprès de ce contact ({isInputPhone ? "Téléphone" : isInputEmail ? "Email" : "Nouveau"}).
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateOrSelectDirectSupplier}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
+            >
+              Créer & Sélectionner
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Currently Selected Supplier Card */}
+      {selectedSupplierObj && (
+        <div className="p-3 bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/20 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                Fournisseur Sélectionné : <span className="text-emerald-600 dark:text-emerald-400">{selectedSupplierObj.name} {selectedSupplierObj.companyName ? `(${selectedSupplierObj.companyName})` : ''}</span>
+              </p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex flex-wrap gap-2">
+                {selectedSupplierObj.phone && <span>📞 {selectedSupplierObj.phone}</span>}
+                {selectedSupplierObj.email && <span>✉️ {selectedSupplierObj.email}</span>}
+                {selectedSupplierObj.region && <span>📍 {selectedSupplierObj.region}</span>}
+                {selectedSupplierObj.isAddressBook && <span className="font-bold text-indigo-600 dark:text-indigo-400">[Carnet d'adresses]</span>}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelectSupplier("")}
+            className="text-[11px] font-bold text-rose-600 dark:text-rose-400 hover:underline self-end sm:self-auto"
+          >
+            Changer
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 

@@ -137,11 +137,11 @@ export const connectionService = {
       });
       console.log("[ConnectionService] Atomic transaction for connection request completed successfully.");
     } catch (e: any) {
-      console.error("[ConnectionService] Transaction Firestore error on connection request:", e);
-      if (e instanceof Error && (e.message.includes("déjà en relation") || e.message.includes("déjà en attente"))) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (e instanceof Error && (msg.includes("déjà en relation") || msg.includes("déjà en attente"))) {
         throw e;
       }
-      // If it is another error (e.g. network/offline), keep offline fallback
+      console.warn("[ConnectionService] Firestore offline fallback:", msg);
     }
 
     // Always update local storage for offline-first resilience
@@ -232,10 +232,10 @@ export const connectionService = {
         });
 
         // 2. Update relations doc
-        transaction.update(relationRef, {
+        transaction.set(relationRef, {
           statut: status === "active" ? "actif" : "refuse",
           dateReponse: serverTimestamp()
-        });
+        }, { merge: true });
 
         // 3. Subcollection notification for sender
         transaction.set(notifSubRef, {

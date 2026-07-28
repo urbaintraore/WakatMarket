@@ -284,11 +284,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProfile = async (fields: Partial<FirebaseUser>) => {
-    if (!firebaseUser) throw new Error("Aucun utilisateur connecté.");
+    const targetUid = firebaseUser?.uid || dbUser?.uid;
+    if (!targetUid) throw new Error("Aucun utilisateur connecté.");
     setError(null);
     try {
-      await userService.updateUser(firebaseUser.uid, fields);
-      setDbUser((prev) => (prev ? { ...prev, ...fields } : null));
+      await userService.updateUser(targetUid, fields);
+      setDbUser((prev) => (prev ? { ...prev, ...fields } : ({ uid: targetUid, ...fields } as FirebaseUser)));
     } catch (err: any) {
       setError(err.message || "Erreur de mise à jour du profil.");
       throw err;

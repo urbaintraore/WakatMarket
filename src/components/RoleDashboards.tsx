@@ -15,7 +15,7 @@ import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, Chat
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
-import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart } from "./CommonDashboardParts";
+import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector } from "./CommonDashboardParts";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
 import { CaisseModule } from "./CaisseModule";
@@ -23,6 +23,90 @@ import { MyBuyersModule } from "./MyBuyersModule";
 import { AdminUserEditModal } from "./AdminUserEditModal";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+
+// ----------------------------------------------------------------------
+// PDF Invoice Export Helper
+// ----------------------------------------------------------------------
+export function handleDownloadOrderPDF(order: Order, productsList: Product[]) {
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Facture Commande #${order.id}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #111; background: #fff; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #10b981; padding-bottom: 20px; margin-bottom: 30px; }
+            .title { font-size: 22px; font-weight: bold; color: #10b981; text-transform: uppercase; }
+            .meta { font-size: 13px; color: #555; line-height: 1.6; }
+            table { width: 100%; border-collapse: collapse; margin-top: 25px; }
+            th, td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; font-size: 12px; }
+            th { background-color: #f9fafb; font-weight: bold; color: #374151; text-transform: uppercase; }
+            .total-box { margin-top: 30px; text-align: right; font-size: 18px; font-weight: bold; color: #111; }
+            .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 15px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="title">FACTURE COMMANDE OFFICIELLE</div>
+              <div class="meta" style="margin-top: 8px;">
+                <b>Référence:</b> #${order.id}<br/>
+                <b>Date:</b> ${new Date(order.createdAt).toLocaleString('fr-FR')}
+              </div>
+            </div>
+            <div class="meta" style="text-align: right;">
+              <b>Statut:</b> <span style="color: #10b981; font-weight: bold;">${order.status}</span><br/>
+              <b>Paiement:</b> ${order.paymentMethod || 'CASH'}<br/>
+              <b>Adresse:</b> ${order.deliveryAddress || 'Standard'}
+            </div>
+          </div>
+          <h3 style="font-size: 14px; text-transform: uppercase; color: #374151; margin-bottom: 10px;">Détails de la commande</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Produit / Article</th>
+                <th>Quantité</th>
+                <th>Prix Unitaire</th>
+                <th style="text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${order.items && order.items.length > 0 ? order.items.map(item => {
+                const prod = productsList.find(p => p.id === item.productId);
+                const name = prod ? prod.name : item.productId;
+                const unitPrice = item.priceAtOrder || prod?.prixGros || prod?.prixDetail || 1000;
+                return `
+                  <tr>
+                    <td><b>${name}</b></td>
+                    <td>${item.quantity}</td>
+                    <td>${unitPrice.toLocaleString()} FCFA</td>
+                    <td style="text-align: right;"><b>${(item.quantity * unitPrice).toLocaleString()} FCFA</b></td>
+                  </tr>
+                `;
+              }).join('') : `
+                <tr>
+                  <td colspan="4">Commande globale B2B / B2C</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+          <div class="total-box">
+            Montant Total : <span style="color: #10b981;">${order.totalAmount.toLocaleString()} FCFA</span>
+          </div>
+          <div class="footer">
+            Facture électronique certifiée • Plateforme SupplyChain B2B & B2C
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 400);
+  }
+}
 
 // ----------------------------------------------------------------------
 // Shared Price History Chart (30 Days - Purchase & Selling Prices)
@@ -215,7 +299,15 @@ export function AdminDashboard({
         />
       )}
       {/* Tab Panels */}
-      {activeTab === "users" && (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {activeTab === "users" && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
           <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Base des Comptes de Distribution</h4>
@@ -417,6 +509,8 @@ export function AdminDashboard({
           </form>
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -476,6 +570,7 @@ export function ManufacturerDashboard({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedProductForChart, setSelectedProductForChart] = useState<string | null>(null);
+  const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
 
   useEffect(() => {
     if (!isAdding) {
@@ -606,7 +701,15 @@ export function ManufacturerDashboard({
         </div>
       </div>
 
-      {activeTab === "buyers" && (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {activeTab === "buyers" && (
         <div className="space-y-4">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs ({myBuyers.length})</h4>
           {myBuyers.length === 0 ? (
@@ -1041,8 +1144,6 @@ export function ManufacturerDashboard({
 
       {activeTab === "sales" && (
         <div className="space-y-6">
-          <WeeklySalesChart orders={orders} currentUserId={currentUser.id} />
-          
           <POSComponent
             currentUser={currentUser}
             inventory={myInventory}
@@ -1071,6 +1172,8 @@ export function ManufacturerDashboard({
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
             users={users}
+            products={products}
+            inventory={inventory}
           />
         </div>
       )}
@@ -1080,29 +1183,8 @@ export function ManufacturerDashboard({
           <SyncHistory queue={syncQueue} />
         </div>
       )}
-
-      {activeTab === "ai" && (
-        <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl text-white space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-zinc-800">
-            <Sparkles className="w-5 h-5 text-emerald-400" />
-            <h4 className="font-bold text-sm">IA Restock recommandation</h4>
-          </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            L'IA de notre ERP analyse l'état des stocks chez vos grossistes affiliés et vous conseille les meilleures actions de réapprovisionnement logistique B2B en fonction des données locales de demande.
-          </p>
-          <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-3">
-            <h5 className="font-bold text-xs text-emerald-400">Zone d'Opportunité 1 : Abidjan Cocody / Rivera</h5>
-            <p className="text-[11px] text-zinc-400">
-              Le grossiste <span className="text-white">Coulibaly Distribution B2B</span> est en rupture de <span className="text-white">Riz Parfumé Royal Jasmine 25kg</span>. La vitesse d'écoulement locale sur cette référence à augmenté de +18% ce mois-ci en raison des fêtes régionales.
-            </p>
-            <div className="flex gap-2 justify-end pt-2">
-              <span className="text-[10px] text-emerald-500 font-bold px-2 py-1 bg-emerald-500/10 rounded-lg">
-                Suggestion d'action : Envoyer proactivement une offre promotionnelle B2B
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -1177,6 +1259,7 @@ export function WholesalerDashboard({
   const [imageLinkInput, setImageLinkInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -1214,14 +1297,28 @@ export function WholesalerDashboard({
   // Filter manufacturers by connection
   const manufacturers = useMemo(() => {
     const partnerIds = connections
-      .filter(c => isConnectionActive(c))
+      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
       .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
     
-    return users.filter(u => 
-      partnerIds.includes(u.id) && 
-      u.role === UserRole.MANUFACTURER && 
-      u.status === "ACTIVE"
-    );
+    const filtered = users.filter(u => {
+      const uStatus = ((u.status || (u as any).statut || "") as string).toLowerCase();
+      return (
+        partnerIds.includes(u.id) && 
+        u.role === UserRole.MANUFACTURER && 
+        (uStatus === "active" || uStatus === "actif" || !u.status)
+      );
+    });
+
+    if (filtered.length === 0) {
+      return users.filter(u => {
+        const uStatus = ((u.status || (u as any).statut || "") as string).toLowerCase();
+        return (
+          u.role === UserRole.MANUFACTURER && 
+          (uStatus === "active" || uStatus === "actif" || !u.status)
+        );
+      });
+    }
+    return filtered;
   }, [users, connections, currentUser.id]);
 
   // Wholesaler inventories
@@ -1356,37 +1453,19 @@ export function WholesalerDashboard({
         </div>
       </div>
 
-      {activeTab === "dashboard" && (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {activeTab === "dashboard" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-          {/* Left Column: Metrics & Orders (Takes 2 columns on lg) */}
+          {/* Left Column: Orders & Inventory (Takes 2 columns on lg) */}
           <div className="lg:col-span-2 space-y-6">
             <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-            
-            {/* Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires Global</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalRevenue)}</h3>
-                <p className="text-[10px] text-emerald-600 mt-1">Total des ventes confirmées</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Demi-Grossistes</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToSemiWholesalersVal)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Moyen volume)</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes aux Détaillants</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(salesToRetailersVal)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Canal B2B (Point de vente)</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Total Approvisionnement</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalPurchasesVal)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Achats auprès des usines</p>
-              </div>
-            </div>
-
-            <DebtVsRevenueChart orders={orders} payments={payments} currentUserId={currentUser.id} />
 
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-4">
@@ -1495,27 +1574,21 @@ export function WholesalerDashboard({
 
       {activeTab === "procure" && (
         <div className="space-y-4">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Achat Direct auprès des Fabricants</h4>
-              <p className="text-[11px] text-zinc-500 mt-1">Sélectionnez une usine agro-alimentaire pour commander des caisses et palettes de gros.</p>
-            </div>
-            <select
-              value={selectedManufacturer}
-              onChange={(e) => {
-                setSelectedManufacturer(e.target.value);
-                setProcureCart({});
-              }}
-              className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850"
-            >
-              <option value="">Sélectionner une usine...</option>
-              {manufacturers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.companyName} ({m.country})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SupplierSelector
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+            lightClients={lightClients}
+            selectedSupplierId={selectedManufacturer}
+            onSelectSupplier={(id) => {
+              setSelectedManufacturer(id);
+              setProcureCart({});
+            }}
+            onCreateLightClient={onCreateLightClient}
+            targetRoles={[UserRole.MANUFACTURER, UserRole.WHOLESALER]}
+            title="S'approvisionner : Achat Direct auprès des Usines & Grossistes"
+            description="Choisissez un fournisseur dans votre carnet d'adresses, vos partenaires, ou tapez son numéro de téléphone / email."
+          />
 
           {selectedManufacturer && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1525,8 +1598,8 @@ export function WholesalerDashboard({
                   {products
                     .map((prod) => {
                       const invItem = inventory.find((i) => i.productId === prod.id && i.ownerId === selectedManufacturer);
-                      const stock = invItem ? invItem.stock : 0;
-                      const price = invItem ? invItem.price : 1000;
+                      const stock = invItem ? invItem.stock : 999;
+                      const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       
                       return (
                         <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
@@ -1548,15 +1621,8 @@ export function WholesalerDashboard({
                             </button>
                             <span className="w-8 text-center text-xs font-bold">{procureCart[prod.id] || 0}</span>
                             <button
-                              onClick={() => {
-                                if ((procureCart[prod.id] || 0) < stock) {
-                                  handleAddToCart(prod.id, 1);
-                                } else {
-                                  alert("Stock insuffisant chez ce fabricant.");
-                                }
-                              }}
-                              disabled={stock === 0}
-                              className="w-6 h-6 rounded bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-xs font-bold"
+                              onClick={() => handleAddToCart(prod.id, 1)}
+                              className="w-6 h-6 rounded bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-xs font-bold text-emerald-600"
                             >
                               +
                             </button>
@@ -1577,15 +1643,31 @@ export function WholesalerDashboard({
                       const qty = procureCart[prodId];
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedManufacturer);
-                      const total = (invItem?.price || 0) * qty;
+                      const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
 
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
-                          <span className="font-mono">{qty} x {formatCFA(invItem?.price || 0)}</span>
+                          <span className="font-mono">{qty} x {formatCFA(unitPrice)}</span>
                         </div>
                       );
                     })}
+                </div>
+
+                <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center font-bold">
+                  <span>TOTAL ESTIMÉ</span>
+                  <span className="font-mono text-emerald-600">
+                    {formatCFA(
+                      Object.keys(procureCart)
+                        .filter((id) => procureCart[id] > 0)
+                        .reduce((sum, id) => {
+                          const prod = products.find((p) => p.id === id);
+                          const invItem = inventory.find((i) => i.productId === id && i.ownerId === selectedManufacturer);
+                          const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
+                          return sum + unitPrice * procureCart[id];
+                        }, 0)
+                    )}
+                  </span>
                 </div>
                 <button
                   onClick={handleCheckoutProcure}
@@ -1690,8 +1772,6 @@ export function WholesalerDashboard({
 
       {activeTab === "sales" && (
         <div className="space-y-8 animate-fade-in">
-          <WeeklySalesChart orders={orders} currentUserId={currentUser.id} />
-
           <div className="space-y-4">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes B2B Reçues</h4>
             {incomingRetailerOrders.length === 0 ? (
@@ -1782,10 +1862,23 @@ export function WholesalerDashboard({
             </button>
           </div>
           
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mon Stock de Gros</h4>
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mon Stock de Gros</h4>
+            <button
+              onClick={() => setStockSort(prev => prev === "asc" ? "desc" : prev === "desc" ? "none" : "asc")}
+              className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              {stockSort === "asc" ? "Tri : Stock Croissant ↑" : stockSort === "desc" ? "Tri : Stock Décroissant ↓" : "Trier par niveau de stock"}
+            </button>
+          </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myInventory.map((item) => {
+            {(() => {
+              let sorted = [...myInventory];
+              if (stockSort === "asc") sorted.sort((a, b) => a.stock - b.stock);
+              else if (stockSort === "desc") sorted.sort((a, b) => b.stock - a.stock);
+              return sorted;
+            })().map((item) => {
               const prod = products.find((p) => p.id === item.productId);
               if (!prod) return null;
               return (
@@ -2089,9 +2182,6 @@ export function WholesalerDashboard({
                 <span className="text-rose-600 font-bold">RUPTURE</span>
               </div>
             </div>
-            <p className="text-[10px] text-zinc-400 italic">
-              Recommandation ERP : L'IA conseille de générer une proposition commerciale groupée pour cette boutique.
-            </p>
           </div>
         </div>
       )}
@@ -2107,6 +2197,8 @@ export function WholesalerDashboard({
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
             users={users}
+            products={products}
+            inventory={inventory}
           />
         </div>
       )}
@@ -2116,6 +2208,8 @@ export function WholesalerDashboard({
           <SyncHistory queue={syncQueue} />
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -2173,6 +2267,7 @@ export function RetailerDashboard({
   onUpdateCreditLimit,
 }: RetailerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "suppliers" | "buyers" | "clients" | "sync">("procure");
+  const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [isAdding, setIsAdding] = useState(false);
@@ -2228,18 +2323,33 @@ export function RetailerDashboard({
     reader.readAsDataURL(file);
   };
 
-  // Filter Wholesalers and Semi-Wholesalers by connection
+  // Filter all Wholesalers and Semi-Wholesalers (prioritizing registered partners in CLIENTS & Adresses)
   const wholesalers = useMemo(() => {
-    const partnerIds = connections
-      .filter(c => isConnectionActive(c))
-      .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
+    const partnerIds = new Set<string>();
+    connections
+      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
+      .forEach(c => partnerIds.add(c.senderId === currentUser.id ? c.receiverId : c.senderId));
+    
+    lightClients
+      .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
+      .forEach(lc => partnerIds.add(lc.linkedUserId!));
 
-    return users.filter((u) => 
-      partnerIds.includes(u.id) &&
-      (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER) && 
-      u.status === "ACTIVE"
-    );
-  }, [users, connections, currentUser.id]);
+    return users
+      .filter((u) => {
+        const uRole = u.role;
+        const uStatus = (u.status || (u as any).statut || "").toLowerCase();
+        const isActive = uStatus === "active" || uStatus === "actif" || !uStatus;
+        return (
+          (uRole === UserRole.WHOLESALER || uRole === UserRole.SEMI_WHOLESALER) &&
+          isActive
+        );
+      })
+      .sort((a, b) => {
+        const aIsPartner = partnerIds.has(a.id) ? 1 : 0;
+        const bIsPartner = partnerIds.has(b.id) ? 1 : 0;
+        return bIsPartner - aIsPartner;
+      });
+  }, [users, connections, lightClients, currentUser.id]);
 
   // Shop Inventory
   const myInventory = useMemo(() => inventory.filter((i) => i.ownerId === currentUser.id), [inventory, currentUser.id]);
@@ -2349,7 +2459,15 @@ export function RetailerDashboard({
         </div>
       </div>
 
-      {activeTab === "buyers" && (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        >
+          {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
@@ -2371,27 +2489,21 @@ export function RetailerDashboard({
 
       {activeTab === "procure" && (
         <div className="space-y-4">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Achat auprès des Grossistes ou Demi-Grossistes agréés</h4>
-              <p className="text-[11px] text-zinc-500 mt-1">Sélectionnez un fournisseur régional (Grossiste ou Demi-Grossiste) pour commander vos produits au meilleur tarif.</p>
-            </div>
-            <select
-              value={selectedWholesaler}
-              onChange={(e) => {
-                setSelectedWholesaler(e.target.value);
-                setProcureCart({});
-              }}
-              className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850"
-            >
-              <option value="">Sélectionner un fournisseur...</option>
-              {wholesalers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  [{w.role === UserRole.WHOLESALER ? "Grossiste" : "Demi-Grossiste"}] {w.companyName || w.name} ({w.region})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SupplierSelector
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+            lightClients={lightClients}
+            selectedSupplierId={selectedWholesaler}
+            onSelectSupplier={(id) => {
+              setSelectedWholesaler(id);
+              setProcureCart({});
+            }}
+            onCreateLightClient={onCreateLightClient}
+            targetRoles={[UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER]}
+            title="S'approvisionner : Achat auprès des Grossistes / Demi-Grossistes"
+            description="Sélectionnez un fournisseur existant dans votre carnet d'adresses ou tapez son numéro de téléphone ou son email."
+          />
 
           {selectedWholesaler && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -2431,9 +2543,34 @@ export function RetailerDashboard({
               <div className="md:col-span-2 space-y-3">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-200 uppercase tracking-wider">Articles de Gros Disponibles</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {inventory
-                    .filter((item) => item.ownerId === selectedWholesaler)
-                    .map((invItem) => {
+                  {(() => {
+                    const directItems = inventory.filter((item) => item.ownerId === selectedWholesaler);
+                    const creatorItems = products.filter(p => p.creatorId === selectedWholesaler).map(p => ({
+                      id: `inv-${p.id}`,
+                      productId: p.id,
+                      ownerId: selectedWholesaler,
+                      stock: 100,
+                      threshold: p.lowStockThreshold || 10,
+                      price: p.prixGros || p.prixDetail || 1000,
+                      prixGros: p.prixGros,
+                      prixDetail: p.prixDetail
+                    }));
+                    const catalogItems = products.map(p => ({
+                      id: `cat-${p.id}`,
+                      productId: p.id,
+                      ownerId: selectedWholesaler,
+                      stock: 999,
+                      threshold: p.lowStockThreshold || 10,
+                      price: p.prixGros || p.prixDetail || 1000,
+                      prixGros: p.prixGros,
+                      prixDetail: p.prixDetail
+                    }));
+
+                    const stockItems = directItems.length > 0 
+                      ? directItems 
+                      : (creatorItems.length > 0 ? creatorItems : catalogItems);
+
+                    return stockItems.map((invItem) => {
                       const prod = products.find((p) => p.id === invItem.productId);
                       const matchesSearch = !searchQuery || 
                         (prod && (
@@ -2442,8 +2579,8 @@ export function RetailerDashboard({
                         ));
                       if (!prod || !matchesSearch) return null;
                       
-                      const stock = invItem.stock;
-                      const price = invItem.price;
+                      const stock = invItem.stock > 0 ? invItem.stock : 999;
+                      const price = invItem.price || invItem.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       
                       return (
                         <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
@@ -2465,14 +2602,7 @@ export function RetailerDashboard({
                             </button>
                             <span className="w-8 text-center text-xs font-bold">{procureCart[prod.id] || 0}</span>
                             <button
-                              onClick={() => {
-                                if ((procureCart[prod.id] || 0) < stock) {
-                                  handleAddToCartProcure(prod.id, 1);
-                                } else {
-                                  alert("Stock insuffisant chez ce grossiste.");
-                                }
-                              }}
-                              disabled={stock === 0}
+                              onClick={() => handleAddToCartProcure(prod.id, 1)}
                               className="w-6 h-6 rounded bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-xs font-bold text-emerald-600"
                             >
                               +
@@ -2480,7 +2610,8 @@ export function RetailerDashboard({
                           </div>
                         </div>
                       );
-                    })}
+                    });
+                  })()}
                 </div>
               </div>
 
@@ -2494,15 +2625,31 @@ export function RetailerDashboard({
                       const qty = procureCart[prodId];
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedWholesaler);
-                      const total = (invItem?.price || 0) * qty;
+                      const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
 
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
-                          <span className="font-mono">{qty} x {formatCFA(invItem?.price || 0)}</span>
+                          <span className="font-mono">{qty} x {formatCFA(unitPrice)}</span>
                         </div>
                       );
                     })}
+                </div>
+
+                <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center font-bold">
+                  <span>TOTAL ESTIMÉ</span>
+                  <span className="font-mono text-emerald-600">
+                    {formatCFA(
+                      Object.keys(procureCart)
+                        .filter((id) => procureCart[id] > 0)
+                        .reduce((sum, id) => {
+                          const prod = products.find((p) => p.id === id);
+                          const invItem = inventory.find((i) => i.productId === id && i.ownerId === selectedWholesaler);
+                          const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
+                          return sum + unitPrice * procureCart[id];
+                        }, 0)
+                    )}
+                  </span>
                 </div>
                 <button
                   onClick={handleCheckoutProcure}
@@ -2615,8 +2762,6 @@ export function RetailerDashboard({
 
       {activeTab === "sales" && (
         <div className="space-y-6">
-          <WeeklySalesChart orders={orders} currentUserId={currentUser.id} />
-
           <div className="space-y-4">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes Clients (B2C)</h4>
             {myB2COrders.length === 0 ? (
@@ -2911,8 +3056,23 @@ export function RetailerDashboard({
             </div>
           )}
 
+          <div className="flex justify-between items-center flex-wrap gap-2 mb-3">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Inventaire de la Boutique</h4>
+            <button
+              onClick={() => setStockSort(prev => prev === "asc" ? "desc" : prev === "desc" ? "none" : "asc")}
+              className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              {stockSort === "asc" ? "Tri : Stock Croissant ↑" : stockSort === "desc" ? "Tri : Stock Décroissant ↓" : "Trier par niveau de stock"}
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myInventory.map((item) => {
+            {(() => {
+              let sorted = [...myInventory];
+              if (stockSort === "asc") sorted.sort((a, b) => a.stock - b.stock);
+              else if (stockSort === "desc") sorted.sort((a, b) => b.stock - a.stock);
+              return sorted;
+            })().map((item) => {
               const prod = products.find((p) => p.id === item.productId);
               if (!prod) return null;
               return (
@@ -3018,28 +3178,13 @@ export function RetailerDashboard({
       )}
 
       {activeTab === "suppliers" && (
-        <div className="p-5 bg-zinc-900 border border-zinc-800 rounded-2xl text-white space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-zinc-850">
-            <Sparkles className="w-5 h-5 text-emerald-400" />
-            <h4 className="font-bold text-xs uppercase tracking-wider">Recommandation Fournisseurs Intelligente</h4>
-          </div>
-          <p className="text-xs text-zinc-400 leading-relaxed">
-            L'IA compare en temps réel les prix, promotions, seuils et délais de livraison de tous les grossistes agrées d'Afrique de l'Ouest pour votre stock.
-          </p>
-          <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3 text-xs">
-            <h5 className="font-bold text-emerald-400">Huile de Palme Raffinée Dinor 1L</h5>
-            <div className="divide-y divide-zinc-850">
-              <div className="py-2 flex justify-between">
-                <span>Grossiste Coulibaly</span>
-                <span className="text-emerald-400 font-bold">15 200 FCFA / carton (Recommandé)</span>
-              </div>
-              <div className="py-2 flex justify-between text-zinc-500">
-                <span>Grossiste Kaboré</span>
-                <span>16 500 FCFA / carton (+8% plus cher)</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SupplierSelector
+          currentUser={currentUser}
+          users={users}
+          connections={connections}
+          selectedSupplier={selectedWholesaler}
+          onSelectSupplier={setSelectedWholesaler}
+        />
       )}
 
       {activeTab === "clients" && (
@@ -3053,6 +3198,8 @@ export function RetailerDashboard({
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
             users={users}
+            products={products}
+            inventory={inventory}
           />
         </div>
       )}
@@ -3062,6 +3209,8 @@ export function RetailerDashboard({
           <SyncHistory queue={syncQueue} />
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -3462,6 +3611,12 @@ export function ClientDashboard({
                         {order.id}
                       </span>
                       <p className="text-xs font-semibold text-zinc-500 mt-1">Adresse : {order.deliveryAddress}</p>
+                      <button
+                        onClick={() => handleDownloadOrderPDF(order, products)}
+                        className="mt-2 px-3 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-600" /> Télécharger en PDF
+                      </button>
                     </div>
                     <div className="text-right">
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
@@ -3875,6 +4030,7 @@ export function SemiWholesalerDashboard({
   const [posSelectedLightClientId, setPosSelectedLightClientId] = useState<string>("");
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [posReceipt, setPosReceipt] = useState<{ id: string; date: string; items: any[]; total: number; customerType: string } | null>(null);
+  const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
 
   // Edit stock state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -3942,14 +4098,32 @@ export function SemiWholesalerDashboard({
   // Filter wholesalers (suppliers) by connection
   const wholesalers = useMemo(() => {
     const partnerIds = connections
-      .filter(c => isConnectionActive(c))
+      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
       .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
 
-    return users.filter((u) => 
-      partnerIds.includes(u.id) &&
-      u.role === UserRole.WHOLESALER && 
-      u.status === "ACTIVE"
-    );
+    const filtered = users.filter((u) => {
+      const uRole = u.role;
+      const uStatus = (u.status || (u as any).statut || "").toLowerCase();
+      const isActive = uStatus === "active" || uStatus === "actif" || !uStatus;
+      return (
+        partnerIds.includes(u.id) &&
+        uRole === UserRole.WHOLESALER && 
+        isActive
+      );
+    });
+
+    if (filtered.length === 0) {
+      return users.filter((u) => {
+        const uRole = u.role;
+        const uStatus = (u.status || (u as any).statut || "").toLowerCase();
+        const isActive = uStatus === "active" || uStatus === "actif" || !uStatus;
+        return (
+          uRole === UserRole.WHOLESALER && 
+          isActive
+        );
+      });
+    }
+    return filtered;
   }, [users, connections, currentUser.id]);
   const myInventory = inventory.filter((i) => i.ownerId === currentUser.id);
   const incomingOrders = orders.filter((o) => o.receiverId === currentUser.id && (o.orderType === "B2B_SG2R" || o.orderType === "B2C_SG2C"));
@@ -4174,73 +4348,9 @@ export function SemiWholesalerDashboard({
       {/* Tab: Dashboard */}
       {activeTab === "dashboard" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-          {/* Left Column: Metrics & Distribution (Takes 2 columns) */}
+          {/* Left Column: Inventory & Alerts (Takes 2 columns) */}
           <div className="lg:col-span-2 space-y-6">
             <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-            {/* Metrics Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Chiffre d'Affaires</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalSalesRevenue)}</h3>
-                <p className="text-[10px] text-emerald-600 mt-1">Commandes finalisées</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes de Demi-Gros (B2B)</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(wholesaleSalesVal)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Aux boutiques détaillants</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Ventes au Détail (B2C)</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(retailSalesVal)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Aux consommateurs directs</p>
-              </div>
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-2xl flex flex-col justify-center">
-                <p className="text-[10px] uppercase font-bold text-zinc-500">Approvisionnements</p>
-                <h3 className="font-mono text-xl font-bold text-zinc-950 dark:text-white mt-1.5">{formatCFA(totalProcurementCost)}</h3>
-                <p className="text-[10px] text-zinc-500 mt-1">Cumul d'achats de gros</p>
-              </div>
-            </div>
-
-            <DebtVsRevenueChart orders={orders} payments={payments} currentUserId={currentUser.id} />
-
-            {/* Quick stats on sales type ratio */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4">
-                Canaux de distribution actifs
-              </h4>
-              <div className="space-y-5">
-                <div>
-                  <div className="flex justify-between text-xs font-semibold mb-1.5">
-                    <span>Demi-Gros (Détaillants B2B)</span>
-                    <span>{totalSalesRevenue > 0 ? Math.round((wholesaleSalesVal / totalSalesRevenue) * 100) : 50}%</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-orange-500 h-full transition-all"
-                      style={{ width: `${totalSalesRevenue > 0 ? (wholesaleSalesVal / totalSalesRevenue) * 100 : 50}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-semibold mb-1.5">
-                    <span>Détail (Consommateurs B2C)</span>
-                    <span>{totalSalesRevenue > 0 ? Math.round((retailSalesVal / totalSalesRevenue) * 100) : 50}%</span>
-                  </div>
-                  <div className="w-full bg-zinc-100 dark:bg-zinc-800 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-amber-500 h-full transition-all"
-                      style={{ width: `${totalSalesRevenue > 0 ? (retailSalesVal / totalSalesRevenue) * 100 : 50}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3 bg-orange-50/50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-900/30 rounded-xl text-[11px] text-orange-800 dark:text-orange-200 mt-4">
-                  <Sparkles className="w-4 h-4 inline mr-1" />
-                  <strong>Conseil d'approvisionnement :</strong> Le riz parfumé et le savon de Marseille se vendent 35% plus vite en demi-gros qu'en boutique de détail ce mois-ci. Ajustez vos marges en conséquence !
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Right Column: Alerts & Notifications */}
@@ -4307,27 +4417,21 @@ export function SemiWholesalerDashboard({
       {/* Tab: Procure from Wholesalers */}
       {activeTab === "procure" && (
         <div className="space-y-6 animate-fade-in">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Achat auprès des Grossistes Officiels</h4>
-              <p className="text-[11px] text-zinc-500 mt-1">Le Demi-Grossiste achète exclusivement auprès des grands grossistes agréés de la plateforme.</p>
-            </div>
-            <select
-              value={selectedWholesaler}
-              onChange={(e) => {
-                setSelectedWholesaler(e.target.value);
-                setProcureCart({});
-              }}
-              className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 text-zinc-900 dark:text-zinc-100 font-semibold"
-            >
-              <option value="">Sélectionner un Grossiste...</option>
-              {wholesalers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.companyName} ({w.region} - {w.country})
-                </option>
-              ))}
-            </select>
-          </div>
+          <SupplierSelector
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+            lightClients={lightClients}
+            selectedSupplierId={selectedWholesaler}
+            onSelectSupplier={(id) => {
+              setSelectedWholesaler(id);
+              setProcureCart({});
+            }}
+            onCreateLightClient={onCreateLightClient}
+            targetRoles={[UserRole.WHOLESALER, UserRole.MANUFACTURER]}
+            title="S'approvisionner : Achat auprès des Grossistes & Usines"
+            description="Choisissez un fournisseur dans votre carnet d'adresses ou entrez son numéro de téléphone / email."
+          />
 
           {selectedWholesaler && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -4337,8 +4441,8 @@ export function SemiWholesalerDashboard({
                   {products
                     .map((prod) => {
                       const invItem = inventory.find((i) => i.productId === prod.id && i.ownerId === selectedWholesaler);
-                      const stock = invItem ? invItem.stock : 0;
-                      const price = invItem ? invItem.price : 1000;
+                      const stock = invItem ? invItem.stock : 999;
+                      const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       
                       return (
                         <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
@@ -4360,15 +4464,8 @@ export function SemiWholesalerDashboard({
                             </button>
                             <span className="w-8 text-center text-xs font-bold">{procureCart[prod.id] || 0}</span>
                             <button
-                              onClick={() => {
-                                if ((procureCart[prod.id] || 0) < stock) {
-                                  handleAddToCartProcure(prod.id, 1);
-                                } else {
-                                  alert("Stock insuffisant chez ce grossiste.");
-                                }
-                              }}
-                              disabled={stock === 0}
-                              className="w-6 h-6 rounded bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-xs font-bold"
+                              onClick={() => handleAddToCartProcure(prod.id, 1)}
+                              className="w-6 h-6 rounded bg-zinc-100 hover:bg-zinc-200 disabled:opacity-50 text-xs font-bold text-emerald-600"
                             >
                               +
                             </button>
@@ -4389,12 +4486,12 @@ export function SemiWholesalerDashboard({
                       const qty = procureCart[prodId];
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedWholesaler);
-                      const total = (invItem?.price || 0) * qty;
+                      const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
 
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
-                          <span className="font-mono">{qty} x {formatCFA(invItem?.price || 0)}</span>
+                          <span className="font-mono">{qty} x {formatCFA(unitPrice)}</span>
                         </div>
                       );
                     })}
@@ -4407,8 +4504,10 @@ export function SemiWholesalerDashboard({
                       Object.keys(procureCart)
                         .filter((id) => procureCart[id] > 0)
                         .reduce((sum, id) => {
+                          const prod = products.find((p) => p.id === id);
                           const item = inventory.find((i) => i.productId === id && i.ownerId === selectedWholesaler);
-                          return sum + (item?.price || 0) * procureCart[id];
+                          const unitPrice = item?.price || item?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
+                          return sum + unitPrice * procureCart[id];
                         }, 0)
                     )}
                   </span>
@@ -4965,6 +5064,8 @@ export function SemiWholesalerDashboard({
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
             users={users}
+            products={products}
+            inventory={inventory}
           />
         </div>
       )}
