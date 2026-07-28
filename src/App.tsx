@@ -1242,6 +1242,97 @@ export default function App() {
     addNotification(`Votre commande client ${newOrder.id} a été validée ! Suivi en cours.`);
   };
 
+  // Helper to process stock transfer on order completion/delivery across all platform actors
+  const processOrderStockUpdate = (order: Order) => {
+    let newInventory = [...inventory];
+    const changedItems: InventoryItem[] = [];
+
+    order.items.forEach((item) => {
+      // 1. Seller stock decrement
+      const sellerInvIndex = newInventory.findIndex(
+        (inv) => inv.ownerId === order.receiverId && inv.productId === item.productId
+      );
+      if (sellerInvIndex !== -1) {
+        const sellerItem = newInventory[sellerInvIndex];
+        const updatedSellerItem = {
+          ...sellerItem,
+          stock: Math.max(0, sellerItem.stock - item.quantity),
+          updatedAt: new Date().toISOString()
+        };
+        newInventory[sellerInvIndex] = updatedSellerItem;
+        changedItems.push(updatedSellerItem);
+      } else {
+        const prod = products.find((p) => p.id === item.productId);
+        const newSellerItem: InventoryItem = {
+          id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          ownerId: order.receiverId,
+          productId: item.productId,
+          stock: 0,
+          threshold: prod?.lowStockThreshold || 5,
+          price: prod?.prixDetail || prod?.prixGros || (prod as any)?.price || 1000,
+          prixGros: prod?.prixGros,
+          prixDetail: prod?.prixDetail,
+          quantiteMinimum: 5,
+          updatedAt: new Date().toISOString()
+        };
+        newInventory.push(newSellerItem);
+        changedItems.push(newSellerItem);
+      }
+
+      // 2. Buyer stock increment (for B2B orders or if sender is a merchant)
+      const buyerObj = users.find((u) => u.id === order.senderId);
+      const isBuyerBusiness =
+        order.orderType.startsWith("B2B") ||
+        (buyerObj &&
+          [
+            UserRole.MANUFACTURER,
+            UserRole.WHOLESALER,
+            UserRole.SEMI_WHOLESALER,
+            UserRole.RETAILER
+          ].includes(buyerObj.role as UserRole));
+
+      if (isBuyerBusiness) {
+        const buyerInvIndex = newInventory.findIndex(
+          (inv) => inv.ownerId === order.senderId && inv.productId === item.productId
+        );
+        if (buyerInvIndex !== -1) {
+          const buyerItem = newInventory[buyerInvIndex];
+          const updatedBuyerItem = {
+            ...buyerItem,
+            stock: buyerItem.stock + item.quantity,
+            updatedAt: new Date().toISOString()
+          };
+          newInventory[buyerInvIndex] = updatedBuyerItem;
+          changedItems.push(updatedBuyerItem);
+        } else {
+          // Add new product item to buyer's inventory
+          const sellerItem = sellerInvIndex !== -1 ? newInventory[sellerInvIndex] : undefined;
+          const prod = products.find((p) => p.id === item.productId);
+
+          const newBuyerItem: InventoryItem = {
+            id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            ownerId: order.senderId,
+            productId: item.productId,
+            stock: item.quantity,
+            threshold: prod?.lowStockThreshold || 5,
+            price: item.priceAtOrder || sellerItem?.price || prod?.prixDetail || 1000,
+            prixGros: sellerItem?.prixGros || prod?.prixGros,
+            prixDetail: sellerItem?.prixDetail || prod?.prixDetail,
+            quantiteMinimum: 5,
+            updatedAt: new Date().toISOString()
+          };
+          newInventory.push(newBuyerItem);
+          changedItems.push(newBuyerItem);
+        }
+      }
+    });
+
+    if (isRealUserAuthenticated) {
+      changedItems.forEach((item) => inventoryService.updateInventoryItem(item));
+    }
+    syncInventory(newInventory);
+  };
+
   // Direct checkout sale POS (no delivery, updates stocks directly)
   const handlePlaceQuickB2CSale = (items: { productId: string; quantity: number }[]) => {
     if (!currentUser) return;
@@ -1251,8 +1342,9 @@ export default function App() {
     const updatedInv = inventory.map((invItem) => {
       const matched = items.find((i) => i.productId === invItem.productId && invItem.ownerId === currentUser.id);
       if (matched) {
-        const changed = { ...invItem, stock: Math.max(0, invItem.stock - matched.quantity) };
+        const changed = { ...invItem, stock: Math.max(0, invItem.stock - matched.quantity), updatedAt: new Date().toISOString() };
         changedItems.push(changed);
+        recordStockMovement(invItem.productId, "OUT", matched.quantity, "Vente comptoir boutique");
         return changed;
       }
       return invItem;
@@ -1322,17 +1414,49 @@ export default function App() {
 
     // 2. Decrement Stock & Record movements
     const changedItems: InventoryItem[] = [];
-    const updatedInv = inventory.map(item => {
+    const clientObj = users.find(u => u.id === clientId);
+    const isClientMerchant = clientObj && [UserRole.WHOLESALER, UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(clientObj.role);
+
+    let updatedInv = inventory.map(item => {
       const saleItem = items.find(si => si.productId === item.productId && item.ownerId === currentUser.id);
       if (saleItem) {
-        const newStock = item.stock - saleItem.quantity;
+        const newStock = Math.max(0, item.stock - saleItem.quantity);
         recordStockMovement(item.productId, "OUT", saleItem.quantity, "Vente", saleId);
-        const changed = { ...item, stock: newStock };
+        const changed = { ...item, stock: newStock, updatedAt: new Date().toISOString() };
         changedItems.push(changed);
         return changed;
       }
       return item;
     });
+
+    if (isClientMerchant) {
+      saleItems.forEach(saleItem => {
+        const buyerInvIndex = updatedInv.findIndex(i => i.productId === saleItem.productId && i.ownerId === clientId);
+        if (buyerInvIndex !== -1) {
+          const changed = {
+            ...updatedInv[buyerInvIndex],
+            stock: updatedInv[buyerInvIndex].stock + saleItem.quantity,
+            updatedAt: new Date().toISOString()
+          };
+          updatedInv[buyerInvIndex] = changed;
+          changedItems.push(changed);
+        } else {
+          const newItem: InventoryItem = {
+            id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            ownerId: clientId,
+            productId: saleItem.productId,
+            stock: saleItem.quantity,
+            threshold: 5,
+            price: saleItem.priceAtOrder || 1000,
+            quantiteMinimum: 5,
+            updatedAt: new Date().toISOString()
+          };
+          updatedInv.push(newItem);
+          changedItems.push(newItem);
+        }
+      });
+    }
+
     if (isRealUserAuthenticated) { changedItems.forEach(item => inventoryService.updateInventoryItem(item)); }
     syncInventory(updatedInv);
 
@@ -1397,8 +1521,11 @@ export default function App() {
   // Order status flow & drivers assignations
   const handleUpdateOrderStatus = (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => {
     let changedOrder: Order | undefined;
+    let oldOrder: Order | undefined;
+
     const updated = orders.map((o) => {
       if (o.id === orderId) {
+        oldOrder = o;
         const payload: Partial<Order> = { status, updatedAt: new Date().toISOString() };
         if (driverId) {
           payload.driverId = driverId;
@@ -1417,8 +1544,13 @@ export default function App() {
       return o;
     });
     
-    if (changedOrder && isRealUserAuthenticated) {
-      orderService.updateOrder(changedOrder.id, changedOrder);
+    if (changedOrder) {
+      if (status === OrderStatus.DELIVERED && oldOrder && oldOrder.status !== OrderStatus.DELIVERED) {
+        processOrderStockUpdate(changedOrder);
+      }
+      if (isRealUserAuthenticated) {
+        orderService.updateOrder(changedOrder.id, changedOrder);
+      }
     }
     syncOrders(updated);
   };
@@ -1484,10 +1616,12 @@ export default function App() {
 
   const handleCompleteDelivery = (orderId: string, otpInput?: string, sig?: string, img?: string) => {
     let orderToDeliver: Order | undefined;
+    let oldOrder: Order | undefined;
+
     const updated = orders.map((o) => {
       if (o.id === orderId) {
-        orderToDeliver = o;
-        return {
+        oldOrder = o;
+        orderToDeliver = {
           ...o,
           status: OrderStatus.DELIVERED,
           paymentStatus: "PAID" as const,
@@ -1495,68 +1629,21 @@ export default function App() {
           signatureImage: sig,
           deliveryPhoto: img
         };
+        return orderToDeliver;
       }
       return o;
     });
 
     if (orderToDeliver) {
-      const o = orderToDeliver;
-      let newInventory = [...inventory];
-      const changedItems: InventoryItem[] = [];
-      
-      // Update inventory based on order items
-      o.items.forEach(item => {
-        // Reduce stock for the seller (receiverId)
-        const sellerInvIndex = newInventory.findIndex(inv => inv.ownerId === o.receiverId && inv.productId === item.productId);
-        if (sellerInvIndex !== -1) {
-          const changed = {
-            ...newInventory[sellerInvIndex],
-            stock: Math.max(0, newInventory[sellerInvIndex].stock - item.quantity)
-          };
-          newInventory[sellerInvIndex] = changed;
-          changedItems.push(changed);
-        }
-        
-        // If it's a B2B order, the buyer (senderId) gets restocked (with quantity incrementation without duplication)
-        if (o.orderType.startsWith("B2B")) {
-          const buyerInvIndex = newInventory.findIndex(inv => inv.ownerId === o.senderId && inv.productId === item.productId);
-          if (buyerInvIndex !== -1) {
-            const changed = {
-              ...newInventory[buyerInvIndex],
-              stock: newInventory[buyerInvIndex].stock + item.quantity
-            };
-            newInventory[buyerInvIndex] = changed;
-            changedItems.push(changed);
-          } else {
-            // Buyer doesn't have this product in their inventory yet. Add it.
-            const sellerItem = sellerInvIndex !== -1 ? newInventory[sellerInvIndex] : undefined;
-            const newItem = {
-              id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-              ownerId: o.senderId,
-              productId: item.productId,
-              stock: item.quantity,
-              price: sellerItem ? Math.round(sellerItem.price * 1.1) : 1000,
-              prixGros: sellerItem?.prixGros ? Math.round(sellerItem.prixGros * 1.1) : undefined,
-              prixDetail: sellerItem?.prixDetail ? Math.round(sellerItem.prixDetail * 1.1) : undefined,
-              quantiteMinimum: 5,
-              lastUpdated: new Date().toISOString()
-            };
-            newInventory.push(newItem);
-            changedItems.push(newItem);
-          }
-        }
-      });
+      if (oldOrder && oldOrder.status !== OrderStatus.DELIVERED) {
+        processOrderStockUpdate(orderToDeliver);
+      }
       
       if (isRealUserAuthenticated) {
-        changedItems.forEach(item => inventoryService.updateInventoryItem(item));
-      }
-      syncInventory(newInventory);
-      addNotification(`Acheminement finalisé pour ${orderId}. Les stocks ont été transférés.`);
-      const changedOrder = updated.find(o => o.id === orderId);
-      if (changedOrder && isRealUserAuthenticated) {
-        orderService.updateOrder(changedOrder.id, changedOrder);
+        orderService.updateOrder(orderToDeliver.id, orderToDeliver);
       }
       syncOrders(updated);
+      addNotification(`Acheminement finalisé pour ${orderId}. Les stocks ont été transférés.`);
     }
   };
 

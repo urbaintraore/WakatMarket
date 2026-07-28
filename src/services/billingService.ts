@@ -31,129 +31,156 @@ export const billingService = {
    * Génère un numéro de facture unique (ex: GRO-2026-0001)
    */
   generateFactureNumber(role: string): string {
-    const prefix = role.substring(0, 3).toUpperCase();
+    const prefix = (role || "VENTE").substring(0, 3).toUpperCase();
     const year = new Date().getFullYear();
     const randomSeq = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
     return `${prefix}-${year}-${randomSeq}`;
   },
 
   /**
-   * Génère le PDF de la facture, l'upload sur Firebase Storage et crée le document Firestore
+   * Génère le PDF de la facture, l'enregistre/télécharge immédiatement et synchronise en arrière-plan
    */
   async genererEtEnregistrerFacture(data: FactureData): Promise<string> {
     try {
       // 1. Initialiser jsPDF
       const doc = new jsPDF();
-      const numeroFacture = this.generateFactureNumber(data.vendeurRole);
+      const numeroFacture = this.generateFactureNumber(data.vendeurRole || "VENTE");
       
       // Configuration de base
       let y = 20;
       doc.setFontSize(20);
-      doc.text("WakatMarket - Facture", 105, y, { align: "center" });
-      
-      y += 15;
-      doc.setFontSize(12);
-      doc.text(`Facture N°: ${numeroFacture}`, 20, y);
-      doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")}`, 140, y);
-      
-      y += 15;
-      doc.setFontSize(14);
-      doc.text("Informations Vendeur", 20, y);
-      doc.text("Informations Acheteur", 120, y);
+      doc.setFont("helvetica", "bold");
+      doc.text("WakatMarket - Facture Officielle", 105, y, { align: "center" });
       
       y += 10;
       doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Plateforme de Distribution & Ventes Directes", 105, y, { align: "center" });
+      
+      y += 15;
+      doc.setFontSize(11);
+      doc.text(`Facture N°: ${numeroFacture}`, 20, y);
+      doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })}`, 120, y);
+      
+      y += 8;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(20, y, 190, y);
+
+      y += 12;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Informations Vendeur", 20, y);
+      doc.text("Informations Acheteur", 110, y);
+      
+      y += 8;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
       doc.text(`Nom: ${data.vendeurNom}`, 20, y);
       doc.text(`Profil: ${data.vendeurRole}`, 20, y + 6);
-      doc.text(`Type de vente: ${data.typeVente}`, 20, y + 12);
+      doc.text(`Type de vente: ${data.typeVente || 'DIRECT'}`, 20, y + 12);
       
-      doc.text(`Nom: ${data.acheteurNom || 'Client Final'}`, 120, y);
-      doc.text(`ID: ${data.acheteurId || 'N/A'}`, 120, y + 6);
+      doc.text(`Nom: ${data.acheteurNom || 'Client Final (Comptoir)'}`, 110, y);
+      doc.text(`ID: ${data.acheteurId || 'N/A'}`, 110, y + 6);
       
-      y += 30;
+      y += 28;
+      doc.line(20, y, 190, y);
+
+      y += 10;
       // En-têtes du tableau
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("Produit", 20, y);
-      doc.text("Qté", 100, y);
-      doc.text("Prix U.", 130, y);
-      doc.text("Sous-Total", 160, y);
+      doc.text("Qté", 110, y);
+      doc.text("Prix U.", 135, y);
+      doc.text("Sous-Total", 165, y);
       
       // Ligne de séparation
-      y += 2;
+      y += 3;
       doc.line(20, y, 190, y);
       
       y += 8;
       doc.setFont("helvetica", "normal");
       
       // Lignes de produits
-      data.lignes.forEach((ligne) => {
-        doc.text(ligne.nom, 20, y);
-        doc.text(ligne.quantite.toString(), 100, y);
-        doc.text(`${ligne.prixUnitaire} CFA`, 130, y);
-        doc.text(`${ligne.sousTotal} CFA`, 160, y);
+      (data.lignes || []).forEach((ligne) => {
+        const name = (ligne.nom || "Produit").substring(0, 42);
+        const qty = (ligne.quantite || 0).toString();
+        const pu = `${(ligne.prixUnitaire || 0).toLocaleString('fr-FR')} CFA`;
+        const st = `${(ligne.sousTotal || (ligne.quantite * ligne.prixUnitaire) || 0).toLocaleString('fr-FR')} CFA`;
+        
+        doc.text(name, 20, y);
+        doc.text(qty, 110, y);
+        doc.text(pu, 135, y);
+        doc.text(st, 165, y);
         y += 8;
       });
       
-      y += 5;
+      y += 4;
       doc.line(20, y, 190, y);
       
-      y += 10;
+      y += 12;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text(`TOTAL: ${data.total} CFA`, 140, y);
+      doc.setFontSize(13);
+      doc.text(`TOTAL NET: ${(data.total || 0).toLocaleString('fr-FR')} FCFA`, 110, y);
 
-      // 2. Générer le blob (Blob)
+      y += 20;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic");
+      doc.text("Facture certifiée • Générée automatiquement via WakatMarket", 105, y, { align: "center" });
+
+      // 2. Génération immédiate du Blob et URL local
       const pdfBlob = doc.output("blob");
+      const localUrl = URL.createObjectURL(pdfBlob);
 
-      // 3. Uploader le PDF sur Supabase Storage
-      let urlPDF = "";
+      // 3. Auto-téléchargement immédiat
       try {
-        if (!supabase) {
-           throw new Error("Supabase is not configured.");
+        doc.save(`Facture_${numeroFacture}.pdf`);
+      } catch (saveError) {
+        console.warn("Auto save PDF browser error:", saveError);
+      }
+
+      // 4. Exécution asynchrone non-bloquante du stockage réseau
+      (async () => {
+        let urlPDF = localUrl;
+        try {
+          if (supabase) {
+            const filePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
+            const { error } = await supabase.storage
+              .from('chat')
+              .upload(filePath, pdfBlob, {
+                contentType: 'application/pdf',
+                upsert: true
+              });
+            if (!error) {
+              const { data: publicUrlData } = supabase.storage
+                .from('chat')
+                .getPublicUrl(filePath);
+              if (publicUrlData?.publicUrl) {
+                urlPDF = publicUrlData.publicUrl;
+              }
+            }
+          }
+        } catch (stErr) {
+          console.warn("Storage upload warn (fallback local blob used):", stErr);
         }
-        
-        const filePath = `factures/${data.vendeurId}/${numeroFacture}.pdf`;
-        const { error } = await supabase.storage
-          .from('chat') // Reuse the existing bucket or create a new one. Let's assume 'chat' or create a 'factures' bucket? I will use 'chat' for simplicity, or we can use 'factures'. Better just use 'chat' since it might be the only one created by the user, or let's use 'public' maybe? The user didn't specify. I'll use 'chat' as we did in chatService.
-          .upload(filePath, pdfBlob, {
-            contentType: 'application/pdf',
-            upsert: false
+
+        try {
+          const db = getFirestore();
+          await addDoc(collection(db, "factures"), {
+            venteId: data.venteId,
+            numeroFacture,
+            urlPDF,
+            vendeurId: data.vendeurId,
+            acheteurId: data.acheteurId || null,
+            total: data.total,
+            dateEmission: serverTimestamp()
           });
-          
-        if (error) throw error;
-        
-        const { data: publicUrlData } = supabase.storage
-          .from('chat')
-          .getPublicUrl(filePath);
-          
-        urlPDF = publicUrlData.publicUrl;
-      } catch (storageError) {
-        console.warn("Supabase Storage non configuré ou erreur d'upload, le PDF ne sera pas sauvegardé en ligne.", storageError);
-        // Fallback pour la démo: Créer une URL blob locale
-        urlPDF = URL.createObjectURL(pdfBlob);
-      }
+        } catch (dbErr) {
+          console.warn("Firestore save warn (app running in local mode):", dbErr);
+        }
+      })();
 
-      // 4. Enregistrer la référence dans Firestore
-      try {
-        const db = getFirestore();
-        await addDoc(collection(db, "factures"), {
-          venteId: data.venteId,
-          numeroFacture,
-          urlPDF,
-          vendeurId: data.vendeurId,
-          acheteurId: data.acheteurId || null,
-          total: data.total,
-          dateEmission: serverTimestamp()
-        });
-      } catch (dbError) {
-        console.warn("Erreur Firestore (peut-être en mode démo):", dbError);
-      }
-
-      // 5. Télécharger automatiquement le fichier pour l'utilisateur
-      doc.save(`Facture_${numeroFacture}.pdf`);
-
-      return urlPDF;
+      return localUrl;
     } catch (error) {
       console.error("Erreur lors de la génération de la facture:", error);
       throw new Error("Impossible de générer la facture.");

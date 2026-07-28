@@ -3329,7 +3329,7 @@ export function ClientDashboard({
       ownerId: selectedRetailer,
       stock: 100,
       threshold: p.lowStockThreshold || 10,
-      price: p.prixDetail || p.price || 1000,
+      price: p.prixDetail || p.prixGros || (p as any).price || 1000,
       prixDetail: p.prixDetail,
       prixGros: p.prixGros
     }));
@@ -3339,7 +3339,7 @@ export function ClientDashboard({
       ownerId: selectedRetailer,
       stock: 999,
       threshold: p.lowStockThreshold || 10,
-      price: p.prixDetail || p.price || 1000,
+      price: p.prixDetail || p.prixGros || (p as any).price || 1000,
       prixDetail: p.prixDetail,
       prixGros: p.prixGros
     }));
