@@ -1,9 +1,21 @@
 import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
-import { InventoryItem } from "../types";
+import { InventoryItem, Product } from "../types";
 import { filterMockData } from "../data";
 
 const COLLECTION_NAME = "inventory";
+
+export interface ExpirationAlert {
+  id: string;
+  inventoryItemId?: string;
+  productId: string;
+  productName: string;
+  ownerId: string;
+  expirationDate: string;
+  daysRemaining: number;
+  isExpired: boolean;
+  message: string;
+}
 
 export const inventoryService = {
   async getAllInventory(): Promise<InventoryItem[]> {
@@ -63,6 +75,53 @@ export const inventoryService = {
     } catch (error: any) {
       console.warn("Firestore error during deleteInventoryItem:", error);
     }
+  },
+
+  /**
+   * Mécanisme de détection des produits expirant sous 15 jours ou déjà périmés.
+   */
+  checkExpirationAlerts(
+    inventory: InventoryItem[],
+    products: Product[],
+    daysThreshold: number = 15
+  ): ExpirationAlert[] {
+    const alerts: ExpirationAlert[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    inventory.forEach((item) => {
+      const prod = products.find((p) => p.id === item.productId);
+      const expDateStr = item.expirationDate || prod?.expirationDate;
+      if (!expDateStr) return;
+
+      const expDate = new Date(expDateStr);
+      if (isNaN(expDate.getTime())) return;
+      expDate.setHours(0, 0, 0, 0);
+
+      const diffTime = expDate.getTime() - today.getTime();
+      const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (daysRemaining <= daysThreshold) {
+        const isExpired = daysRemaining < 0;
+        const message = isExpired
+          ? `Produit Périmé : "${prod?.name || 'Produit'}" a expiré depuis ${Math.abs(daysRemaining)} jour(s) (${expDateStr}).`
+          : `Alerte Expiration (15j) : "${prod?.name || 'Produit'}" expire dans ${daysRemaining} jour(s) (${expDateStr}).`;
+
+        alerts.push({
+          id: `exp-${item.id}-${expDateStr}`,
+          inventoryItemId: item.id,
+          productId: item.productId,
+          productName: prod?.name || "Produit",
+          ownerId: item.ownerId,
+          expirationDate: expDateStr,
+          daysRemaining,
+          isExpired,
+          message,
+        });
+      }
+    });
+
+    return alerts;
   }
 };
 

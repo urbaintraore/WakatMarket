@@ -180,6 +180,11 @@ class ERPStorage {
     
     [...initial, ...loaded].forEach(u => {
       if (u && u.id) {
+        if (u.email === "sayouba@ujkz.bf") {
+          u.role = UserRole.SEMI_WHOLESALER;
+          u.companyName = "BONKOUNGOU Entreprise";
+          u.name = "Sayouba BONKOUNGOU";
+        }
         userMap.set(u.id, u);
       }
     });
@@ -194,19 +199,20 @@ class ERPStorage {
             if (parsed && (parsed.uid || parsed.email)) {
               const uid = parsed.uid || parsed.email;
               if (uid) {
+                const isSayouba = parsed.email === "sayouba@ujkz.bf";
                 const profile: UserProfile = {
                   id: uid,
-                  name: `${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur",
+                  name: isSayouba ? "Sayouba BONKOUNGOU" : (`${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur"),
                   email: parsed.email || "",
                   phone: parsed.téléphone || "",
-                  role: (parsed.rôle as UserRole) || UserRole.CLIENT,
+                  role: isSayouba ? UserRole.SEMI_WHOLESALER : ((parsed.rôle as UserRole) || UserRole.CLIENT),
                   status: (parsed.statut as any) || "ACTIVE",
                   country: parsed.pays || "Burkina Faso",
                   region: parsed.ville || "Ouagadougou",
                   sector: parsed.quartier,
                   avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
                   balance: 0,
-                  companyName: `${parsed.nom || parsed.email?.split("@")[0] || "Entreprise"} Entreprise`,
+                  companyName: isSayouba ? "BONKOUNGOU Entreprise" : `${parsed.nom || parsed.email?.split("@")[0] || "Entreprise"} Entreprise`,
                   address: parsed.ville && parsed.quartier ? `${parsed.quartier}, ${parsed.ville}` : "Non spécifié"
                 };
                 userMap.set(uid, profile);
@@ -216,6 +222,14 @@ class ERPStorage {
         }
       }
     } catch (e) {}
+
+    userMap.forEach((u) => {
+      if (u.email === "sayouba@ujkz.bf") {
+        u.role = UserRole.SEMI_WHOLESALER;
+        u.companyName = "BONKOUNGOU Entreprise";
+        u.name = "Sayouba BONKOUNGOU";
+      }
+    });
 
     const result = Array.from(userMap.values()).filter(u => (u.status as any) !== "DELETED");
     return result;

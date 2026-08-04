@@ -126,6 +126,7 @@ export interface InventoryItem {
   stock: number;
   threshold: number; // Critical threshold
   price: number; // Selling price
+  expirationDate?: string;
   promoPrice?: number;
   promoEnds?: string;
   prixGros?: number;

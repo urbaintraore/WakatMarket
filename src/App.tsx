@@ -85,10 +85,10 @@ export default function App() {
       const unsubscribe = userService.subscribeToAllUsers((fbUsers) => {
         const mappedUsers: UserProfile[] = fbUsers.map(u => ({
           id: u.uid,
-          name: `${u.prénom} ${u.nom}`,
+          name: u.email === "sayouba@ujkz.bf" ? "Sayouba BONKOUNGOU" : `${u.prénom} ${u.nom}`,
           email: u.email,
           phone: u.téléphone,
-          role: u.rôle as any,
+          role: u.email === "sayouba@ujkz.bf" ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
           status: u.statut as any,
           country: u.pays || "Burkina Faso",
           region: u.ville || "Ouagadougou",
@@ -167,17 +167,18 @@ export default function App() {
   // Sync currentUser with real Firebase user
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
+      const isSayouba = dbUser.email === "sayouba@ujkz.bf";
       const mapped: UserProfile = {
         id: dbUser.uid,
-        name: `${dbUser.prénom} ${dbUser.nom}`,
+        name: isSayouba ? "Sayouba BONKOUNGOU" : `${dbUser.prénom} ${dbUser.nom}`,
         email: dbUser.email,
         phone: dbUser.téléphone,
-        role: dbUser.rôle as any,
+        role: isSayouba ? UserRole.SEMI_WHOLESALER : (dbUser.rôle as any),
         status: dbUser.statut as any,
         country: dbUser.pays || "Burkina Faso",
         region: dbUser.ville || "Ouagadougou",
         avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-        companyName: dbUser.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
+        companyName: isSayouba ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
       };
       setCurrentUser(mapped);
     }
@@ -298,12 +299,13 @@ export default function App() {
         if (fbUsers && fbUsers.length > 0) {
           fbUsers.forEach((u) => {
             const existing = combinedMap.get(u.uid);
+            const isSayouba = u.email === "sayouba@ujkz.bf";
             const mappedUser: UserProfile = {
               id: u.uid,
-              name: `${u.prénom || ""} ${u.nom || ""}`.trim() || u.email?.split("@")[0] || "Utilisateur",
+              name: isSayouba ? "Sayouba BONKOUNGOU" : (`${u.prénom || ""} ${u.nom || ""}`.trim() || u.email?.split("@")[0] || "Utilisateur"),
               email: u.email || "",
               phone: u.téléphone || "",
-              role: (u.rôle as UserRole) || UserRole.CLIENT,
+              role: isSayouba ? UserRole.SEMI_WHOLESALER : ((u.rôle as UserRole) || UserRole.CLIENT),
               status: (u.statut as any) || "ACTIVE",
               country: u.pays || "Burkina Faso",
               region: u.ville || "Ouagadougou",
@@ -312,7 +314,7 @@ export default function App() {
               longitude: u.longitude,
               avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
               balance: existing?.balance || 0,
-              companyName: u.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`),
+              companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`),
               address: u.ville && u.quartier ? `${u.quartier}, ${u.ville}, ${u.pays || ""}` : "Non spécifié"
             };
             combinedMap.set(mappedUser.id, mappedUser);
@@ -616,7 +618,39 @@ export default function App() {
     }, 5000);
   };
 
-  // Switch role fast handler (REMOVED)
+  // Auto expiration alert trigger (15 days notice)
+  const notifiedExpirationsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!currentUser || !inventory || inventory.length === 0) return;
+
+    const alerts = inventoryService.checkExpirationAlerts(inventory, products, 15);
+    const userAlerts = alerts.filter(
+      (a) => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN
+    );
+
+    userAlerts.forEach((alert) => {
+      if (!notifiedExpirationsRef.current.has(alert.id)) {
+        notifiedExpirationsRef.current.add(alert.id);
+        addNotification(alert.message);
+
+        if (
+          typeof window !== "undefined" &&
+          "Notification" in window &&
+          Notification.permission === "granted"
+        ) {
+          try {
+            new Notification("Alerte Péremption (15j) - WakatMarket", {
+              body: alert.message,
+              icon: wakatLogo,
+            });
+          } catch (e) {
+            console.warn("Notification error:", e);
+          }
+        }
+      }
+    });
+  }, [inventory, products, currentUser]);
 
   // Dynamic Class for theme apply
   useEffect(() => {
@@ -933,6 +967,7 @@ export default function App() {
       stock: initialStock,
       threshold: Math.max(5, Math.round(initialStock * 0.15)),
       price: price,
+      expirationDate: p.expirationDate,
       prixGros: prixGros !== undefined ? prixGros : price,
       prixDetail: prixDetail !== undefined ? prixDetail : price,
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
@@ -2648,6 +2683,8 @@ export default function App() {
                   users={displayUsers}
                   orders={displayOrders}
                   products={displayProducts}
+                  inventory={displayInventory}
+                  stockMovements={stockMovements}
                   onToggleUserStatus={handleToggleUserStatus}
                   onDeleteUser={handleDeleteUser}
                   onUpdateCommission={handleUpdateCommission}
@@ -2669,6 +2706,7 @@ export default function App() {
                   connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
+                  stockMovements={stockMovements}
                   onCreateProduct={handleCreateProduct}
                   onUpdateInventory={handleUpdateInventory}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
@@ -2692,6 +2730,7 @@ export default function App() {
                   connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
+                  stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
@@ -2718,6 +2757,7 @@ export default function App() {
                   connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
+                  stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
@@ -2745,6 +2785,7 @@ export default function App() {
                   connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
+                  stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
                   onDeleteInventoryItem={handleDeleteInventoryItem}

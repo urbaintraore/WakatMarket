@@ -15,7 +15,7 @@ import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, Chat
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
-import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector } from "./CommonDashboardParts";
+import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner } from "./CommonDashboardParts";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
 import { CaisseModule } from "./CaisseModule";
@@ -192,6 +192,8 @@ interface AdminDashboardProps {
   users: UserProfile[];
   orders: Order[];
   products: Product[];
+  inventory?: InventoryItem[];
+  stockMovements?: StockMovement[];
   onToggleUserStatus: (userId: string) => void;
   onDeleteUser?: (userId: string) => void;
   onUpdateCommission: (rate: number) => void;
@@ -205,6 +207,8 @@ export function AdminDashboard({
   users,
   orders,
   products,
+  inventory = [],
+  stockMovements = [],
   onToggleUserStatus,
   onDeleteUser,
   onUpdateCommission,
@@ -283,6 +287,14 @@ export function AdminDashboard({
               {pendingApprovals.length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("stats")}
+          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
+            activeTab === "stats" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <BarChart className="w-4 h-4 inline mr-1.5" /> Tendances & Périssabilité (30j)
         </button>
         <button
           onClick={() => setActiveTab("config")}
@@ -492,6 +504,19 @@ export function AdminDashboard({
         </div>
       )}
 
+      {activeTab === "stats" && (
+        <div className="space-y-6">
+          <ExpirationAlertsBanner alerts={inventoryService.checkExpirationAlerts(inventory, products, 15)} />
+          <ThirtyDaySalesAndStockChart
+            orders={orders}
+            inventory={inventory}
+            products={products}
+            stockMovements={stockMovements}
+            currentUserId={currentUser.id}
+          />
+        </div>
+      )}
+
       {activeTab === "config" && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 max-w-md">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mb-4">
@@ -550,6 +575,7 @@ interface ManufacturerDashboardProps {
   connections: Connection[];
   syncQueue: any[];
   isOnline: boolean;
+  stockMovements?: StockMovement[];
   onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number) => void;
   onDeleteInventoryItem: (itemId: string) => void;
@@ -571,6 +597,7 @@ export function ManufacturerDashboard({
   connections,
   syncQueue,
   isOnline,
+  stockMovements = [],
   onCreateProduct,
   onUpdateInventory,
   onDeleteInventoryItem,
@@ -695,6 +722,10 @@ export function ManufacturerDashboard({
 
   const [selectedDriver, setSelectedDriver] = useState<string>("");
 
+  const manufacturerExpirationAlerts = useMemo(() => {
+    return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
+  }, [inventory, products, currentUser]);
+
   return (
     <div className="space-y-6" id="manufacturer-dashboard">
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
@@ -786,6 +817,16 @@ export function ManufacturerDashboard({
 
       {activeTab === "catalog" && (
         <div className="space-y-4">
+          <ExpirationAlertsBanner alerts={manufacturerExpirationAlerts} />
+
+          <ThirtyDaySalesAndStockChart
+            orders={orders}
+            inventory={inventory}
+            products={products}
+            stockMovements={stockMovements}
+            currentUserId={currentUser.id}
+          />
+
           <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
           <div className="flex justify-between items-center">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mon Catalogue d'Usine</h4>
@@ -1224,6 +1265,7 @@ interface WholesalerDashboardProps {
   connections: Connection[];
   syncQueue: any[];
   isOnline: boolean;
+  stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
   onDeleteInventoryItem: (itemId: string) => void;
@@ -1248,6 +1290,7 @@ export function WholesalerDashboard({
   connections,
   syncQueue,
   isOnline,
+  stockMovements = [],
   onPlaceB2BOrder,
   onUpdateInventory,
   onDeleteInventoryItem,
@@ -1451,6 +1494,10 @@ export function WholesalerDashboard({
     }
   };
 
+  const wholesalerExpirationAlerts = useMemo(() => {
+    return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
+  }, [inventory, products, currentUser]);
+
   return (
     <div className="space-y-6" id="wholesaler-dashboard">
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
@@ -1489,7 +1536,18 @@ export function WholesalerDashboard({
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
           {activeTab === "dashboard" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          <ExpirationAlertsBanner alerts={wholesalerExpirationAlerts} />
+
+          <ThirtyDaySalesAndStockChart
+            orders={orders}
+            inventory={inventory}
+            products={products}
+            stockMovements={stockMovements}
+            currentUserId={currentUser.id}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Orders & Inventory (Takes 2 columns on lg) */}
           <div className="lg:col-span-2 space-y-6">
             <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
@@ -1577,6 +1635,7 @@ export function WholesalerDashboard({
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {activeTab === "buyers" && (
@@ -2255,6 +2314,7 @@ interface RetailerDashboardProps {
   connections: Connection[];
   syncQueue: any[];
   isOnline: boolean;
+  stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
   onDeleteInventoryItem: (itemId: string) => void;
@@ -2280,6 +2340,7 @@ export function RetailerDashboard({
   connections,
   syncQueue,
   isOnline,
+  stockMovements = [],
   onPlaceB2BOrder,
   onUpdateInventory,
   onDeleteInventoryItem,
@@ -2463,6 +2524,10 @@ export function RetailerDashboard({
   };
   
   const r2cDrivers = users.filter((u) => u.role === UserRole.DRIVER_R2C && u.status === "ACTIVE");
+
+  const retailerExpirationAlerts = useMemo(() => {
+    return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
+  }, [inventory, products, currentUser]);
 
   return (
     <div className="space-y-6" id="retailer-dashboard">
@@ -2854,6 +2919,16 @@ export function RetailerDashboard({
 
       {activeTab === "inventory" && (
         <div className="space-y-4">
+          <ExpirationAlertsBanner alerts={retailerExpirationAlerts} />
+
+          <ThirtyDaySalesAndStockChart
+            orders={orders}
+            inventory={inventory}
+            products={products}
+            stockMovements={stockMovements}
+            currentUserId={currentUser.id}
+          />
+
           <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
           <div className="flex justify-between items-center">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">État des Stocks Boutique</h4>
@@ -4156,6 +4231,7 @@ interface SemiWholesalerDashboardProps {
   connections: Connection[];
   syncQueue: any[];
   isOnline: boolean;
+  stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
   onDeleteInventoryItem: (itemId: string) => void;
@@ -4181,6 +4257,7 @@ export function SemiWholesalerDashboard({
   connections,
   syncQueue,
   isOnline,
+  stockMovements = [],
   onPlaceB2BOrder,
   onUpdateInventory,
   onDeleteInventoryItem,
@@ -4439,6 +4516,10 @@ export function SemiWholesalerDashboard({
     alert("Stock et tarifs mis à jour avec succès !");
   };
 
+  const semiWholesalerExpirationAlerts = useMemo(() => {
+    return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
+  }, [inventory, products, currentUser]);
+
   return (
     <div className="space-y-6" id="semi-wholesaler-dashboard">
       {/* Title block */}
@@ -4565,7 +4646,18 @@ export function SemiWholesalerDashboard({
 
       {/* Tab: Dashboard */}
       {activeTab === "dashboard" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+          <ExpirationAlertsBanner alerts={semiWholesalerExpirationAlerts} />
+
+          <ThirtyDaySalesAndStockChart
+            orders={orders}
+            inventory={inventory}
+            products={products}
+            stockMovements={stockMovements}
+            currentUserId={currentUser.id}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Inventory & Alerts (Takes 2 columns) */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quick summary card for Incoming Orders */}
@@ -4676,6 +4768,7 @@ export function SemiWholesalerDashboard({
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {/* Tab: Procure from Wholesalers */}
