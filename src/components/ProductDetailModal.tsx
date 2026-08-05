@@ -16,6 +16,7 @@ import {
   Sliders,
   Layers
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -64,17 +65,8 @@ export function ProductDetailModal({
       const d = new Date(now);
       d.setDate(d.getDate() - i);
 
-      // Fluctuation wave calculation
-      const wave = Math.sin((i + seed) * 0.3) * 0.08;
-      const trend = (29 - i) * 0.002; // slight upward trend over 30 days
-      const noise = (((seed * (i + 1) * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.04;
-
-      const buyingMultiplier = Math.max(0.7, 1 + wave * 0.6 + noise);
-      const sellingMultiplier = Math.max(0.8, 1 + wave + trend + noise * 0.5);
-
-      // Last day equals exact current prices
-      const buyingPrice = i === 0 ? currentBuyingPrice : Math.round(currentBuyingPrice * buyingMultiplier);
-      const sellingPrice = i === 0 ? currentSellingPrice : Math.round(currentSellingPrice * sellingMultiplier);
+      const buyingPrice = currentBuyingPrice;
+      const sellingPrice = currentSellingPrice;
       const margin = sellingPrice - buyingPrice;
       const marginPercent = Math.round((margin / (sellingPrice || 1)) * 100);
 
@@ -308,6 +300,39 @@ export function ProductDetailModal({
                 <p className="text-[11px] text-indigo-700/80 dark:text-indigo-400/80 mt-1 font-medium">
                   Marge moyenne 30j: <span className="font-bold">{formatCFA(stats.avgMargin)}</span>
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* QR Code Generation Section for Boutique Scanning */}
+          <div className="bg-zinc-50 dark:bg-zinc-950/60 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col md:flex-row items-center gap-6">
+            <div className="bg-white p-3 rounded-2xl shadow-sm border border-zinc-200 shrink-0">
+              <QRCodeSVG
+                value={JSON.stringify({ id: product.id, name: product.name, price: currentSellingPrice, category: product.category })}
+                size={110}
+                level={"M"}
+                includeMargin={true}
+              />
+            </div>
+            <div className="space-y-2 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2">
+                <span className="p-1.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-lg">
+                  <QrCode className="w-4 h-4" />
+                </span>
+                <h4 className="font-bold text-sm text-zinc-900 dark:text-white">QR Code Espace Boutique</h4>
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Scannez ce QR code avec un smartphone pour afficher instantanément les spécifications et le prix de <strong className="text-zinc-800 dark:text-zinc-200">{product.name}</strong> dans l'espace boutique.
+              </p>
+              <div className="flex flex-wrap gap-2 justify-center md:justify-start pt-1">
+                <button
+                  onClick={() => {
+                    alert(`QR Code pour ${product.name} prêt à être scanné ou affiché en boutique.`);
+                  }}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5" /> Afficher / Imprimer le Badge QR
+                </button>
               </div>
             </div>
           </div>

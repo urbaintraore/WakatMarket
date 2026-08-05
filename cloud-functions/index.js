@@ -7,7 +7,10 @@ if (!admin.apps.length) {
 
 const { envoyerDemandeConnexion, repondreDemandeConnexion } = require('./partenaires');
 const { enregistrerVente } = require('./enregistrerVente');
+const { onVenteWritten, onDepenseCreated } = require('./comptabilite');
 
 exports.envoyerDemandeConnexion = envoyerDemandeConnexion;
 exports.repondreDemandeConnexion = repondreDemandeConnexion;
 exports.enregistrerVente = enregistrerVente;
+exports.onVenteWritten = onVenteWritten;
+exports.onDepenseCreated = onDepenseCreated;

@@ -9,13 +9,14 @@ import {
   Settings, UserCheck, UserX, ToggleLeft, ToggleRight, Plus, Tag, 
   BarChart, Sparkles, Check, Play, Map, Navigation, CheckCircle, 
   Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
-  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save
+  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet
 } from "lucide-react";
 import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
-import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner } from "./CommonDashboardParts";
+import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner, ClaimsSummaryWidget, StockEvolutionBarChart, handleExportInventoryCSV } from "./CommonDashboardParts";
+import { AccountingDashboard } from "./AccountingDashboard";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
 import { CaisseModule } from "./CaisseModule";
@@ -121,19 +122,11 @@ export function PriceHistoryChart({ basePrice, buyingPrice }: { basePrice: numbe
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const wave = Math.sin(i * 0.4) * 0.06;
-      const noise = (Math.sin(i * 1.7) * 0.03);
-
-      const buyingMultiplier = Math.max(0.7, 1 + wave * 0.5 + noise);
-      const sellingMultiplier = Math.max(0.8, 1 + wave + noise * 0.5);
-
-      const pAchat = i === 0 ? buyingBase : Math.round(buyingBase * buyingMultiplier);
-      const pVente = i === 0 ? sellingBase : Math.round(sellingBase * sellingMultiplier);
 
       history.push({
         date: d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-        prixAchat: pAchat,
-        prixVente: pVente,
+        prixAchat: buyingBase,
+        prixVente: sellingBase,
       });
     }
     return history;
@@ -200,6 +193,7 @@ interface AdminDashboardProps {
   commissionRate: number;
   onChangeUserRole?: (userId: string, newRole: UserRole) => void;
   onUpdateUser?: (userId: string, fields: Partial<UserProfile>) => void;
+  onUpdateOrderStatus?: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
 }
 
 export function AdminDashboard({
@@ -214,7 +208,8 @@ export function AdminDashboard({
   onUpdateCommission,
   commissionRate,
   onChangeUserRole,
-  onUpdateUser
+  onUpdateUser,
+  onUpdateOrderStatus = () => {}
 }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<"users" | "config" | "approvals">("users");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -247,6 +242,8 @@ export function AdminDashboard({
 
   return (
     <div className="space-y-6" id="admin-dashboard">
+      {/* Claims Summary Widget for Admin oversight */}
+      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       {/* Real-time stats row */}
       <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         {[
@@ -1082,6 +1079,7 @@ export function ManufacturerDashboard({
 
       {activeTab === "orders" && (
         <div className="space-y-4">
+          <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes des Grossistes B2B</h4>
           {myOrders.length === 0 ? (
             <div className="text-center py-8 text-zinc-400">Aucune commande reçue pour l'instant.</div>
@@ -1303,7 +1301,7 @@ export function WholesalerDashboard({
   onPayOrder,
   onUpdateCreditLimit,
 }: WholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -1500,6 +1498,7 @@ export function WholesalerDashboard({
 
   return (
     <div className="space-y-6" id="wholesaler-dashboard">
+      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
@@ -1508,6 +1507,7 @@ export function WholesalerDashboard({
             { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
             { id: "sales", label: "Ventes & Comptoir", icon: ShoppingBag },
             { id: "inventory", label: "Stocks", icon: Layers },
+            { id: "accounting", label: "Comptabilité", icon: Wallet },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
             { id: "sync", label: "Sync", icon: Cloud },
           ].map((tab) => (
@@ -1938,14 +1938,23 @@ export function WholesalerDashboard({
 
       {activeTab === "inventory" && (
         <div className="space-y-4">
+          <StockEvolutionBarChart inventory={inventory} products={products} currentUserId={currentUser.id} />
           <div className="flex justify-between items-center flex-wrap gap-2">
             <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-            <button
-              onClick={() => setIsAddingStockModalOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
-            >
-              <Plus className="w-4 h-4" /> Ajouter / Gérer un produit au stock
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
+                className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-emerald-600" /> Exporter l'inventaire CSV
+              </button>
+              <button
+                onClick={() => setIsAddingStockModalOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+              >
+                <Plus className="w-4 h-4" /> Ajouter / Gérer un produit au stock
+              </button>
+            </div>
           </div>
           
           <div className="flex justify-between items-center flex-wrap gap-2">
@@ -2294,6 +2303,12 @@ export function WholesalerDashboard({
           <SyncHistory queue={syncQueue} />
         </div>
       )}
+
+      {activeTab === "accounting" && (
+        <div className="animate-fade-in">
+          <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
+        </div>
+      )}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -2354,7 +2369,7 @@ export function RetailerDashboard({
   onUpdateOrderStatus,
   onUpdateCreditLimit,
 }: RetailerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "suppliers" | "buyers" | "clients" | "sync">("procure");
+  const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync">("procure");
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -2531,6 +2546,7 @@ export function RetailerDashboard({
 
   return (
     <div className="space-y-6" id="retailer-dashboard">
+      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
@@ -2538,6 +2554,7 @@ export function RetailerDashboard({
             { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
             { id: "sales", label: "Vente & Commandes", icon: ShoppingCart },
             { id: "inventory", label: "Mon Stock", icon: Layers },
+            { id: "accounting", label: "Comptabilité", icon: Wallet },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
             { id: "sync", label: "Sync", icon: Cloud },
           ].map((tab) => (
@@ -3323,6 +3340,12 @@ export function RetailerDashboard({
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
+        </div>
+      )}
+
+      {activeTab === "accounting" && (
+        <div className="animate-fade-in">
+          <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
         </motion.div>
@@ -4271,7 +4294,7 @@ export function SemiWholesalerDashboard({
   onUpdateOrderStatus,
   onUpdateCreditLimit,
 }: SemiWholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [posCart, setPosCart] = useState<Record<string, number>>({});
@@ -4597,6 +4620,14 @@ export function SemiWholesalerDashboard({
           }`}
         >
           <Package className="w-4 h-4 inline mr-1.5" /> Gérer Stock
+        </button>
+        <button
+          onClick={() => setActiveTab("accounting")}
+          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
+            activeTab === "accounting" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <Wallet className="w-4 h-4 inline mr-1.5" /> Comptabilité
         </button>
         <button
           onClick={() => setActiveTab("clients")}
@@ -5448,6 +5479,12 @@ export function SemiWholesalerDashboard({
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
+        </div>
+      )}
+
+      {activeTab === "accounting" && (
+        <div className="animate-fade-in">
+          <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
     </div>

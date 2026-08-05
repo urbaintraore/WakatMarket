@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -53,6 +53,20 @@ export default function App() {
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("wakat_erp_v2_theme") === "dark";
   });
+  const [autoSystemTheme, setAutoSystemTheme] = useState<boolean>(() => {
+    return localStorage.getItem("wakat_erp_autosync_theme") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("wakat_erp_autosync_theme", String(autoSystemTheme));
+    if (autoSystemTheme) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      setDarkMode(mediaQuery.matches);
+      const handleChange = (e: MediaQueryListEvent) => setDarkMode(e.matches);
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [autoSystemTheme]);
 
   const {
     firebaseUser,
@@ -2024,11 +2038,29 @@ export default function App() {
 
             {/* Theme Toggle */}
             <button
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => {
+                if (autoSystemTheme) setAutoSystemTheme(false);
+                setDarkMode(!darkMode);
+              }}
               className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 cursor-pointer"
               id="theme-toggle-btn"
+              title="Basculer Mode Clair / Sombre"
             >
               {darkMode ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
+            </button>
+
+            {/* Auto System Theme Sync Toggle */}
+            <button
+              onClick={() => setAutoSystemTheme(!autoSystemTheme)}
+              title={autoSystemTheme ? "Synchronisation auto système activée" : "Activer la synchro auto système"}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                autoSystemTheme 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
+                  : 'bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-750 text-zinc-600 dark:text-zinc-400'
+              }`}
+            >
+              <Laptop className="w-3.5 h-3.5" /> 
+              <span className="hidden md:inline">Sync Système</span>
             </button>
 
             {/* Notifications Alert Bell */}
@@ -2691,6 +2723,7 @@ export default function App() {
                   commissionRate={platformStats.commissionRate}
                   onChangeUserRole={handleChangeUserRole}
                   onUpdateUser={handleUpdateUserProfileAdmin}
+                  onUpdateOrderStatus={handleUpdateOrderStatus}
                 />
               )}
               
@@ -2859,6 +2892,39 @@ export default function App() {
           userRole={currentUser?.role}
           userName={currentUser?.name}
         />
+
+        {/* Toast Notifications Container with Smooth Enter/Exit Animations */}
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+          <AnimatePresence>
+            {toasts.map((toast) => (
+              <motion.div
+                key={toast.id}
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 100, scale: 0.9 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+                className="pointer-events-auto bg-zinc-900/95 dark:bg-zinc-800/95 text-white p-4 rounded-2xl shadow-xl border border-zinc-700 backdrop-blur-md flex items-start gap-3"
+              >
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0">
+                  <Bell className="w-4 h-4 animate-bounce" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-emerald-400">Notification Wakat</span>
+                    <span className="text-[10px] text-zinc-400">{toast.time}</span>
+                  </div>
+                  <p className="text-xs text-zinc-200 mt-1 leading-relaxed">{toast.text}</p>
+                </div>
+                <button
+                  onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                  className="text-zinc-400 hover:text-white p-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
 
       </main>
 

@@ -121,17 +121,17 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
   const partnerProductsList = useMemo(() => {
     if (partnerStockList.length > 0) return partnerStockList;
     return products.filter(p => p.creatorId === partner.id).map(product => {
-      const mockItem: InventoryItem = {
+      const realItem: InventoryItem = {
         id: `inv-${product.id}`,
         productId: product.id,
         ownerId: partner.id,
-        stock: 100, // Available stock estimate
+        stock: product.stock !== undefined ? product.stock : 0,
         threshold: product.lowStockThreshold || 10,
-        price: product.prixGros || product.prixDetail || 1000,
+        price: product.prixGros || product.prixDetail || 0,
         prixGros: product.prixGros,
         prixDetail: product.prixDetail
       };
-      return { item: mockItem, product };
+      return { item: realItem, product };
     });
   }, [partnerStockList, products, partner.id]);
 

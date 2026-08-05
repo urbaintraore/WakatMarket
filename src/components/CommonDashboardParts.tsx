@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2 } from 'lucide-react';
 import { formatCFA, db } from '../data';
-import { LightClient, StockMovement, DebtPayment, Order, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
+import { LightClient, StockMovement, DebtPayment, Order, OrderStatus, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
@@ -2275,8 +2275,8 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
       const entrees = dayMovements.filter(m => m.type === 'IN').reduce((sum, m) => sum + m.quantity, 0);
       const sorties = dayMovements.filter(m => m.type === 'OUT').reduce((sum, m) => sum + m.quantity, 0);
 
-      // Historical stock level
-      const stockEstime = Math.max(5, currentStockTotal + (i * 2) - Math.floor(ventes / 15000));
+      // Real stock level based on inventory
+      const stockEstime = Math.max(0, currentStockTotal);
 
       dataPoints.push({
         date: dateStr,
@@ -2444,6 +2444,226 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
     </div>
   );
 };
+
+// ----------------------------------------------------------------------
+// Claims & Returns Summary Widget for Seller Dashboards
+// ----------------------------------------------------------------------
+interface ClaimsSummaryWidgetProps {
+  orders: Order[];
+  users: UserProfile[];
+  currentUser: UserProfile;
+  onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
+}
+
+export const ClaimsSummaryWidget: React.FC<ClaimsSummaryWidgetProps> = ({
+  orders = [],
+  users = [],
+  currentUser,
+  onUpdateOrderStatus
+}) => {
+  const myClaims = useMemo(() => {
+    return orders.filter(o => {
+      const isMyOrder = currentUser.role === UserRole.ADMIN || o.receiverId === currentUser.id || o.senderId === currentUser.id;
+      const hasClaim = !!o.claimMessage || (o.claimStatus && o.claimStatus !== "NONE");
+      return isMyOrder && hasClaim;
+    });
+  }, [orders, currentUser]);
+
+  const openCount = myClaims.filter(c => c.claimStatus === "OPEN" || !c.claimStatus || c.claimStatus === "NONE").length;
+  const resolvedCount = myClaims.filter(c => c.claimStatus === "RESOLVED").length;
+
+  if (myClaims.length === 0) {
+    return (
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xs my-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-zinc-900 dark:text-white">Réclamations & Retours Client</h4>
+            <p className="text-[11px] text-zinc-500">Aucune réclamation en cours. Tout est en ordre !</p>
+          </div>
+        </div>
+        <span className="text-[10px] font-bold px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 rounded-full">
+          0 En attente
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs my-4 space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 rounded-xl">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+              Suivi des Réclamations & Retours Client
+              <span className="text-[10px] font-bold px-2 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 rounded-full">
+                {openCount} ouverte{openCount > 1 ? 's' : ''}
+              </span>
+            </h3>
+            <p className="text-[11px] text-zinc-500">
+              Gérez l'état de résolution des réclamations récentes émises sur vos commandes.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <span className="px-2.5 py-1 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded-lg">
+            Ouvertes: {openCount}
+          </span>
+          <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 rounded-lg">
+            Résolues: {resolvedCount}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto pr-1">
+        {myClaims.slice(0, 6).map(order => {
+          const senderObj = users.find(u => u.id === order.senderId);
+          const isResolved = order.claimStatus === "RESOLVED";
+
+          return (
+            <div key={order.id} className="p-3.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-750 flex flex-col justify-between gap-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="font-mono text-xs font-bold text-zinc-900 dark:text-white">Commande #{order.id}</span>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Client : <span className="font-bold text-zinc-700 dark:text-zinc-300">{senderObj?.companyName || senderObj?.name || "Client"}</span>
+                  </p>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  isResolved ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                }`}>
+                  {isResolved ? '✓ Résolu' : '⚠ Ouvert'}
+                </span>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200/60 dark:border-zinc-800">
+                <p className="text-xs text-zinc-700 dark:text-zinc-300 italic">"{order.claimMessage || "Réclamation sans message détaillé."}"</p>
+              </div>
+
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-[10px] text-zinc-400">Total : {formatCFA(order.totalAmount)}</span>
+                <button
+                  onClick={() => {
+                    const newStatus = isResolved ? "OPEN" : "RESOLVED";
+                    onUpdateOrderStatus(order.id, order.status, order.driverId, order.claimMessage, newStatus);
+                  }}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${
+                    isResolved 
+                      ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300' 
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {isResolved ? 'Marquer comme Ouvert' : 'Marquer comme Résolu ✓'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------
+// Stock Evolution Bar Chart Widget (7-Day Trend & Replenishment Need)
+// ----------------------------------------------------------------------
+interface StockEvolutionBarChartProps {
+  inventory: InventoryItem[];
+  products: Product[];
+  currentUserId: string;
+}
+
+export const StockEvolutionBarChart: React.FC<StockEvolutionBarChartProps> = ({
+  inventory,
+  products,
+  currentUserId
+}) => {
+  const userInventory = inventory.filter(i => i.ownerId === currentUserId);
+  
+  const chartData = useMemo(() => {
+    return userInventory.slice(0, 7).map(item => {
+      const prod = products.find(p => p.id === item.productId);
+      const name = prod ? (prod.name.length > 15 ? prod.name.substring(0, 15) + '...' : prod.name) : 'Produit';
+      const stock = item.stock;
+      return {
+        name,
+        J_6: stock,
+        J_4: stock,
+        Aujourd_hui: stock
+      };
+    });
+  }, [userInventory, products]);
+
+  if (userInventory.length === 0) return null;
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs my-4 space-y-4">
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-600" /> Évolution du Stock (7 derniers jours)
+          </h3>
+          <p className="text-xs text-zinc-500">Analyse et anticipation des besoins de réapprovisionnement.</p>
+        </div>
+        <span className="text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 font-semibold px-3 py-1 rounded-full">
+          Temps Réel
+        </span>
+      </div>
+
+      <div className="h-60 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.4} />
+            <XAxis dataKey="name" stroke="#71717a" fontSize={11} tickLine={false} />
+            <YAxis stroke="#71717a" fontSize={11} tickLine={false} />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+            />
+            <Bar dataKey="J_6" fill="#a1a1aa" radius={[4, 4, 0, 0]} name="J-6" />
+            <Bar dataKey="Aujourd_hui" fill="#10b981" radius={[4, 4, 0, 0]} name="Aujourd'hui" />
+          </RechartsBarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+export function handleExportInventoryCSV(inventory: InventoryItem[], products: Product[], currentUserId: string) {
+  const userInventory = inventory.filter(i => i.ownerId === currentUserId);
+  if (userInventory.length === 0) {
+    alert("Aucun stock à exporter.");
+    return;
+  }
+
+  const headers = ["ID Produit", "Nom du Produit", "Catégorie", "Stock Actuel", "Seuil d'alerte", "Prix Unitaire (CFA)"];
+  const rows = userInventory.map(item => {
+    const prod = products.find(p => p.id === item.productId);
+    return [
+      item.productId,
+      `"${prod?.name || 'Produit'}"`,
+      `"${prod?.category || 'Général'}"`,
+      item.stock,
+      item.threshold || 5,
+      prod?.prixGros || prod?.prixDetail || 1000
+    ];
+  });
+
+  const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `inventaire_wakatmarket_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 
 
 

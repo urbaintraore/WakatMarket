@@ -173,5 +173,10 @@ service cloud.firestore {
         allow delete: if isAuthenticated();
       }
     }
+
+    // 6. Comptabilité privée par utilisateur (/comptabilite/{uid}/**)
+    match /comptabilite/{uid}/{document=**} {
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
   }
 }

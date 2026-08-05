@@ -27,33 +27,82 @@ export default function ReportsModule({ orders, products, inventory, currentUser
   const totalCommissions = totalSales * 0.05; // 5% platform fee
   const deliveryCount = orders.filter((o) => o.status === "DELIVERED").length;
 
-  // Dataset simulation based on periods
+  // Real data aggregation based on selected period
   const getPeriodData = () => {
-    switch (period) {
-      case "daily":
-        return [
-          { name: "Aujourd'hui", ventes: totalSales, commandes: orders.length, commission: totalCommissions },
-          { name: "Hier", ventes: totalSales * 0.9, commandes: Math.max(1, orders.length - 1), commission: totalCommissions * 0.9 },
-        ];
-      case "weekly":
-        return [
-          { name: "Semaine Actuelle", ventes: totalSales * 1.2, commandes: orders.length + 3, commission: totalCommissions * 1.2 },
-          { name: "Semaine Précédente", ventes: 1850000, commandes: 12, commission: 92500 },
-          { name: "Il y a 2 semaines", ventes: 2200000, commandes: 15, commission: 110000 },
-        ];
-      case "yearly":
-        return [
-          { name: "Année 2026", ventes: totalSales * 8.5, commandes: orders.length * 8, commission: totalCommissions * 8.5 },
-          { name: "Année 2025", ventes: 45000000, commandes: 340, commission: 2250000 },
-        ];
-      case "monthly":
-      default:
-        return [
-          { name: "Juillet (En cours)", ventes: totalSales, commandes: orders.length, commission: totalCommissions },
-          { name: "Juin 2026", ventes: 12450000, commandes: 85, commission: 622500 },
-          { name: "Mai 2026", ventes: 10890000, commandes: 72, commission: 544500 },
-          { name: "Avril 2026", ventes: 9400000, commandes: 60, commission: 470000 },
-        ];
+    const validOrders = orders.filter((o) => o.status !== "CANCELLED" && o.status !== "RETURNED" && (o.status as string) !== "annulee");
+    const now = new Date();
+
+    const isSameDay = (d1: Date, d2: Date) => 
+      d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+
+    const isSameMonth = (d1: Date, d2: Date) => 
+      d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+
+    const isSameYear = (d1: Date, d2: Date) => 
+      d1.getFullYear() === d2.getFullYear();
+
+    if (period === "daily") {
+      const todayOrders = validOrders.filter(o => o.createdAt && isSameDay(new Date(o.createdAt), now));
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayOrders = validOrders.filter(o => o.createdAt && isSameDay(new Date(o.createdAt), yesterday));
+
+      const todayCA = todayOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+      const yestCA = yesterdayOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+
+      return [
+        { name: "Aujourd'hui", ventes: todayCA, commandes: todayOrders.length, commission: todayCA * 0.05 },
+        { name: "Hier", ventes: yestCA, commandes: yesterdayOrders.length, commission: yestCA * 0.05 },
+      ];
+    } else if (period === "weekly") {
+      const thisWeekOrders = validOrders.filter(o => {
+        if (!o.createdAt) return false;
+        const diff = Math.abs(now.getTime() - new Date(o.createdAt).getTime());
+        return diff <= 7 * 86400000;
+      });
+      const lastWeekOrders = validOrders.filter(o => {
+        if (!o.createdAt) return false;
+        const diff = now.getTime() - new Date(o.createdAt).getTime();
+        return diff > 7 * 86400000 && diff <= 14 * 86400000;
+      });
+
+      const twCA = thisWeekOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+      const lwCA = lastWeekOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+
+      return [
+        { name: "Semaine Actuelle", ventes: twCA, commandes: thisWeekOrders.length, commission: twCA * 0.05 },
+        { name: "Semaine Précédente", ventes: lwCA, commandes: lastWeekOrders.length, commission: lwCA * 0.05 },
+      ];
+    } else if (period === "yearly") {
+      const thisYearOrders = validOrders.filter(o => o.createdAt && isSameYear(new Date(o.createdAt), now));
+      const lastYear = new Date(now.getFullYear() - 1, 0, 1);
+      const lastYearOrders = validOrders.filter(o => o.createdAt && isSameYear(new Date(o.createdAt), lastYear));
+
+      const tyCA = thisYearOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+      const lyCA = lastYearOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+
+      return [
+        { name: `Année ${now.getFullYear()}`, ventes: tyCA, commandes: thisYearOrders.length, commission: tyCA * 0.05 },
+        { name: `Année ${now.getFullYear() - 1}`, ventes: lyCA, commandes: lastYearOrders.length, commission: lyCA * 0.05 },
+      ];
+    } else { // monthly
+      const months = [];
+      for (let i = 0; i < 4; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const mOrders = validOrders.filter(o => {
+          if (!o.createdAt) return false;
+          return isSameMonth(new Date(o.createdAt), d);
+        });
+        const ca = mOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+        const monthLabel = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+        months.push({
+          name: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+          ventes: ca,
+          commandes: mOrders.length,
+          commission: ca * 0.05,
+        });
+      }
+      return months;
     }
   };
 
