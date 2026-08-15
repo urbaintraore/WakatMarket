@@ -7,6 +7,8 @@ import {
   memoryLocalCache,
   setLogLevel
 } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
 // Silence Firestore connection warnings which are common in sandboxed preview environments
 setLogLevel('silent');
@@ -23,6 +25,24 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+
+// Initialize Firebase Storage safely
+let storageInstance: any = null;
+try {
+  storageInstance = getStorage(app);
+} catch (storageErr) {
+  console.warn("[Firebase] Storage service not initialized or unavailable:", storageErr);
+}
+export const storage = storageInstance;
+
+// Initialize Firebase Functions safely
+let functionsInstance: any = null;
+try {
+  functionsInstance = getFunctions(app);
+} catch (fnErr) {
+  console.warn("[Firebase] Functions service not initialized or unavailable:", fnErr);
+}
+export const functions = functionsInstance;
 
 // Use Long Polling to bypass potential WebSocket restrictions in the preview environment
 export const db = initializeFirestore(app, {

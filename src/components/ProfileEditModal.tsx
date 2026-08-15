@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { UserCog, X, User, Mail, Shield, MapPin, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
-import { UserProfile, UserRole } from "../types";
+import { UserCog, X, User, Mail, Shield, MapPin, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, Smartphone, CreditCard } from "lucide-react";
+import { UserProfile, UserRole, NumeroPaiement } from "../types";
 import { FirebaseUser } from "../services/userService";
 
 export function ProfileEditModal({
@@ -28,6 +28,7 @@ export function ProfileEditModal({
   const [editSector, setEditSector] = useState("");
   const [editLatitude, setEditLatitude] = useState<number | undefined>(undefined);
   const [editLongitude, setEditLongitude] = useState<number | undefined>(undefined);
+  const [numerosPaiement, setNumerosPaiement] = useState<NumeroPaiement[]>([]);
   
   const [fbMsg, setFbMsg] = useState<{type: "error" | "success" | "info", text: string} | null>(null);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -46,9 +47,48 @@ export function ProfileEditModal({
       setEditSector(currentUser.sector || dbUser?.quartier || "");
       setEditLatitude(currentUser.latitude || dbUser?.latitude);
       setEditLongitude(currentUser.longitude || dbUser?.longitude);
+
+      const existingNumeros = dbUser?.numerosPaiement || currentUser.numerosPaiement || [];
+      if (existingNumeros.length > 0) {
+        setNumerosPaiement(existingNumeros);
+      } else if (currentUser.phone) {
+        setNumerosPaiement([
+          {
+            operateur: "Orange Money",
+            numero: currentUser.phone,
+            nomTitulaire: currentUser.name || "Titulaire"
+          }
+        ]);
+      } else {
+        setNumerosPaiement([]);
+      }
       setFbMsg(null);
     }
   }, [currentUser, dbUser]);
+
+  const handleAddNumero = () => {
+    setNumerosPaiement([
+      ...numerosPaiement,
+      {
+        operateur: "Orange Money",
+        numero: "",
+        nomTitulaire: `${editPrenom} ${editNom}`.trim() || currentUser.name
+      }
+    ]);
+  };
+
+  const handleRemoveNumero = (index: number) => {
+    setNumerosPaiement(numerosPaiement.filter((_, idx) => idx !== index));
+  };
+
+  const handleUpdateNumero = (index: number, field: keyof NumeroPaiement, value: string) => {
+    const updated = [...numerosPaiement];
+    updated[index] = {
+      ...updated[index],
+      [field]: value
+    };
+    setNumerosPaiement(updated);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +100,9 @@ export function ProfileEditModal({
     setProfileSaving(true);
     setFbMsg(null);
     try {
+      // Filtrer les numéros vides
+      const cleanedNumeros = numerosPaiement.filter(n => n.numero && n.numero.trim().length > 0);
+
       const updatedFields: Partial<FirebaseUser> = {
         nom: editNom,
         prénom: editPrenom,
@@ -70,6 +113,7 @@ export function ProfileEditModal({
         quartier: editSector,
         latitude: editLatitude,
         longitude: editLongitude,
+        numerosPaiement: cleanedNumeros
       };
 
       await updateProfile(updatedFields);
@@ -84,11 +128,12 @@ export function ProfileEditModal({
         sector: editSector,
         latitude: editLatitude,
         longitude: editLongitude,
-        address: editRegion && editSector ? `${editSector}, ${editRegion}, ${editCountry}` : currentUser.address
+        address: editRegion && editSector ? `${editSector}, ${editRegion}, ${editCountry}` : currentUser.address,
+        numerosPaiement: cleanedNumeros
       };
 
       onSuccess(updatedProfile);
-      addNotification("Votre profil a été mis à jour avec succès.");
+      addNotification("Votre profil et vos numéros de paiement ont été mis à jour avec succès.");
       setFbMsg({ type: "success", text: "Profil mis à jour avec succès !" });
       
       setTimeout(() => {
@@ -238,6 +283,93 @@ export function ProfileEditModal({
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Mobile Money Payment Numbers (Pour encaissement des paiements directs) */}
+            <div className="p-3.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40 rounded-xl space-y-3 text-left">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-[11px] text-amber-900 dark:text-amber-300 font-bold uppercase tracking-wider">
+                    Numéros de Paiement Mobile Money
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddNumero}
+                  className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition shadow-xs"
+                >
+                  <Plus className="w-3 h-3" /> Ajouter un numéro
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-tight">
+                Vos acheteurs verront ces numéros pour effectuer leurs transferts directs (Orange Money, Moov Money, Telecel Money) et joindre leur preuve de paiement.
+              </p>
+
+              {numerosPaiement.length === 0 ? (
+                <div className="p-3 bg-white/80 dark:bg-zinc-800/60 rounded-lg border border-dashed border-amber-200 dark:border-amber-800/40 text-center">
+                  <p className="text-xs text-zinc-500">Aucun numéro Mobile Money configuré.</p>
+                  <button
+                    type="button"
+                    onClick={handleAddNumero}
+                    className="mt-1.5 text-xs text-amber-700 dark:text-amber-400 font-bold hover:underline"
+                  >
+                    + Cliquer pour ajouter votre premier numéro
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {numerosPaiement.map((item, idx) => (
+                    <div key={idx} className="p-2.5 bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-750 flex flex-col sm:flex-row gap-2 items-center">
+                      <div className="w-full sm:w-1/3">
+                        <label className="block text-[9px] text-zinc-400 font-bold mb-0.5">Opérateur</label>
+                        <select
+                          value={item.operateur}
+                          onChange={(e) => handleUpdateNumero(idx, "operateur", e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 rounded-lg font-semibold text-zinc-800 dark:text-zinc-200"
+                        >
+                          <option value="Orange Money">🟠 Orange Money</option>
+                          <option value="Moov Money">🔵 Moov Money</option>
+                          <option value="Telecel Money">🔴 Telecel Money</option>
+                          <option value="Wave">🌊 Wave</option>
+                          <option value="Autre">Autre</option>
+                        </select>
+                      </div>
+
+                      <div className="w-full sm:w-1/3">
+                        <label className="block text-[9px] text-zinc-400 font-bold mb-0.5">Numéro Mobile Money</label>
+                        <input
+                          type="text"
+                          placeholder="ex: +226 70 00 00 00"
+                          value={item.numero}
+                          onChange={(e) => handleUpdateNumero(idx, "numero", e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs font-mono font-bold border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 rounded-lg text-zinc-900 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="w-full sm:w-1/3">
+                        <label className="block text-[9px] text-zinc-400 font-bold mb-0.5">Nom du Titulaire</label>
+                        <input
+                          type="text"
+                          placeholder="Nom officiel sur la puce"
+                          value={item.nomTitulaire}
+                          onChange={(e) => handleUpdateNumero(idx, "nomTitulaire", e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-900 rounded-lg text-zinc-900 dark:text-white"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveNumero(idx)}
+                        title="Supprimer ce numéro"
+                        className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition self-end sm:self-center shrink-0 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 flex justify-end gap-3">

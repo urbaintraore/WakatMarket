@@ -359,38 +359,50 @@ export const chatService = {
    */
   async uploadMedia(file: File | Blob, folder: string, filename: string): Promise<string> {
     console.log(`[chatService.uploadMedia] Start upload to folder=${folder}, filename=${filename}, type=${file.type}, size=${file.size}`);
-    try {
-      if (!supabase) {
-        throw new Error("Supabase is not configured (VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing).");
+    
+    if (supabase) {
+      try {
+        const filePath = `${folder}/${filename}`;
+        console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
+        
+        const { error } = await supabase.storage
+          .from('chat')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+          
+        if (!error) {
+          const { data: publicUrlData } = supabase.storage
+            .from('chat')
+            .getPublicUrl(filePath);
+            
+          const url = publicUrlData.publicUrl;
+          console.log(`[chatService.uploadMedia] Public URL generated: ${url.substring(0, 50)}...`);
+          return url;
+        } else {
+          console.warn("[chatService.uploadMedia] Supabase storage upload notice, proceeding with local Data URL fallback:", error.message || error);
+        }
+      } catch (err) {
+        console.warn("[chatService.uploadMedia] Supabase storage upload exception, proceeding with local Data URL fallback:", err);
       }
+    } else {
+      console.info("[chatService.uploadMedia] Supabase is not configured (VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing). Using local Data URL fallback.");
+    }
 
-      const filePath = `${folder}/${filename}`;
-      console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
-      
-      const { data, error } = await supabase.storage
-        .from('chat')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-        
-      if (error) {
-        console.error("[chatService.uploadMedia] Supabase Storage upload error:", error);
-        throw error;
-      }
-      
-      console.log(`[chatService.uploadMedia] upload successful. Getting public URL...`);
-      const { data: publicUrlData } = supabase.storage
-        .from('chat')
-        .getPublicUrl(filePath);
-        
-      const url = publicUrlData.publicUrl;
-      console.log(`[chatService.uploadMedia] Public URL generated: ${url.substring(0, 50)}...`);
-      return url;
-    } catch (error: any) {
-      console.error("[chatService.uploadMedia] Storage upload error:", error);
-      console.error("[chatService.uploadMedia] Error details:", JSON.stringify(error));
-      throw error;
+    // Graceful fallback to Data URL for offline/standalone mode
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsDataURL(file);
+      });
+      console.log(`[chatService.uploadMedia] Successfully generated local Data URL fallback (length=${dataUrl.length}).`);
+      return dataUrl;
+    } catch (fallbackError) {
+      console.warn("[chatService.uploadMedia] Failed to convert file to Data URL, returning object URL fallback:", fallbackError);
+      return URL.createObjectURL(file);
     }
   },
 

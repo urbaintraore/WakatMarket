@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from "react";
-import { Download, FileSpreadsheet, FileText, Calendar, TrendingUp, DollarSign, ShoppingBag, Receipt, ArrowUpRight, BarChart2, Package, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Calendar, TrendingUp, DollarSign, ShoppingBag, Receipt, ArrowUpRight, BarChart2, Package, ShoppingCart, CheckCircle2, RefreshCw } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { Order, Product, InventoryItem, UserProfile } from "../types";
 import { formatCFA } from "../data";
 
@@ -258,10 +259,112 @@ export default function ReportsModule({ orders, products, inventory, currentUser
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const handleExportPDF = () => {
     setPdfGenerating(true);
-    setTimeout(() => {
+    try {
+      const doc = new jsPDF();
+      const companyName = currentUser?.companyName || "Mon Entreprise";
+      const dateStr = new Date().toLocaleDateString("fr-FR");
+
+      // Header
+      doc.setFillColor(16, 185, 129); // Emerald
+      doc.rect(0, 0, 210, 28, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("WakatMarket - Bilan Comptable et Stock", 14, 18);
+
+      // Info
+      doc.setTextColor(50, 50, 50);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Entreprise : ${companyName}`, 14, 38);
+      doc.text(`Date d'émission : ${dateStr}`, 14, 44);
+      doc.text(`Période sélectionnée : ${period}`, 14, 50);
+
+      // Summary
+      doc.setFont("helvetica", "bold");
+      doc.text(`Ventes Globales : ${formatCFA(totalSales)}`, 130, 38);
+      doc.text(`Commandes Livrées : ${deliveryCount}`, 130, 44);
+
+      // Table Header BI
+      let y = 60;
+      doc.setFontSize(12);
+      doc.setDrawColor(200, 200, 200);
+      doc.line(14, y, 196, y);
+      y += 8;
+      doc.text("Synthèse des Ventes (Période)", 14, y);
+      y += 6;
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.text("Période", 14, y);
+      doc.text("Commandes", 70, y);
+      doc.text("Chiffre d'Affaires", 110, y);
+      doc.text("Commissions", 160, y);
+      y += 4;
+      doc.line(14, y, 196, y);
+      y += 6;
+
+      doc.setFont("helvetica", "normal");
+      activeData.forEach((row) => {
+        doc.text(row.name, 14, y);
+        doc.text(row.commandes.toString(), 70, y);
+        doc.text(formatCFA(row.ventes), 110, y);
+        doc.text(formatCFA(row.commission), 160, y);
+        y += 6;
+      });
+
+      // Stock
+      y += 12;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.line(14, y - 6, 196, y - 6);
+      doc.text("État du Stock Actuel (Aperçu)", 14, y);
+      y += 6;
+      
+      doc.setFontSize(9);
+      doc.text("Produit", 14, y);
+      doc.text("Prix Gros", 90, y);
+      doc.text("Prix Détail", 130, y);
+      doc.text("Stock", 170, y);
+      y += 4;
+      doc.line(14, y, 196, y);
+      y += 6;
+
+      doc.setFont("helvetica", "normal");
+      const stockItems = inventory && inventory.length > 0 ? inventory : products;
+      const topItems = stockItems.slice(0, 30);
+      topItems.forEach((item: any) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        const prod = products.find((p) => p.id === (item.productId || item.id)) || (item.name ? item : null);
+        const name = (prod?.name || item.name || "Produit Inconnu").substring(0, 35);
+        const prixGros = item.prixGros || prod?.prixGros || item.price || 0;
+        const prixDetail = item.prixDetail || prod?.prixDetail || item.price || 0;
+        const stock = item.stock !== undefined ? item.stock : "Illimité";
+
+        doc.text(name, 14, y);
+        doc.text(formatCFA(prixGros), 90, y);
+        doc.text(formatCFA(prixDetail), 130, y);
+        doc.text(stock.toString(), 170, y);
+        y += 6;
+      });
+
+      if (stockItems.length > 30) {
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`+ ${stockItems.length - 30} autres articles non affichés...`, 14, y + 2);
+      }
+
+      doc.save(`Bilan_Comptable_${companyName.replace(/\s+/g, "_")}_${dateStr.replace(/\//g, "-")}.pdf`);
+      triggerToast("Export PDF généré avec succès !");
+    } catch (e) {
+      console.error(e);
+      triggerToast("Erreur lors de la génération du PDF");
+    } finally {
       setPdfGenerating(false);
-      window.print();
-    }, 1200);
+    }
   };
 
   return (
@@ -280,22 +383,49 @@ export default function ReportsModule({ orders, products, inventory, currentUser
           </p>
         </div>
 
-        {/* Period Selector Buttons */}
-        <div className="flex bg-zinc-100 dark:bg-zinc-800/60 p-1 rounded-xl self-stretch sm:self-auto">
-          {(["daily", "weekly", "monthly", "yearly"] as const).map((p) => (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Period Selector Buttons */}
+          <div className="flex bg-zinc-100 dark:bg-zinc-800/60 p-1 rounded-xl self-stretch sm:self-auto">
+            {(["daily", "weekly", "monthly", "yearly"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`flex-1 sm:flex-initial px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition ${
+                  period === p
+                    ? "bg-white dark:bg-zinc-700 text-zinc-950 dark:text-white shadow-xs"
+                    : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
+                }`}
+                id={`report-period-${p}`}
+              >
+                {p === "daily" ? "Jour" : p === "weekly" ? "Semaine" : p === "monthly" ? "Mois" : "Année"}
+              </button>
+            ))}
+          </div>
+          
+          <div className="hidden sm:block w-px h-6 bg-zinc-200 dark:bg-zinc-700"></div>
+          
+          <div className="flex items-center gap-2 self-stretch sm:self-auto">
             <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`flex-1 sm:flex-initial px-3 py-1.5 text-[10px] font-bold rounded-lg uppercase tracking-wider transition ${
-                period === p
-                  ? "bg-white dark:bg-zinc-700 text-zinc-950 dark:text-white shadow-xs"
-                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
-              }`}
-              id={`report-period-${p}`}
+              onClick={handleExportExcel}
+              className="flex-1 sm:flex-initial flex justify-center items-center gap-1.5 px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer"
+              id="export-excel-btn"
             >
-              {p === "daily" ? "Jour" : p === "weekly" ? "Semaine" : p === "monthly" ? "Mois" : "Année"}
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Excel
             </button>
-          ))}
+            <button
+              onClick={handleExportPDF}
+              disabled={pdfGenerating}
+              className="flex-1 sm:flex-initial flex justify-center items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold uppercase tracking-wider rounded-xl transition cursor-pointer shadow-sm"
+              id="export-pdf-btn"
+            >
+              {pdfGenerating ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -443,33 +573,13 @@ export default function ReportsModule({ orders, products, inventory, currentUser
       </div>
 
       {/* Data Export Drawer Actions */}
-      <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-zinc-100 dark:border-zinc-800">
+      <div className="flex justify-end pt-2 border-t border-zinc-100 dark:border-zinc-800">
         <button
           onClick={handleExportCSV}
           className="flex items-center gap-1.5 px-3 py-2 border border-zinc-200 dark:border-zinc-750 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition cursor-pointer"
           id="export-csv-btn"
         >
-          <Download className="w-3.5 h-3.5" /> CSV Export
-        </button>
-        <button
-          onClick={handleExportExcel}
-          className="flex items-center gap-1.5 px-3 py-2 border border-zinc-200 dark:border-zinc-750 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition cursor-pointer"
-          id="export-excel-btn"
-        >
-          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Excel Spreadsheet
-        </button>
-        <button
-          onClick={handleExportPDF}
-          disabled={pdfGenerating}
-          className="flex items-center gap-1.5 px-3 py-2 bg-zinc-900 dark:bg-zinc-800 hover:bg-zinc-800 dark:hover:bg-zinc-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer"
-          id="export-pdf-btn"
-        >
-          {pdfGenerating ? (
-            <RefreshCwIcon className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <FileText className="w-3.5 h-3.5 text-red-400" />
-          )}
-          <span>Imprimer / PDF</span>
+          <Download className="w-3.5 h-3.5" /> Exporter le tableau en CSV
         </button>
       </div>
     </div>

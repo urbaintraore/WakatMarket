@@ -7,7 +7,7 @@ import {
   UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, 
   ChatMessage, AIRecommendation, GeoNode, PlatformStats, 
   LightClient, StockMovement, DebtPayment, PriceTier,
-  Connection, Notification
+  Connection, Notification, normalizeUserRole
 } from "./types";
 
 // Simulated Geographies in Africa
@@ -175,19 +175,58 @@ class ERPStorage {
   getUsers(): UserProfile[] {
     const loaded = filterMockData(this.get<UserProfile[]>("wakat_erp_v2_users", USE_DEMO_DATA ? INITIAL_USERS : []));
     const userMap = new Map<string, UserProfile>();
-    
+    const emailToIdMap = new Map<string, string>();
+    const companyToIdMap = new Map<string, string>();
+
     const initial = USE_DEMO_DATA ? INITIAL_USERS : [];
-    
-    [...initial, ...loaded].forEach(u => {
-      if (u && u.id) {
-        if (u.email === "sayouba@ujkz.bf") {
-          u.role = UserRole.SEMI_WHOLESALER;
-          u.companyName = "BONKOUNGOU Entreprise";
-          u.name = "Sayouba BONKOUNGOU";
-        }
-        userMap.set(u.id, u);
+
+    const processAndAddUser = (u: UserProfile) => {
+      if (!u) return;
+
+      const normEmail = u.email ? u.email.toLowerCase().trim() : "";
+      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+      
+      let normRole = normalizeUserRole(u.role);
+      if (normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise") {
+        normRole = UserRole.SEMI_WHOLESALER;
+        u.companyName = "BONKOUNGOU Entreprise";
+        u.name = "Sayouba BONKOUNGOU";
+        u.email = u.email || "sayouba@ujkz.bf";
+      } else if (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) {
+        normRole = UserRole.ADMIN;
       }
-    });
+      u.role = normRole;
+
+      const cleanEmail = u.email ? u.email.toLowerCase().trim() : "";
+      const cleanCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+
+      // Check if we already have this user by email or by company
+      let existingId: string | undefined = undefined;
+      if (cleanEmail && emailToIdMap.has(cleanEmail)) {
+        existingId = emailToIdMap.get(cleanEmail);
+      } else if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise" && companyToIdMap.has(cleanCompany)) {
+        existingId = companyToIdMap.get(cleanCompany);
+      } else if (u.id && userMap.has(u.id)) {
+        existingId = u.id;
+      }
+
+      if (existingId && userMap.has(existingId)) {
+        const existing = userMap.get(existingId)!;
+        const effectiveRole = (u.role && u.role !== UserRole.CLIENT) ? u.role : (existing.role || u.role);
+        const merged: UserProfile = { ...existing, ...u, id: existingId, role: effectiveRole };
+        userMap.set(existingId, merged);
+        if (cleanEmail) emailToIdMap.set(cleanEmail, existingId);
+        if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise") companyToIdMap.set(cleanCompany, existingId);
+      } else {
+        const targetId = u.id || `user-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`;
+        u.id = targetId;
+        userMap.set(targetId, u);
+        if (cleanEmail) emailToIdMap.set(cleanEmail, targetId);
+        if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise") companyToIdMap.set(cleanCompany, targetId);
+      }
+    };
+
+    [...initial, ...loaded].forEach(u => processAndAddUser(u));
 
     try {
       for (let i = 0; i < localStorage.length; i++) {
@@ -199,13 +238,19 @@ class ERPStorage {
             if (parsed && (parsed.uid || parsed.email)) {
               const uid = parsed.uid || parsed.email;
               if (uid) {
-                const isSayouba = parsed.email === "sayouba@ujkz.bf";
+                const parsedEmail = parsed.email ? parsed.email.toLowerCase().trim() : "";
+                const parsedCompany = parsed.companyName ? parsed.companyName.toLowerCase().trim() : "";
+                const isSayouba = parsedEmail === "sayouba@ujkz.bf" || parsedCompany === "bonkoungou entreprise";
+                const roleDetermined = isSayouba 
+                  ? UserRole.SEMI_WHOLESALER 
+                  : normalizeUserRole(parsed.rôle || parsed.role || UserRole.CLIENT);
+
                 const profile: UserProfile = {
                   id: uid,
                   name: isSayouba ? "Sayouba BONKOUNGOU" : (`${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur"),
                   email: parsed.email || "",
                   phone: parsed.téléphone || "",
-                  role: isSayouba ? UserRole.SEMI_WHOLESALER : ((parsed.rôle as UserRole) || UserRole.CLIENT),
+                  role: roleDetermined,
                   status: (parsed.statut as any) || "ACTIVE",
                   country: parsed.pays || "Burkina Faso",
                   region: parsed.ville || "Ouagadougou",
@@ -215,7 +260,7 @@ class ERPStorage {
                   companyName: isSayouba ? "BONKOUNGOU Entreprise" : `${parsed.nom || parsed.email?.split("@")[0] || "Entreprise"} Entreprise`,
                   address: parsed.ville && parsed.quartier ? `${parsed.quartier}, ${parsed.ville}` : "Non spécifié"
                 };
-                userMap.set(uid, profile);
+                processAndAddUser(profile);
               }
             }
           }
@@ -224,7 +269,9 @@ class ERPStorage {
     } catch (e) {}
 
     userMap.forEach((u) => {
-      if (u.email === "sayouba@ujkz.bf") {
+      const e = u.email ? u.email.toLowerCase().trim() : "";
+      const c = u.companyName ? u.companyName.toLowerCase().trim() : "";
+      if (e === "sayouba@ujkz.bf" || c === "bonkoungou entreprise") {
         u.role = UserRole.SEMI_WHOLESALER;
         u.companyName = "BONKOUNGOU Entreprise";
         u.name = "Sayouba BONKOUNGOU";
@@ -364,13 +411,14 @@ class ERPStorage {
 
   // Reset helper
   resetAll(): void {
-    localStorage.removeItem("wakat_erp_v2_users");
-    localStorage.removeItem("wakat_erp_v2_products");
-    localStorage.removeItem("wakat_erp_v2_inventory");
-    localStorage.removeItem("wakat_erp_v2_orders");
-    localStorage.removeItem("wakat_erp_v2_messages");
-    localStorage.removeItem("wakat_erp_v2_recommendations");
-    localStorage.removeItem("wakat_erp_v2_platform_stats");
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("wakat_erp")) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
     window.location.reload();
   }
 }

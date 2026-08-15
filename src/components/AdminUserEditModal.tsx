@@ -9,13 +9,15 @@ export function AdminUserEditModal({
   orders,
   products,
   onClose,
-  onSave
+  onSave,
+  onDeleteUser
 }: {
   user: UserProfile;
   orders: Order[];
   products: Product[];
   onClose: () => void;
   onSave: (userId: string, updates: Partial<UserProfile>) => void;
+  onDeleteUser?: (userId: string) => void;
 }) {
   const [formData, setFormData] = useState({
     name: user.name || "",
@@ -126,8 +128,20 @@ export function AdminUserEditModal({
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end">
-                <button disabled={isSaving} type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 flex items-center gap-2 transition cursor-pointer">
+              <div className="pt-4 flex justify-between items-center gap-2">
+                {onDeleteUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onDeleteUser(user.id);
+                      onClose();
+                    }}
+                    className="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 rounded-lg font-bold text-sm flex items-center gap-2 transition cursor-pointer"
+                  >
+                    Supprimer le compte
+                  </button>
+                )}
+                <button disabled={isSaving} type="submit" className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 flex items-center gap-2 transition cursor-pointer ml-auto">
                   {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Enregistrer
                 </button>
               </div>

@@ -37,7 +37,12 @@ interface LowStockAlertsProps {
 }
 
 export const LowStockAlerts: React.FC<LowStockAlertsProps> = ({ inventory, products, currentUserId }) => {
-  const alerts = inventory.filter(i => i.ownerId === currentUserId && i.stock <= (i.lowStockThreshold || i.threshold));
+  const alerts = inventory.filter(i => {
+    if (i.ownerId !== currentUserId) return false;
+    const estSousSeuilFixe = i.stock <= (i.lowStockThreshold || i.threshold);
+    const estSousSeuilJours = (i as any).joursRestants !== undefined && (i as any).joursRestants !== null && (i as any).joursRestants <= ((i as any).seuilAlerte || 5);
+    return estSousSeuilFixe || estSousSeuilJours;
+  });
   
   if (alerts.length === 0) return null;
 
@@ -45,18 +50,49 @@ export const LowStockAlerts: React.FC<LowStockAlertsProps> = ({ inventory, produ
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
         <AlertTriangle className="w-5 h-5" />
-        <h3 className="font-bold text-sm uppercase tracking-tight">Alertes de Stock ({alerts.length})</h3>
+        <h3 className="font-bold text-sm uppercase tracking-tight">Alertes de Stock & Réapprovisionnement ({alerts.length})</h3>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {alerts.map(item => {
+        {alerts.map((item, idx) => {
           const prod = products.find(p => p.id === item.productId);
+          const vitesse = (item as any).vitesseVenteJournaliere || 0;
+          const joursRestants = (item as any).joursRestants;
+
+          const isCritique = joursRestants !== null && joursRestants !== undefined && joursRestants <= 5;
+          const isAttention = joursRestants !== null && joursRestants !== undefined && joursRestants > 5 && joursRestants <= 10;
+
           return (
-            <div key={item.id} className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-center justify-between">
+            <div key={`${item.id}_${idx}`} className={`p-3 border rounded-xl flex items-center justify-between ${
+              isCritique ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' :
+              isAttention ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50' :
+              'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50'
+            }`}>
               <div>
-                <p className="font-bold text-xs">{prod?.name}</p>
-                <p className="text-[10px] text-amber-700 dark:text-amber-300">Stock: {item.stock} / Seuil: {item.lowStockThreshold || item.threshold}</p>
+                <p className="font-bold text-xs">{prod?.name || (item as any).nom || 'Produit'}</p>
+                <p className="text-[10px] text-zinc-600 dark:text-zinc-400 mt-0.5">
+                  Stock: <strong className="font-bold">{item.stock} u</strong> (Seuil: {item.lowStockThreshold || item.threshold} u)
+                </p>
+                {vitesse > 0 && (
+                  <p className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                    ⚡ Vitesse : {vitesse} u/jour (14j)
+                  </p>
+                )}
               </div>
-              <div className="px-2 py-1 bg-amber-200 dark:bg-amber-900 rounded-lg text-[10px] font-bold">REAPPRO</div>
+              <div className="flex flex-col items-end gap-1">
+                {joursRestants !== undefined && joursRestants !== null ? (
+                  <span className={`px-2 py-1 rounded-lg text-[9px] font-extrabold uppercase ${
+                    joursRestants <= 5 ? 'bg-rose-600 text-white animate-pulse' :
+                    joursRestants <= 10 ? 'bg-amber-500 text-white' :
+                    'bg-emerald-600 text-white'
+                  }`}>
+                    {joursRestants <= 0 ? 'RUPTURE' : `${joursRestants} j restants`}
+                  </span>
+                ) : (
+                  <span className="px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 rounded-lg text-[10px] font-bold">
+                    REAPPRO
+                  </span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -326,10 +362,10 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
             <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold">Action Requise</span>
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pendingReceived.map(req => {
+            {pendingReceived.map((req, idx) => {
               const senderUser = allKnownUsers.find(u => u.id === req.senderId);
               return (
-                <div key={req.id} className="p-4 bg-white dark:bg-zinc-900 border-2 border-rose-200 dark:border-rose-900 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
+                <div key={`${req.id}_${idx}`} className="p-4 bg-white dark:bg-zinc-900 border-2 border-rose-200 dark:border-rose-900 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
                   <div>
                     <div className="flex justify-between items-start">
                       <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.senderName}</p>
@@ -565,8 +601,8 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                 Demandes Envoyées ({pendingSent.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pendingSent.map(req => (
-                  <div key={req.id} className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3">
+                {pendingSent.map((req, idx) => (
+                  <div key={`${req.id}_${idx}`} className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.receiverName}</p>
@@ -636,13 +672,13 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeConnections.map(conn => {
+                {activeConnections.map((conn, idx) => {
                   const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
                   const otherPartyName = conn.senderId === currentUser?.id ? conn.receiverName : conn.senderName;
                   const otherPartyRole = conn.senderId === currentUser?.id ? conn.receiverRole : conn.senderRole;
                   
                   return (
-                    <div key={conn.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition relative group">
+                    <div key={`${conn.id}_${idx}`} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition relative group">
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
                           <p className="font-bold text-sm text-zinc-900 dark:text-white">{otherPartyName}</p>
@@ -1614,27 +1650,47 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       realUserId?: string;
     }> = [];
 
-    const addedIds = new Set<string>();
+    const addedKeys = new Set<string>();
+
+    const isDuplicate = (id: string, email?: string, companyName?: string) => {
+      const normEmail = email ? email.toLowerCase().trim() : "";
+      const normCompany = companyName ? companyName.toLowerCase().trim() : "";
+      if (addedKeys.has(id)) return true;
+      if (normEmail && addedKeys.has(`email:${normEmail}`)) return true;
+      if (normCompany && normCompany !== "entreprise" && addedKeys.has(`company:${normCompany}`)) return true;
+      return false;
+    };
+
+    const markAdded = (id: string, email?: string, companyName?: string) => {
+      addedKeys.add(id);
+      const normEmail = email ? email.toLowerCase().trim() : "";
+      const normCompany = companyName ? companyName.toLowerCase().trim() : "";
+      if (normEmail) addedKeys.add(`email:${normEmail}`);
+      if (normCompany && normCompany !== "entreprise") addedKeys.add(`company:${normCompany}`);
+    };
 
     // 1. Address book light clients (filter out retailers/incompatible roles)
     addressBookEntries.forEach(lc => {
       const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
       const itemId = lc.linkedUserId || lc.id;
-      if (addedIds.has(itemId)) return;
+      const compName = lc.companyName || linkedUser?.companyName;
+      const emailAddr = lc.email || linkedUser?.email;
+
+      if (isDuplicate(itemId, emailAddr, compName)) return;
 
       const effectiveRole = linkedUser?.role || lc.role;
       if (isForbiddenSupplier(effectiveRole, linkedUser?.role)) {
         return; // Exclude retailers or non-matching roles from supplier list
       }
 
-      addedIds.add(itemId);
+      markAdded(itemId, emailAddr, compName);
 
       items.push({
         id: itemId,
         name: lc.name,
-        companyName: lc.companyName || linkedUser?.companyName,
+        companyName: compName,
         phone: lc.phone || linkedUser?.phone,
-        email: lc.email || linkedUser?.email,
+        email: emailAddr,
         role: effectiveRole || "Partenaire Carnet",
         region: linkedUser?.region || "Local",
         country: linkedUser?.country || "",
@@ -1648,7 +1704,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     // 2. Connected partners & target role users
     users.forEach(u => {
       if (u.id === currentUser.id) return;
-      if (addedIds.has(u.id)) return;
+      if (isDuplicate(u.id, u.email, u.companyName)) return;
 
       if (isForbiddenSupplier(u.role)) {
         return; // Exclude retailers or forbidden roles
@@ -1658,7 +1714,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       const matchesRole = !targetRoles || targetRoles.length === 0 || targetRoles.includes(u.role);
 
       if (matchesRole || isConnected) {
-        addedIds.add(u.id);
+        markAdded(u.id, u.email, u.companyName);
         items.push({
           id: u.id,
           name: u.name,

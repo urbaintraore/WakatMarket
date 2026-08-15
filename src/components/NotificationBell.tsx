@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { Bell, Check, Users, CheckCircle2, XCircle, Info } from "lucide-react";
+import { Bell, Check, Users, CheckCircle2, XCircle, Info, Smartphone, FileText, AlertTriangle } from "lucide-react";
 import { relationService } from "../services/relationService";
 import { PartnerNotificationItem } from "../types";
 
 interface NotificationBellProps {
   currentUserId: string;
   onSelectRelation?: (relationId: string) => void;
+  onSelectNotification?: (notification: PartnerNotificationItem) => void;
 }
 
-export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUserId, onSelectRelation }) => {
+export const NotificationBell: React.FC<NotificationBellProps> = ({ 
+  currentUserId, 
+  onSelectRelation,
+  onSelectNotification
+}) => {
   const [notifications, setNotifications] = useState<PartnerNotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
@@ -20,18 +25,27 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUserI
       setNotifications(notifs);
     });
 
+    const handleCustomUpdate = () => {
+      // Re-trigger if custom event fired
+    };
+    window.addEventListener("wakat_notifications_updated", handleCustomUpdate);
+
     return () => {
       unsubscribe();
+      window.removeEventListener("wakat_notifications_updated", handleCustomUpdate);
     };
   }, [currentUserId]);
 
   const unreadCount = notifications.filter((n) => !n.lu).length;
 
-  const handleMarkAsRead = async (notifId: string, relationId?: string) => {
+  const handleMarkAsRead = async (notif: PartnerNotificationItem) => {
     try {
-      await relationService.marquerNotificationCommeLue(currentUserId, notifId);
-      if (relationId && onSelectRelation) {
-        onSelectRelation(relationId);
+      await relationService.marquerNotificationCommeLue(currentUserId, notif.id);
+      if (notif.relationId && onSelectRelation) {
+        onSelectRelation(notif.relationId);
+        setIsOpen(false);
+      } else if (onSelectNotification) {
+        onSelectNotification(notif);
         setIsOpen(false);
       }
     } catch (e) {
@@ -39,8 +53,14 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUserI
     }
   };
 
-  const getNotifIcon = (type: PartnerNotificationItem["type"]) => {
+  const getNotifIcon = (type: string) => {
     switch (type) {
+      case "preuve_paiement_a_valider":
+        return <Smartphone className="w-5 h-5 text-amber-600 flex-shrink-0" />;
+      case "paiement_valide":
+        return <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />;
+      case "paiement_rejete":
+        return <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />;
       case "connexion_acceptee":
         return <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />;
       case "connexion_refusee":
@@ -92,10 +112,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({ currentUserI
                   <p>Aucune notification pour le moment.</p>
                 </div>
               ) : (
-                notifications.map((n) => (
+                notifications.map((n, idx) => (
                   <div
-                    key={n.id}
-                    onClick={() => handleMarkAsRead(n.id, n.relationId)}
+                    key={`${n.id}_${idx}`}
+                    onClick={() => handleMarkAsRead(n)}
                     className={`p-3.5 transition-colors cursor-pointer flex items-start gap-3 hover:bg-slate-50 ${
                       !n.lu ? "bg-amber-50/40" : ""
                     }`}

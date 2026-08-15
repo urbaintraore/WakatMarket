@@ -313,6 +313,7 @@ export function AdminDashboard({
             if (onUpdateUser) onUpdateUser(userId, updates);
             setEditingUser(null);
           }}
+          onDeleteUser={onDeleteUser}
         />
       )}
       {/* Tab Panels */}
@@ -370,7 +371,7 @@ export function AdminDashboard({
                         <select
                           value={u.role}
                           onChange={(e) => onChangeUserRole(u.id, e.target.value as UserRole)}
-                          className={`text-[9px] font-bold px-2 py-1 rounded-md border-none focus:ring-1 focus:ring-emerald-500 cursor-pointer appearance-none ${
+                          className={`text-[9px] font-bold pl-2 pr-6 py-1 rounded-md border-none focus:ring-1 focus:ring-emerald-500 cursor-pointer ${
                             u.role === UserRole.MANUFACTURER ? "bg-indigo-500/10 text-indigo-500" :
                             u.role === UserRole.WHOLESALER ? "bg-amber-500/10 text-amber-500" :
                             u.role === UserRole.RETAILER ? "bg-purple-500/10 text-purple-500" :
@@ -1123,10 +1124,10 @@ export function ManufacturerDashboard({
 
                     {/* Order items summary */}
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
-                      {order.items.map((item) => {
+                      {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
-                          <div key={item.productId} className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                          <div key={item.productId + '_' + idx} className="flex justify-between text-zinc-600 dark:text-zinc-400">
                             <span>{prod?.name} ({prod?.unit})</span>
                             <span className="font-mono">Qty: {item.quantity} x {formatCFA(item.priceAtOrder)}</span>
                           </div>
@@ -1813,10 +1814,10 @@ export function WholesalerDashboard({
                     </div>
 
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
-                      {order.items.map((item) => {
+                      {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
-                          <div key={item.productId} className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                          <div key={item.productId + '_' + idx} className="flex justify-between text-zinc-600 dark:text-zinc-400">
                             <span>{prod?.name}</span>
                             <span className="font-mono">Qty: {item.quantity} x {formatCFA(item.priceAtOrder)}</span>
                           </div>
@@ -1891,10 +1892,10 @@ export function WholesalerDashboard({
                       </div>
 
                       <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] mb-3">
-                        {order.items.map((item) => {
+                        {order.items.map((item, idx) => {
                           const prod = products.find((p) => p.id === item.productId);
                           return (
-                            <div key={item.productId} className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                            <div key={item.productId + '_' + idx} className="flex justify-between text-zinc-600 dark:text-zinc-400">
                               <span>{prod?.name}</span>
                               <span className="font-mono">{item.quantity} x {formatCFA(item.priceAtOrder)}</span>
                             </div>
@@ -1983,11 +1984,25 @@ export function WholesalerDashboard({
                     <div className="min-w-0">
                       <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
                       <p className="text-[10px] text-zinc-500 font-medium">Seuil critique : {item.threshold} u</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
                           Stock : {item.stock} u
                         </span>
-                        <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono">
+                        {(item as any).vitesseVenteJournaliere > 0 && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                            ⚡ {(item as any).vitesseVenteJournaliere} u/j
+                          </span>
+                        )}
+                        {(item as any).joursRestants !== undefined && (item as any).joursRestants !== null && (
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
+                            (item as any).joursRestants <= 5 ? 'bg-rose-600 text-white animate-pulse' :
+                            (item as any).joursRestants <= 10 ? 'bg-amber-500 text-white' :
+                            'bg-emerald-600 text-white'
+                          }`}>
+                            {(item as any).joursRestants <= 0 ? 'Rupture' : `${(item as any).joursRestants} j restants`}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono ml-1">
                           {formatCFA(item.price)}
                         </span>
                       </div>
@@ -2832,10 +2847,10 @@ export function RetailerDashboard({
                     </div>
 
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800 text-[11px] space-y-1">
-                      {order.items.map((item) => {
+                      {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
-                          <div key={item.productId} className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                          <div key={item.productId + '_' + idx} className="flex justify-between text-zinc-600 dark:text-zinc-400">
                             <span>{prod?.name}</span>
                             <span className="font-mono">Qty: {item.quantity} x {formatCFA(item.priceAtOrder)}</span>
                           </div>
@@ -2891,9 +2906,9 @@ export function RetailerDashboard({
                           <p className="font-bold">{client?.name}</p>
                           <p className="text-zinc-500">{order.deliveryAddress}</p>
                           <div className="text-[10px] text-zinc-400 space-y-0.5 mt-1">
-                            {order.items.map((item) => {
+                            {order.items.map((item, idx) => {
                               const prod = products.find((p) => p.id === item.productId);
-                              return <p key={item.productId}>{prod?.name} x {item.quantity}</p>;
+                              return <p key={item.productId + '_' + idx}>{prod?.name} x {item.quantity}</p>;
                             })}
                           </div>
                           <p className="font-mono font-bold text-emerald-600">{formatCFA(order.totalAmount)}</p>
@@ -4142,10 +4157,10 @@ export function DriverDashboard({
                     {/* Package contents display */}
                     <div className="bg-zinc-900 p-2.5 rounded border border-zinc-800 text-[10px] space-y-1 mb-3">
                       <p className="font-bold text-zinc-300 uppercase tracking-wider mb-1.5 border-b border-zinc-800 pb-1">Contenu du Colis</p>
-                      {order.items.map((item) => {
+                      {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
-                          <div key={item.productId} className="flex justify-between text-zinc-400">
+                          <div key={item.productId + '_' + idx} className="flex justify-between text-zinc-400">
                             <span>{prod?.name || "Produit inconnu"}</span>
                             <span className="font-mono text-zinc-500">x{item.quantity}</span>
                           </div>
@@ -4938,10 +4953,10 @@ export function SemiWholesalerDashboard({
                     </div>
 
                     <div className="border-t border-zinc-100 dark:border-zinc-800 pt-2 space-y-1">
-                      {order.items.map((i) => {
+                      {order.items.map((i, idx) => {
                         const prod = products.find((p) => p.id === i.productId);
                         return (
-                          <div key={i.productId} className="flex justify-between text-[11px] text-zinc-500">
+                          <div key={i.productId + '_' + idx} className="flex justify-between text-[11px] text-zinc-500">
                             <span>{prod?.name}</span>
                             <span>{i.quantity} x {formatCFA(i.priceAtOrder)}</span>
                           </div>
@@ -5020,10 +5035,10 @@ export function SemiWholesalerDashboard({
                     </div>
 
                     <div className="border-t border-zinc-100 dark:border-zinc-800 pt-2 space-y-1">
-                      {order.items.map((i) => {
+                      {order.items.map((i, idx) => {
                         const prod = products.find((p) => p.id === i.productId);
                         return (
-                          <div key={i.productId} className="flex justify-between text-[11px] text-zinc-500">
+                          <div key={i.productId + '_' + idx} className="flex justify-between text-[11px] text-zinc-500">
                             <span>{prod?.name}</span>
                             <span>{i.quantity} x {formatCFA(i.priceAtOrder)}</span>
                           </div>

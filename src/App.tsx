@@ -9,11 +9,11 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive } from "./types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole } from "./types";
 import {
   db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice
 } from "./data";
@@ -31,6 +31,8 @@ import { formatFirebaseError } from "./utils/firebaseErrors";
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { ProductDetailModal } from "./components/ProductDetailModal";
 import { OnboardingTour } from "./components/OnboardingTour";
+import { ResetPasswordModal } from "./components/ResetPasswordModal";
+import DeleteUserConfirmationModal from "./components/DeleteUserConfirmationModal";
 import { pushNotificationService } from "./services/pushNotificationService";
 import wakatLogo from "./assets/images/wakatmarket_logo_1785061321209.jpg";
 
@@ -47,8 +49,28 @@ import ReportsModule from "./components/ReportsModule";
 import ChatModule from "./components/ChatModule";
 import PitchDeck from "./components/PitchDeck";
 import SupportModal from "./components/SupportModal";
+import { PaiementsAValiderModule } from "./components/PaiementsAValiderModule";
+import { PreuvePaiementUploadModal } from "./components/PreuvePaiementUploadModal";
+import { NotificationBell } from "./components/NotificationBell";
 
 export default function App() {
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [userToDeleteForConfirmation, setUserToDeleteForConfirmation] = useState<UserProfile | null>(null);
+  const [showPaiementsAValider, setShowPaiementsAValider] = useState(false);
+  const [orderForPaymentProof, setOrderForPaymentProof] = useState<Order | null>(null);
+  const [selectedCountryFilter, setSelectedCountryFilter] = useState<string>("ALL");
+  const [syncStatus, setSyncStatus] = useState<{
+    isSyncing: boolean;
+    pendingCount: number;
+    totalCount: number;
+    progress: number;
+    currentTask?: string | null;
+  }>({
+    isSyncing: false,
+    pendingCount: db.getSyncQueue().filter((t: any) => t.status === 'pending').length,
+    totalCount: db.getSyncQueue().length,
+    progress: 100
+  });
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem("wakat_erp_v2_theme") === "dark";
@@ -97,19 +119,25 @@ export default function App() {
   useEffect(() => {
     if (isRealUserAuthenticated) {
       const unsubscribe = userService.subscribeToAllUsers((fbUsers) => {
-        const mappedUsers: UserProfile[] = fbUsers.map(u => ({
-          id: u.uid,
-          name: u.email === "sayouba@ujkz.bf" ? "Sayouba BONKOUNGOU" : `${u.prénom} ${u.nom}`,
-          email: u.email,
-          phone: u.téléphone,
-          role: u.email === "sayouba@ujkz.bf" ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
-          status: u.statut as any,
-          country: u.pays || "Burkina Faso",
-          region: u.ville || "Ouagadougou",
-          avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-          companyName: u.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
-        }));
-        setUsers(mappedUsers);
+        const mappedUsers: UserProfile[] = fbUsers.map(u => {
+          const normEmail = u.email ? u.email.toLowerCase().trim() : "";
+          const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+          const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
+          return {
+            id: u.uid,
+            name: isSayouba ? "Sayouba BONKOUNGOU" : `${u.prénom || ""} ${u.nom || ""}`.trim() || "Utilisateur",
+            email: u.email,
+            phone: u.téléphone,
+            role: isSayouba ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
+            status: u.statut as any,
+            country: u.pays || "Burkina Faso",
+            region: u.ville || "Ouagadougou",
+            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
+          };
+        });
+        const dedupedUsers = deduplicateUsers(mappedUsers);
+        setUsers(dedupedUsers);
       });
       return () => unsubscribe();
     }
@@ -181,13 +209,21 @@ export default function App() {
   // Sync currentUser with real Firebase user
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
-      const isSayouba = dbUser.email === "sayouba@ujkz.bf";
+      const normEmail = dbUser.email ? dbUser.email.toLowerCase().trim() : "";
+      const normCompany = dbUser.companyName ? dbUser.companyName.toLowerCase().trim() : "";
+      const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
+      const determinedRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com")
+        ? UserRole.ADMIN
+        : isSayouba
+          ? UserRole.SEMI_WHOLESALER
+          : normalizeUserRole(dbUser.rôle || dbUser.role || UserRole.CLIENT);
+
       const mapped: UserProfile = {
         id: dbUser.uid,
-        name: isSayouba ? "Sayouba BONKOUNGOU" : `${dbUser.prénom} ${dbUser.nom}`,
+        name: isSayouba ? "Sayouba BONKOUNGOU" : `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() || "Utilisateur",
         email: dbUser.email,
         phone: dbUser.téléphone,
-        role: isSayouba ? UserRole.SEMI_WHOLESALER : (dbUser.rôle as any),
+        role: determinedRole,
         status: dbUser.statut as any,
         country: dbUser.pays || "Burkina Faso",
         region: dbUser.ville || "Ouagadougou",
@@ -235,6 +271,68 @@ export default function App() {
     return Array.from(map.values());
   };
 
+  const deduplicateUsers = (arr: UserProfile[]): UserProfile[] => {
+    const map = new Map<string, UserProfile>();
+    const idMap = new Map<string, string>();
+    const emailMap = new Map<string, string>();
+    const companyMap = new Map<string, string>();
+
+    arr.forEach(u => {
+      if (!u) return;
+
+      const normEmail = u.email ? u.email.toLowerCase().trim() : "";
+      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+
+      const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
+      if (isSayouba) {
+        u.role = UserRole.SEMI_WHOLESALER;
+        u.companyName = "BONKOUNGOU Entreprise";
+        u.name = "Sayouba BONKOUNGOU";
+        u.email = u.email || "sayouba@ujkz.bf";
+      }
+
+      const cleanEmail = u.email ? u.email.toLowerCase().trim() : "";
+      const cleanCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+
+      let targetId: string | undefined = undefined;
+
+      if (cleanEmail && emailMap.has(cleanEmail)) {
+        targetId = emailMap.get(cleanEmail);
+      } else if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise" && companyMap.has(cleanCompany)) {
+        targetId = companyMap.get(cleanCompany);
+      } else if (u.id && idMap.has(u.id)) {
+        targetId = idMap.get(u.id);
+      } else if (u.id && map.has(u.id)) {
+        targetId = u.id;
+      }
+
+      if (targetId && map.has(targetId)) {
+        const existing = map.get(targetId)!;
+        const merged: UserProfile = {
+          ...existing,
+          ...u,
+          id: targetId,
+          role: (isSayouba || existing.role === UserRole.SEMI_WHOLESALER) ? UserRole.SEMI_WHOLESALER : (u.role || existing.role),
+          companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || existing.companyName),
+          name: isSayouba ? "Sayouba BONKOUNGOU" : (u.name || existing.name)
+        };
+        map.set(targetId, merged);
+        if (u.id) idMap.set(u.id, targetId);
+        if (cleanEmail) emailMap.set(cleanEmail, targetId);
+        if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise") companyMap.set(cleanCompany, targetId);
+      } else {
+        const idToUse = u.id || `user-${Date.now()}`;
+        u.id = idToUse;
+        map.set(idToUse, u);
+        if (u.id) idMap.set(u.id, idToUse);
+        if (cleanEmail) emailMap.set(cleanEmail, idToUse);
+        if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise") companyMap.set(cleanCompany, idToUse);
+      }
+    });
+
+    return Array.from(map.values()).filter(u => (u.status as any) !== "DELETED");
+  };
+
   // Synchronize Firestore user profile or Firebase User to Active ERP Session
   useEffect(() => {
     if (firebaseUser) {
@@ -255,7 +353,7 @@ export default function App() {
           ? UserRole.ADMIN 
           : profileSource.email === "sayouba@ujkz.bf" 
             ? UserRole.SEMI_WHOLESALER 
-            : (profileSource.rôle as UserRole),
+            : normalizeUserRole(profileSource.rôle || profileSource.role || UserRole.CLIENT),
         status: (profileSource.statut as any) || "ACTIVE",
         country: profileSource.pays || "Burkina Faso",
         region: profileSource.ville || "Ouagadougou",
@@ -268,24 +366,11 @@ export default function App() {
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
       };
       
-      // Update local ERP database of users if not already present or if changed
+      // Update local ERP database of users with full deduplication
       setUsers((prev) => {
-        const existingIdx = prev.findIndex(u => u.id === profileSource.uid);
-        if (existingIdx === -1) {
-          const newList = deduplicate([...prev, activeProfile]);
-          db.saveUsers(newList);
-          return newList;
-        } else {
-          const isDifferent = JSON.stringify(prev[existingIdx]) !== JSON.stringify(activeProfile);
-          if (isDifferent) {
-            const newList = [...prev];
-            newList[existingIdx] = activeProfile;
-            const deduped = deduplicate(newList);
-            db.saveUsers(deduped);
-            return deduped;
-          }
-          return prev;
-        }
+        const newList = deduplicateUsers([...prev, activeProfile]);
+        db.saveUsers(newList);
+        return newList;
       });
       
       setCurrentUser(activeProfile);
@@ -313,7 +398,9 @@ export default function App() {
         if (fbUsers && fbUsers.length > 0) {
           fbUsers.forEach((u) => {
             const existing = combinedMap.get(u.uid);
-            const isSayouba = u.email === "sayouba@ujkz.bf";
+            const normEmail = u.email ? u.email.toLowerCase().trim() : "";
+            const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+            const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
             const mappedUser: UserProfile = {
               id: u.uid,
               name: isSayouba ? "Sayouba BONKOUNGOU" : (`${u.prénom || ""} ${u.nom || ""}`.trim() || u.email?.split("@")[0] || "Utilisateur"),
@@ -335,7 +422,7 @@ export default function App() {
           });
         }
 
-        const finalUsers = Array.from(combinedMap.values());
+        const finalUsers = deduplicateUsers(Array.from(combinedMap.values()));
         setUsers(finalUsers);
         db.saveUsers(finalUsers);
       } catch (err) {
@@ -454,6 +541,26 @@ export default function App() {
   const [realNotifications, setRealNotifications] = useState<Notification[]>([]);
   const [realConnections, setRealConnections] = useState<Connection[]>([]);
   const knownNotificationIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleOpenUploadProof = (e: any) => {
+      if (e.detail && e.detail.order) {
+        setOrderForPaymentProof(e.detail.order);
+      }
+    };
+
+    const handleOpenValiderPaiements = () => {
+      setShowPaiementsAValider(true);
+    };
+
+    window.addEventListener("wakat_open_upload_proof", handleOpenUploadProof);
+    window.addEventListener("wakat_open_valider_paiements", handleOpenValiderPaiements);
+
+    return () => {
+      window.removeEventListener("wakat_open_upload_proof", handleOpenUploadProof);
+      window.removeEventListener("wakat_open_valider_paiements", handleOpenValiderPaiements);
+    };
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -578,6 +685,29 @@ export default function App() {
     db.savePayments(list);
   };
 
+  // Real-time Sync Status listener
+  useEffect(() => {
+    const handleSyncUpdate = (e: CustomEvent) => {
+      if (e.detail) {
+        setSyncStatus({
+          isSyncing: !!e.detail.isSyncing,
+          pendingCount: e.detail.pendingCount ?? 0,
+          totalCount: e.detail.totalCount ?? 0,
+          progress: e.detail.progress ?? 100,
+          currentTask: e.detail.currentTask
+        });
+        if (e.detail.queue) {
+          setSyncQueue(e.detail.queue);
+        }
+      }
+    };
+
+    window.addEventListener('wakat_sync_status_updated' as any, handleSyncUpdate as any);
+    return () => {
+      window.removeEventListener('wakat_sync_status_updated' as any, handleSyncUpdate as any);
+    };
+  }, []);
+
   // Online/Offline Monitor
   useEffect(() => {
     const handleOnline = () => {
@@ -600,8 +730,14 @@ export default function App() {
     if (isOnline) {
       const interval = setInterval(() => {
         syncService.processQueue();
-        setSyncQueue(db.getSyncQueue());
-      }, 30000);
+        const currentQ = db.getSyncQueue();
+        setSyncQueue(currentQ);
+        setSyncStatus(prev => ({
+          ...prev,
+          pendingCount: currentQ.filter((t: any) => t.status === 'pending').length,
+          totalCount: currentQ.length
+        }));
+      }, 20000);
       return () => clearInterval(interval);
     }
   }, [isOnline]);
@@ -621,7 +757,7 @@ export default function App() {
   // Add Notification helper
   const addNotification = (text: string) => {
     const fresh = {
-      id: `toast-${Date.now()}`,
+      id: `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       text,
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
@@ -885,26 +1021,61 @@ export default function App() {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    console.log(`[Delete pipeline] Step 1/3: handleDeleteUser initiated for userId="${userId}"`);
+
+    // Review the interaction with the current user's session role
+    const isAdmin = currentUser?.role === UserRole.ADMIN || (dbUser && (dbUser.rôle === "ADMIN" || dbUser.role === "ADMIN"));
+    if (!isAdmin) {
+      console.warn(`[Delete pipeline] WARNING: User deletion attempted without ADMIN privileges. Current user:`, currentUser);
+    }
+
+    const userToDelete = users.find(u => u.id === userId);
+    if (userToDelete) {
+      const userName = userToDelete.companyName || userToDelete.name || "Utilisateur";
+      console.log(`[Delete pipeline] Step 2/3: Opening confirmation modal for userId="${userId}", userName="${userName}"`);
+      setUserToDeleteForConfirmation(userToDelete);
+    } else {
+      console.error(`[Delete pipeline] ERROR: Target user with userId="${userId}" not found in current local state list.`);
+    }
+  };
+
+  const handleSuccessDeleteUser = (userId: string) => {
+    console.log(`[Delete pipeline] Step 3/3: handleSuccessDeleteUser triggered for userId="${userId}"`);
+
+    // Retrieve user details from state before filtering
     const userToDelete = users.find(u => u.id === userId);
     const userName = userToDelete ? (userToDelete.companyName || userToDelete.name) : "cet utilisateur";
 
-    if (confirm(`Êtes-vous sûr de vouloir supprimer définitivement ${userName} ? Cette action est irréversible.`)) {
-      const updated = users.filter((u) => u.id !== userId);
-      setUsers(updated);
-      db.saveUsers(updated);
+    console.log(`[Delete pipeline] Removing user from local reactive state: userId="${userId}", userName="${userName}"`);
+    
+    // Ensure state update correctly triggers a re-render using a functional state update to prevent stale closures
+    setUsers((prevUsers) => {
+      const updatedUsers = prevUsers.filter((u) => u.id !== userId);
+      console.log(`[Delete pipeline] Local reactive state updated. Remaining users count: ${updatedUsers.length}`);
       
-      if (isRealUserAuthenticated) {
-        try {
-          await userService.deleteUser(userId);
-          addNotification(`${userName} a été supprimé de la base de données.`);
-        } catch (err) {
-          console.error("Error deleting user from Firebase:", err);
-          addNotification("Erreur lors de la suppression sur le serveur.");
-        }
-      } else {
-        addNotification(`${userName} supprimé localement.`);
+      // Save updated users list to persistent DB
+      db.saveUsers(updatedUsers);
+      return updatedUsers;
+    });
+
+    console.log(`[Delete pipeline] Cleaning up local storage entries for userId="${userId}"`);
+    try {
+      localStorage.removeItem(`wakat_erp_v2_user_${userId}`);
+      console.log(`[Delete pipeline] LocalStorage entry "wakat_erp_v2_user_${userId}" removed.`);
+
+      const erpUsersRaw = localStorage.getItem("wakat_erp_v2_users");
+      if (erpUsersRaw) {
+        const erpList: any[] = JSON.parse(erpUsersRaw);
+        const filtered = erpList.filter((u: any) => u.id !== userId);
+        localStorage.setItem("wakat_erp_v2_users", JSON.stringify(filtered));
+        console.log(`[Delete pipeline] LocalStorage "wakat_erp_v2_users" collection updated. New count: ${filtered.length}`);
       }
+    } catch (e) {
+      console.error("[Delete pipeline] ERROR: Failed during local storage cleanup:", e);
     }
+
+    addNotification(`${userName} a été supprimé définitivement.`);
+    console.log(`[Delete pipeline] Deletion pipeline fully completed for userId="${userId}".`);
   };
 
   // Cleanup for specific users requested by admin
@@ -1761,7 +1932,7 @@ export default function App() {
   const [initialLoadingTimeout, setInitialLoadingTimeout] = useState(false);
 
   // Filter data - filter out demo mock data when Firebase active session is detected
-  const displayUsers = useMemo(() => deduplicate(isRealUserAuthenticated
+  const displayUsers = useMemo(() => deduplicateUsers(isRealUserAuthenticated
     ? users.filter(u => {
         if (!currentUser) return false;
         if (u.id === currentUser.id) return true;
@@ -1841,6 +2012,47 @@ export default function App() {
     ? orders.filter(o => o.senderId === currentUser?.id || o.receiverId === currentUser?.id)
     : orders) as Order[], [isRealUserAuthenticated, orders, currentUser?.id]);
 
+  // List of available countries extracted from user profiles + standard West African countries
+  const availableCountries = useMemo(() => {
+    const defaultSet = ["Burkina Faso", "Sénégal", "Côte d'Ivoire", "Mali", "Guinée", "Togo", "Bénin", "Niger"];
+    const userCountries = users
+      .map(u => u.country || (u as any).pays)
+      .filter(Boolean) as string[];
+    return Array.from(new Set([...defaultSet, ...userCountries])).sort();
+  }, [users]);
+
+  // Apply geographical country filter to users (clients, partners, suppliers)
+  const countryFilteredUsers = useMemo(() => {
+    const rawList = (!selectedCountryFilter || selectedCountryFilter === "ALL") 
+      ? displayUsers 
+      : displayUsers.filter(u => {
+          if (u.id === currentUser?.id || u.role === UserRole.ADMIN) return true;
+          const userCountry = u.country || (u as any).pays || "";
+          return userCountry.toLowerCase().trim() === selectedCountryFilter.toLowerCase().trim();
+        });
+    return deduplicateUsers(rawList);
+  }, [displayUsers, selectedCountryFilter, currentUser?.id]);
+
+  // Apply geographical country filter to light clients
+  const countryFilteredLightClients = useMemo(() => {
+    if (!selectedCountryFilter || selectedCountryFilter === "ALL") return lightClients;
+    return lightClients.filter(lc => {
+      if (lc.linkedUserId) {
+        const linked = users.find(u => u.id === lc.linkedUserId);
+        if (linked) {
+          const c = linked.country || (linked as any).pays || "";
+          return c.toLowerCase().trim() === selectedCountryFilter.toLowerCase().trim();
+        }
+      }
+      const owner = users.find(u => u.id === lc.ownerId);
+      if (owner) {
+        const c = owner.country || (owner as any).pays || "";
+        return c.toLowerCase().trim() === selectedCountryFilter.toLowerCase().trim();
+      }
+      return true;
+    });
+  }, [lightClients, users, selectedCountryFilter]);
+
   if (authLoading && !initialLoadingTimeout) {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-4">
@@ -1857,7 +2069,27 @@ export default function App() {
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 flex flex-col transition duration-300">
       {/* Premium Header App Bar */}
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-150 dark:border-zinc-800 sticky top-0 z-40 transition-colors">
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-150 dark:border-zinc-800 sticky top-0 z-40 transition-colors relative">
+        {/* Real-time Sync Progress Bar */}
+        {(syncStatus.isSyncing || syncStatus.pendingCount > 0) && (
+          <div className="absolute top-0 left-0 right-0 h-1 bg-zinc-100 dark:bg-zinc-800 overflow-hidden pointer-events-none z-50">
+            <motion.div
+              initial={{ width: "0%" }}
+              animate={{ 
+                width: syncStatus.isSyncing 
+                  ? `${Math.max(syncStatus.progress, 15)}%` 
+                  : '30%' 
+              }}
+              transition={{ duration: 0.3 }}
+              className={`h-full ${
+                syncStatus.isSyncing 
+                  ? 'bg-gradient-to-r from-emerald-500 via-amber-500 to-indigo-500 animate-pulse' 
+                  : 'bg-amber-400'
+              }`}
+            />
+          </div>
+        )}
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
           {/* Logo Brand */}
@@ -1917,7 +2149,7 @@ export default function App() {
               }`}
               id="header-reports-toggle"
             >
-              <BarChart2 className="w-4 h-4" /> BI & Exports
+              <BarChart2 className="w-4 h-4" /> Rapports & Analytique
             </button>
             <button
               onClick={() => {
@@ -1943,10 +2175,57 @@ export default function App() {
             >
               <MessageSquare className="w-4 h-4" /> Messagerie
             </button>
+            <button
+              onClick={() => setShowPaiementsAValider(!showPaiementsAValider)}
+              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                showPaiementsAValider ? "bg-amber-600 text-white border-transparent" : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 hover:bg-amber-100"
+              }`}
+              id="header-paiements-toggle"
+              title="Validation des paiements Mobile Money (Orange Money, Moov Money, Wave)"
+            >
+              <Smartphone className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Paiements Mobile Money
+            </button>
           </div>
 
           {/* Right Header Operations */}
           <div className="flex items-center gap-2.5">
+
+            {/* Real-time Synchronization Status Badge / Spinner */}
+            <div className="flex items-center">
+              {syncStatus.isSyncing ? (
+                <button
+                  onClick={() => syncService.processQueue()}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-amber-100 transition shadow-xs"
+                  title="Traitement de la file de synchronisation en cours..."
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="hidden sm:inline">Synchro...</span>
+                  <span className="bg-amber-200 dark:bg-amber-800/80 px-1.5 py-0.5 rounded-md text-[10px]">
+                    {syncStatus.progress}%
+                  </span>
+                </button>
+              ) : syncStatus.pendingCount > 0 ? (
+                <button 
+                  onClick={() => syncService.processQueue()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold hover:bg-indigo-100 transition cursor-pointer"
+                  title="Cliquer pour forcer la synchronisation"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
+                  <span className="hidden sm:inline">Synchro</span>
+                  <span className="bg-indigo-200 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                    {syncStatus.pendingCount}
+                  </span>
+                </button>
+              ) : (
+                <div 
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-[11px] font-semibold"
+                  title="Toutes les opérations sont synchronisées"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="hidden xl:inline">Synchro OK</span>
+                </div>
+              )}
+            </div>
             {/* Mobile Outils Menu Dropdown Button */}
             <div className="relative lg:hidden">
               <button
@@ -1984,6 +2263,15 @@ export default function App() {
                       <span>IA Forecasting</span>
                     </button>
                     <button
+                      onClick={() => { setShowPaiementsAValider(!showPaiementsAValider); setShowMobileToolsMenu(false); }}
+                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
+                        showPaiementsAValider ? "bg-amber-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
+                      }`}
+                    >
+                      <Smartphone className="w-4 h-4 text-amber-500" />
+                      <span>Paiements Mobile Money</span>
+                    </button>
+                    <button
                       onClick={() => { setShowSupportModal(true); setShowMobileToolsMenu(false); }}
                       className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
                         showSupportModal ? "bg-emerald-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
@@ -1999,7 +2287,7 @@ export default function App() {
                       }`}
                     >
                       <BarChart2 className="w-4 h-4 text-rose-500" />
-                      <span>BI & Exports</span>
+                      <span>Rapports & Analytique</span>
                     </button>
                     <button
                       onClick={() => {
@@ -2064,11 +2352,26 @@ export default function App() {
             </button>
 
             {/* Notifications Alert Bell */}
-            <div className="relative">
+            <div className="relative flex items-center gap-1.5">
+              {currentUser && (
+                <NotificationBell
+                  currentUserId={currentUser.id}
+                  onSelectNotification={(notif) => {
+                    if (notif.type === "preuve_paiement_a_valider") {
+                      setShowPaiementsAValider(true);
+                    } else if (notif.type === "paiement_rejete") {
+                      addNotification(`Attention : ${notif.contenu}`);
+                    } else if (notif.type === "paiement_valide") {
+                      addNotification(`Succès : ${notif.contenu}`);
+                    }
+                  }}
+                />
+              )}
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 relative cursor-pointer"
                 id="notifications-bell-btn"
+                title="Notifications Push Système"
               >
                 <Bell className="w-4.5 h-4.5" />
                 {realNotifications.some((n) => !n.read) && (
@@ -2111,7 +2414,7 @@ export default function App() {
                     {realNotifications.length === 0 ? (
                       <div className="p-4 text-center text-[10px] text-zinc-400">Aucune notification</div>
                     ) : (
-                      realNotifications.map((n) => {
+                      realNotifications.map((n, idx) => {
                         const isConnRequest = n.type === "CONNECTION_REQUEST" && n.relatedId;
                         const relatedConn = isConnRequest 
                           ? (realConnections.find(c => c.id === n.relatedId) || db.getConnections().find(c => c.id === n.relatedId))
@@ -2119,7 +2422,7 @@ export default function App() {
                         const isPending = relatedConn?.status === "en_attente";
 
                         return (
-                          <div key={n.id} className="p-3 text-[10px] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/20">
+                          <div key={`${n.id}_${idx}`} className="p-3 text-[10px] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/20">
                             <div className="flex justify-between items-start gap-2">
                               <div className="flex-1">
                                 <p className={n.read ? "text-zinc-400" : "font-semibold text-zinc-900 dark:text-zinc-200"}>
@@ -2216,7 +2519,7 @@ export default function App() {
             showReports ? "bg-rose-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
           }`}
         >
-          <BarChart2 className="w-3.5 h-3.5" /> BI & Exports
+          <BarChart2 className="w-3.5 h-3.5" /> Rapports & Analytique
         </button>
         <button
           onClick={() => {
@@ -2691,6 +2994,46 @@ export default function App() {
                 </motion.div>
               )}
 
+              {showPaiementsAValider && currentUser && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="relative z-30 mb-8"
+                >
+                  <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xl">
+                    <div className="flex justify-between items-center mb-6 pb-3 border-b border-zinc-150 dark:border-zinc-800">
+                      <div>
+                        <h3 className="font-extrabold text-base text-zinc-900 dark:text-white flex items-center gap-2">
+                          <Smartphone className="w-5 h-5 text-amber-500" />
+                          Validation des Paiements Mobile Money (Orange Money, Moov Money, Wave)
+                        </h3>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          Vérifiez les captures d'écran transmises par vos partenaires et validez pour déclencher la facture.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setShowPaiementsAValider(false)}
+                        className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl text-zinc-500 cursor-pointer"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <PaiementsAValiderModule
+                      vendeurId={currentUser.id}
+                      vendeurNom={currentUser.companyName || currentUser.name}
+                      onPaiementValide={(venteId) => {
+                        addNotification(`Paiement de la commande #${venteId} validé avec succès !`);
+                      }}
+                      onPaiementRejete={(venteId) => {
+                        addNotification(`Preuve de paiement #${venteId} rejetée.`);
+                      }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+
               {showProfileEdit && currentUser && (
                 <ProfileEditModal
                   currentUser={currentUser}
@@ -2705,6 +3048,60 @@ export default function App() {
           </>
         )}
 
+        {/* Geographical Country Filter Dropdown Bar */}
+        <section className="mb-4">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded-xl shrink-0">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  Filtre Géographique Régional
+                  {selectedCountryFilter !== "ALL" && (
+                    <span className="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full lowercase font-normal">
+                      filtre actif: {selectedCountryFilter}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Filtrer les clients, partenaires et réseaux de distribution par pays ('pays')
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:w-64">
+                <MapPin className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <select
+                  value={selectedCountryFilter}
+                  onChange={(e) => setSelectedCountryFilter(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none"
+                >
+                  <option value="ALL">🌍 Tous les pays (Afrique de l'Ouest)</option>
+                  {availableCountries.map((c, idx) => (
+                    <option key={`country_${c}_${idx}`} value={c}>
+                      📍 {c}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400 text-xs">
+                  ▼
+                </div>
+              </div>
+
+              {selectedCountryFilter !== "ALL" && (
+                <button
+                  onClick={() => setSelectedCountryFilter("ALL")}
+                  className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl text-xs font-bold transition cursor-pointer shrink-0"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+
         {/* Core Role Dashboard Injector */}
         <section className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-6 shadow-xs transition-colors">
           {currentUser ? (
@@ -2712,7 +3109,7 @@ export default function App() {
               {currentUser.role === UserRole.ADMIN && (
                 <AdminDashboard
                   currentUser={currentUser}
-                  users={displayUsers}
+                  users={countryFilteredUsers}
                   orders={displayOrders}
                   products={displayProducts}
                   inventory={displayInventory}
@@ -2733,8 +3130,8 @@ export default function App() {
                   products={displayProducts}
                   inventory={displayInventory}
                   orders={displayOrders}
-                  users={displayUsers}
-                  lightClients={lightClients}
+                  users={countryFilteredUsers}
+                  lightClients={countryFilteredLightClients}
                   payments={payments}
                   connections={realConnections}
                   syncQueue={syncQueue}
@@ -2757,8 +3154,8 @@ export default function App() {
                   products={displayProducts}
                   inventory={displayInventory}
                   orders={displayOrders}
-                  users={displayUsers}
-                  lightClients={lightClients}
+                  users={countryFilteredUsers}
+                  lightClients={countryFilteredLightClients}
                   payments={payments}
                   connections={realConnections}
                   syncQueue={syncQueue}
@@ -2784,8 +3181,8 @@ export default function App() {
                   products={displayProducts}
                   inventory={displayInventory}
                   orders={displayOrders}
-                  users={displayUsers}
-                  lightClients={lightClients}
+                  users={countryFilteredUsers}
+                  lightClients={countryFilteredLightClients}
                   payments={payments}
                   connections={realConnections}
                   syncQueue={syncQueue}
@@ -2812,8 +3209,8 @@ export default function App() {
                   products={displayProducts}
                   inventory={displayInventory}
                   orders={displayOrders}
-                  users={displayUsers}
-                  lightClients={lightClients}
+                  users={countryFilteredUsers}
+                  lightClients={countryFilteredLightClients}
                   payments={payments}
                   connections={realConnections}
                   syncQueue={syncQueue}
@@ -2840,7 +3237,7 @@ export default function App() {
                   products={displayProducts}
                   inventory={displayInventory}
                   orders={displayOrders}
-                  users={displayUsers}
+                  users={countryFilteredUsers}
                   onPlaceB2COrder={handlePlaceB2COrder}
                   onPostReview={handlePostReview}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
@@ -2851,7 +3248,7 @@ export default function App() {
                 <DriverDashboard
                   currentUser={currentUser}
                   orders={displayOrders}
-                  users={displayUsers}
+                  users={countryFilteredUsers}
                   products={displayProducts}
                   onCompleteDelivery={handleCompleteDelivery}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
@@ -2893,12 +3290,57 @@ export default function App() {
           userName={currentUser?.name}
         />
 
+        {/* Admin Password Challenge Reset Modal */}
+        <ResetPasswordModal
+          isOpen={showResetModal}
+          onClose={() => setShowResetModal(false)}
+          currentUser={currentUser}
+          onConfirmReset={() => {
+            db.resetAll();
+            addNotification("Toutes les données ont été réinitialisées avec succès.");
+          }}
+        />
+
+        {/* Safe Delete User Two-Step Confirmation Modal */}
+        <DeleteUserConfirmationModal
+          isOpen={!!userToDeleteForConfirmation}
+          onClose={() => setUserToDeleteForConfirmation(null)}
+          user={userToDeleteForConfirmation}
+          onSuccess={handleSuccessDeleteUser}
+          isRealUser={isRealUserAuthenticated}
+        />
+
+        {/* Modal de téléversement de preuve de paiement par capture d'écran */}
+        {orderForPaymentProof && (
+          <PreuvePaiementUploadModal
+            isOpen={!!orderForPaymentProof}
+            onClose={() => setOrderForPaymentProof(null)}
+            order={orderForPaymentProof}
+            currentUserId={currentUser?.id || "CLIENT"}
+            currentUserName={currentUser?.name || "Client"}
+            vendeurNumeros={
+              (orderForPaymentProof as any).vendeurNumeros || 
+              users.find(u => u.id === (orderForPaymentProof.receiverId || (orderForPaymentProof as any).vendeurId))?.numerosPaiement
+            }
+            vendeurNom={
+              users.find(u => u.id === (orderForPaymentProof.receiverId || (orderForPaymentProof as any).vendeurId))?.companyName ||
+              users.find(u => u.id === (orderForPaymentProof.receiverId || (orderForPaymentProof as any).vendeurId))?.name ||
+              "Commerçant partenaire"
+            }
+            onSuccess={(updatedOrder) => {
+              addNotification(`Preuve de paiement soumise pour la commande #${(orderForPaymentProof as any).id}. En attente de validation du vendeur.`);
+              setOrders(prev => prev.map(o => o.id === (orderForPaymentProof as any).id ? { ...o, statutPaiement: "preuve_soumise" } : o));
+              setOrderForPaymentProof(null);
+            }}
+          />
+        )}
+
         {/* Toast Notifications Container with Smooth Enter/Exit Animations */}
         <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
           <AnimatePresence>
-            {toasts.map((toast) => (
+            {toasts.map((toast, idx) => (
               <motion.div
-                key={toast.id}
+                key={toast.id ? `${toast.id}_${idx}` : `toast_${idx}`}
                 initial={{ opacity: 0, y: 30, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, x: 100, scale: 0.9 }}
@@ -2949,14 +3391,11 @@ export default function App() {
               </button>
             )}
             <button
-              onClick={() => {
-                if (confirm("Voulez-vous réinitialiser toutes les transactions d'approvisionnement locales ?")) {
-                  db.resetAll();
-                }
-              }}
-              className="text-[10px] text-zinc-500 hover:text-white transition cursor-pointer flex items-center gap-1 bg-zinc-800 px-3 py-1.5 rounded-xl border border-zinc-700/50"
+              onClick={() => setShowResetModal(true)}
+              className="text-[10px] text-white transition cursor-pointer flex items-center gap-1.5 px-4 py-2 rounded-xl shadow-sm bg-red-600 hover:bg-red-700 active:bg-red-800 font-semibold"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Réinitialiser les données locales
+              <RefreshCw className="w-3.5 h-3.5" /> 
+              Réinitialiser toutes les données
             </button>
           </div>
         </div>

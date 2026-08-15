@@ -2,10 +2,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { User, onAuthStateChanged, ConfirmationResult, RecaptchaVerifier } from "firebase/auth";
 import { auth } from "../firebase/firebase";
 import { authService } from "../services/authService";
-import { userService, FirebaseUser } from "../services/userService";
+import { userService, FirebaseUser, saveLocalUser } from "../services/userService";
 import { formatFirebaseError } from "../utils/firebaseErrors";
 import { db } from "../data";
-import { UserRole } from "../types";
+import { UserRole, normalizeUserRole } from "../types";
 
 interface AuthContextType {
   firebaseUser: User | null;
@@ -59,10 +59,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user) {
         setLoading(true);
         try {
-          // Fetch user profile
+          // 1. Diagnostic check: inspect Firebase Custom Claims (rôle) upon initial login / token refresh
+          let claimRole: string | undefined = undefined;
+          try {
+            const tokenResult = await user.getIdTokenResult(true);
+            console.log("[AuthProvider DIAGNOSTIC] Firebase Custom Claims check for user:", user.uid, "claims:", tokenResult.claims);
+            claimRole = (tokenResult.claims.rôle as string) || (tokenResult.claims.role as string) || (tokenResult.claims.admin ? "ADMIN" : undefined);
+          } catch (claimsErr) {
+            console.warn("[AuthProvider DIAGNOSTIC] Could not read custom claims:", claimsErr);
+          }
+
+          // 2. Fetch user profile from Firestore ('users' / 'utilisateurs') and cache
           let profile = await userService.getUser(user.uid);
-          if (!profile) {
-            console.warn("Profil Firestore introuvable lors de la vérification de session.");
+
+          // 3. Diagnostic verification and synchronization between Claims and Firestore document
+          const email = (user.email || "").toLowerCase().trim();
+          let cachedRole: string | undefined = undefined;
+          try {
+            const pending = localStorage.getItem(`wakat_pending_signup_${email}`);
+            if (pending) {
+              const p = JSON.parse(pending);
+              if (p && (p.rôle || p.role)) cachedRole = p.rôle || p.role;
+            }
+          } catch (e) {}
+
+          const effectiveRole = claimRole || cachedRole || (profile ? (profile.rôle || profile.role) : undefined);
+
+          if (profile) {
+            console.log(`[AuthProvider DIAGNOSTIC] User ${user.uid} - Firestore role: "${profile.rôle || profile.role}" vs Custom Claims role: "${claimRole || 'N/A'}"`);
+            
+            // Fix role mismatch: If claims or registration cache have a specific non-CLIENT role and Firestore is CLIENT or outdated
+            if (effectiveRole && effectiveRole !== "CLIENT" && profile.rôle === "CLIENT") {
+              console.warn(`[AuthProvider DIAGNOSTIC] Resolving CLIENT role override for user ${user.uid}. Updating role to ${effectiveRole}...`);
+              const normRole = normalizeUserRole(effectiveRole);
+              profile.rôle = normRole;
+              profile.role = normRole;
+              await userService.updateUser(user.uid, { rôle: normRole, role: normRole });
+            }
+          } else {
+            console.warn("[AuthProvider DIAGNOSTIC] Profil Firestore introuvable lors de la vérification de session. Création automatique avec le rôle authentifié...");
+            const emailPrefix = email.split("@")[0] || "utilisateur";
+            const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
+            let roleToSet = effectiveRole || "CLIENT";
+            if (email === "sayouba@ujkz.bf") roleToSet = "SEMI_WHOLESALER";
+            else if (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) roleToSet = "ADMIN";
+            
+            const normRole = normalizeUserRole(roleToSet);
+            profile = {
+              uid: user.uid,
+              nom: user.displayName || cleanName,
+              prénom: "Utilisateur",
+              email: email,
+              téléphone: user.phoneNumber || "",
+              rôle: normRole,
+              role: normRole,
+              dateCréation: new Date().toISOString(),
+              statut: "ACTIVE"
+            };
+            await userService.createUser(profile);
           }
           setDbUser(profile);
         } catch (err) {
@@ -85,13 +139,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const user = await authService.signInWithEmail(email, password);
+      
+      // Check custom claims upon login
+      let claimRole: string | undefined = undefined;
+      try {
+        const tokenResult = await user.getIdTokenResult(true);
+        console.log("[AuthProvider DIAGNOSTIC - Login] Custom claims for user:", user.uid, tokenResult.claims);
+        claimRole = (tokenResult.claims.rôle as string) || (tokenResult.claims.role as string) || (tokenResult.claims.admin ? "ADMIN" : undefined);
+      } catch (claimsErr) {
+        console.warn("[AuthProvider DIAGNOSTIC] Error getting claims on login:", claimsErr);
+      }
+
       let profile = await userService.getUser(user.uid);
       if (!profile) {
         // Rattrapage: Create the missing Firestore document for a user that exists in Auth
         console.warn("Profil Firestore manquant, création (rattrapage)...");
         const emailPrefix = email.split("@")[0] || "utilisateur";
         const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
-        let determinedRole = "CLIENT";
+        
+        // Priority to claimRole or cached role
+        let determinedRole = claimRole || "CLIENT";
+        try {
+          const pending = localStorage.getItem(`wakat_pending_signup_${email.toLowerCase().trim()}`);
+          if (pending) {
+            const p = JSON.parse(pending);
+            if (p && (p.rôle || p.role)) determinedRole = p.rôle || p.role;
+          }
+        } catch (e) {}
+
         if (email === "sayouba@ujkz.bf") determinedRole = "SEMI_WHOLESALER";
         else if (email.includes("detaillant")) determinedRole = "RETAILER";
         else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) determinedRole = "SEMI_WHOLESALER";
@@ -99,17 +174,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         else if (email.includes("fabricant") || email.includes("manufacturer")) determinedRole = "MANUFACTURER";
         else if (email.includes("admin") || email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com") determinedRole = "ADMIN";
         
+        const normRole = normalizeUserRole(determinedRole);
         profile = {
           uid: user.uid,
           nom: user.displayName || cleanName,
           prénom: "Utilisateur",
           email: email,
           téléphone: user.phoneNumber || "",
-          rôle: determinedRole,
+          rôle: normRole,
+          role: normRole,
           dateCréation: new Date().toISOString(),
           statut: "ACTIVE"
         };
         await userService.createUser(profile);
+      } else if (claimRole && claimRole !== "CLIENT" && profile.rôle === "CLIENT") {
+        // Fix role mismatch if claims have higher privilege role
+        const normRole = normalizeUserRole(claimRole);
+        profile.rôle = normRole;
+        profile.role = normRole;
+        await userService.updateUser(user.uid, { rôle: normRole, role: normRole });
       }
       setDbUser(profile);
     } catch (err: any) {
@@ -122,13 +205,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const found = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
       if (found) {
+        const normRole = normalizeUserRole(found.role || (found as any).rôle);
         const mappedUser: FirebaseUser = {
           uid: found.id,
           nom: found.name?.split(" ").slice(1).join(" ") || found.name || "",
           prénom: found.name?.split(" ")[0] || "",
           email: found.email || email,
           téléphone: found.phone || "",
-          rôle: found.role || "CLIENT",
+          rôle: normRole,
+          role: normRole,
           dateCréation: new Date().toISOString(),
           statut: found.status || "ACTIVE"
         };
@@ -160,34 +245,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ) => {
     setLoading(true);
     setError(null);
+
+    const normEmail = email.toLowerCase().trim();
+    const finalRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) 
+      ? UserRole.ADMIN 
+      : normEmail === "sayouba@ujkz.bf" 
+        ? UserRole.SEMI_WHOLESALER 
+        : normalizeUserRole(rôle);
+
+    // Pre-save pending registration payload to ensure onAuthStateChanged and offline cache pick up chosen role immediately
+    const pendingData = {
+      nom: nom.trim(),
+      prénom: prénom.trim(),
+      email: normEmail,
+      téléphone: téléphone.trim(),
+      rôle: finalRole,
+      role: finalRole,
+      statut: "ACTIVE",
+      pays: pays || "Burkina Faso",
+      ville: ville || "Ouagadougou",
+      quartier,
+      latitude,
+      longitude,
+      companyName: `${nom.trim()} Entreprise`
+    };
+
+    try {
+      localStorage.setItem(`wakat_pending_signup_${normEmail}`, JSON.stringify(pendingData));
+      sessionStorage.setItem("wakat_last_signup_role", finalRole);
+    } catch (e) {
+      console.warn("Could not save pending signup payload:", e);
+    }
+
     try {
       const user = await authService.signUpWithEmail(email, password);
-      // Wait, "Le document Firestore doit être créé uniquement après une authentification réussie."
-      const finalRole = (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) 
-        ? "ADMIN" 
-        : email === "sayouba@ujkz.bf" 
-          ? "SEMI_WHOLESALER" 
-          : rôle;
       
       const newUser: FirebaseUser = {
         uid: user.uid,
-        nom,
-        prénom,
-        email,
-        téléphone,
+        nom: nom.trim(),
+        prénom: prénom.trim(),
+        email: normEmail,
+        téléphone: téléphone.trim(),
         rôle: finalRole,
+        role: finalRole,
         dateCréation: new Date().toISOString(),
         statut: "ACTIVE",
-        pays,
-        ville,
+        pays: pays || "Burkina Faso",
+        ville: ville || "Ouagadougou",
         quartier,
         latitude,
-        longitude
+        longitude,
+        companyName: `${nom.trim()} Entreprise`
       };
       
-      console.log("[DIAGNOSTIC] User role from registration form:", rôle);
-      console.log("[DIAGNOSTIC] Saving User Profile to Firestore:", newUser);
+      console.log("[DIAGNOSTIC] User role from registration form:", rôle, "=> Normalized to:", finalRole);
+      console.log("[DIAGNOSTIC] Saving User Profile to Firestore & Cache:", newUser);
       
+      saveLocalUser(user.uid, newUser);
       await userService.createUser(newUser);
       setDbUser(newUser);
     } catch (err: any) {
@@ -231,6 +345,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const user = await authService.confirmPhoneOTP(confirmationResult, code);
+      const normalizedRole = normalizeUserRole(rôle);
       // Create user doc if not exists
       const existingProfile = await userService.getUser(user.uid);
       if (!existingProfile) {
@@ -240,7 +355,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           prénom,
           email: email || user.email || "",
           téléphone: user.phoneNumber || "",
-          rôle,
+          rôle: normalizedRole,
+          role: normalizedRole,
           dateCréation: new Date().toISOString(),
           statut: "ACTIVE"
         };

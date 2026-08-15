@@ -17,6 +17,30 @@ export enum UserRole {
   DRIVER_SG2R = "DRIVER_SG2R", // Demi-Grossiste -> Détaillant
 }
 
+export function normalizeUserRole(inputRole?: string | UserRole | null): UserRole {
+  if (!inputRole) return UserRole.CLIENT;
+  const raw = String(inputRole).trim().toUpperCase();
+  
+  if (raw === UserRole.ADMIN || raw.includes("ADMIN")) return UserRole.ADMIN;
+  if (raw === UserRole.MANUFACTURER || raw.includes("FABRICANT") || raw.includes("MANUFACTURER") || raw.includes("USINE")) return UserRole.MANUFACTURER;
+  if (raw === UserRole.SEMI_WHOLESALER || raw.includes("SEMI_WHOLESALER") || raw.includes("DEMI") || raw.includes("SEMI") || raw.includes("DEMIGROSSISTE") || raw.includes("DEMI-GROSSISTE")) return UserRole.SEMI_WHOLESALER;
+  if (raw === UserRole.WHOLESALER || raw.includes("WHOLESALER") || raw.includes("GROSSISTE")) return UserRole.WHOLESALER;
+  if (raw === UserRole.RETAILER || raw.includes("RETAILER") || raw.includes("DETAILLANT") || raw.includes("DÉTAILLANT") || raw.includes("BOUTIQUE")) return UserRole.RETAILER;
+  if (raw === UserRole.DRIVER_M2W || raw.includes("DRIVER_M2W") || raw.includes("M2W")) return UserRole.DRIVER_M2W;
+  if (raw === UserRole.DRIVER_W2R || raw.includes("DRIVER_W2R") || raw.includes("W2R")) return UserRole.DRIVER_W2R;
+  if (raw === UserRole.DRIVER_R2C || raw.includes("DRIVER_R2C") || raw.includes("R2C")) return UserRole.DRIVER_R2C;
+  if (raw === UserRole.DRIVER_W2SG || raw.includes("DRIVER_W2SG") || raw.includes("W2SG")) return UserRole.DRIVER_W2SG;
+  if (raw === UserRole.DRIVER_SG2R || raw.includes("DRIVER_SG2R") || raw.includes("SG2R")) return UserRole.DRIVER_SG2R;
+  if (raw.includes("LIVREUR") || raw.includes("DRIVER")) return UserRole.DRIVER_R2C;
+  if (raw === UserRole.CLIENT || raw.includes("CLIENT") || raw.includes("ACHETEUR") || raw.includes("CUSTOMER")) return UserRole.CLIENT;
+  
+  // Check exact match
+  const allRoles = Object.values(UserRole);
+  if (allRoles.includes(raw as UserRole)) return raw as UserRole;
+
+  return UserRole.CLIENT;
+}
+
 export interface LightClient {
   id: string;
   ownerId: string; // The user (Manufacturer/Wholesaler/etc.) who owns this client entry
@@ -60,6 +84,12 @@ export interface DebtPayment {
   isSynced: boolean;
 }
 
+export interface NumeroPaiement {
+  operateur: "Orange Money" | "Moov Money" | "Telecel Money" | string;
+  numero: string;
+  nomTitulaire: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -80,6 +110,7 @@ export interface UserProfile {
   latitude?: number;
   longitude?: number;
   creditLimit?: number; // Maximum allowed credit limit (in CFA)
+  numerosPaiement?: NumeroPaiement[];
 }
 
 export interface GeoLocation {
@@ -173,7 +204,7 @@ export interface Order {
   shippingFee: number;
   distanceKm: number;
   estimatedTimeMins: number;
-  paymentMethod: "ORANGE_MONEY" | "MOOV_MONEY" | "WAVE" | "CREDIT_CARD" | "CASH" | "DEFERRED";
+  paymentMethod: "ORANGE_MONEY" | "MOOV_MONEY" | "TELECEL_MONEY" | "WAVE" | "CREDIT_CARD" | "CASH" | "DEFERRED" | "MOBILE_MONEY" | "OTHER";
   deliveryAddress: string;
   deliveryNotes?: string;
   driverId?: string; // Assigned delivery driver
@@ -185,6 +216,17 @@ export interface Order {
   sellerType?: string;
   buyerType?: string;
   canalDistribution?: string;
+
+  // Flux de paiement manuel par capture d'écran (Mobile Money)
+  statutPaiement?: "en_attente_preuve" | "preuve_soumise" | "valide" | "rejete";
+  preuvePaiementUrl?: string | null;
+  dateSoumissionPreuve?: string | any;
+  dateValidationPaiement?: string | any;
+  dateRejetPaiement?: string | any;
+  commentaireRejet?: string | null;
+  motifRejetPaiement?: string | null;
+  numerosPaiementVendeur?: NumeroPaiement[];
+  vendeurNumeros?: NumeroPaiement[];
 }
 
 export enum MessageType {
@@ -324,9 +366,12 @@ export interface Relation {
 
 export interface PartnerNotificationItem {
   id: string;
-  type: "demande_connexion" | "connexion_acceptee" | "connexion_refusee";
-  relationId: string;
-  expediteurId: string;
+  type: "demande_connexion" | "connexion_acceptee" | "connexion_refusee" | "preuve_paiement_a_valider" | "paiement_valide" | "paiement_rejete" | string;
+  relationId?: string;
+  venteId?: string;
+  orderId?: string;
+  factureUrl?: string;
+  expediteurId?: string;
   lu: boolean;
   dateCreation: any;
   contenu: string;

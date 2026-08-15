@@ -31,32 +31,39 @@ export const productService = {
   },
 
   async uploadProductImage(file: File): Promise<string | null> {
-    if (!supabase) {
-      console.warn("Supabase not configured, cannot upload product image.");
-      return null;
-    }
-    const ext = file.name.split('.').pop() || 'jpg';
-    const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    
-    try {
-      const { error } = await supabase.storage
-        .from('chat') // reusing 'chat' bucket as public general bucket
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-        
-      if (error) throw error;
+    if (supabase) {
+      const ext = file.name.split('.').pop() || 'jpg';
+      const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
       
-      const { data } = supabase.storage
-        .from('chat')
-        .getPublicUrl(filePath);
-        
-      return data.publicUrl;
-    } catch (err) {
-      console.error("Error uploading product image to Supabase:", err);
-      return null;
+      try {
+        const { error } = await supabase.storage
+          .from('chat')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+          
+        if (!error) {
+          const { data } = supabase.storage
+            .from('chat')
+            .getPublicUrl(filePath);
+            
+          return data.publicUrl;
+        }
+      } catch (err) {
+        console.warn("Notice: Uploading product image to Supabase storage failed, using inline Data URL fallback:", err);
+      }
+    } else {
+      console.info("Supabase storage not configured, using inline Data URL for product image.");
     }
+
+    // Fallback to Data URL
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
   },
 
   async createProduct(product: Product): Promise<void> {

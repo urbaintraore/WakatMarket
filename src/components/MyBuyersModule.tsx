@@ -334,7 +334,32 @@ export function MyBuyersModule({
       }
     });
 
-    return list;
+    const dedupedList: UnifiedBuyer[] = [];
+    const seenKeys = new Set<string>();
+
+    list.forEach(b => {
+      const normEmail = b.email ? b.email.toLowerCase().trim() : "";
+      const normCompany = b.companyName ? b.companyName.toLowerCase().trim() : "";
+      
+      const emailKey = normEmail ? `email:${normEmail}` : null;
+      const companyKey = (normCompany && normCompany !== "entreprise") ? `company:${normCompany}` : null;
+      const idKey = `id:${b.id}`;
+
+      if (
+        (emailKey && seenKeys.has(emailKey)) ||
+        (companyKey && seenKeys.has(companyKey)) ||
+        seenKeys.has(idKey)
+      ) {
+        return;
+      }
+
+      if (emailKey) seenKeys.add(emailKey);
+      if (companyKey) seenKeys.add(companyKey);
+      seenKeys.add(idKey);
+      dedupedList.push(b);
+    });
+
+    return dedupedList;
   }, [currentUser, users, orders, lightClients]);
 
   // 2. Filter buyers by search query

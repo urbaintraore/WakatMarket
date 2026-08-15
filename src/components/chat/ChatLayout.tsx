@@ -49,14 +49,29 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
 
   const getAllowedChatPartners = () => {
     if (!currentUser) return [];
-    if (currentUser.role === 'ADMIN') return users.filter(u => u.id !== currentUser.id);
+    let list: UserProfile[] = [];
+    if (currentUser.role === 'ADMIN') {
+      list = users.filter(u => u.id !== currentUser.id);
+    } else {
+      // Filter to ONLY active B2B connections to enforce strict partitioning
+      const activeConnectionUserIds = connections
+        .filter(c => c.status === 'active')
+        .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
 
-    // Filter to ONLY active B2B connections to enforce strict partitioning
-    const activeConnectionUserIds = connections
-      .filter(c => c.status === 'active')
-      .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
+      list = users.filter(u => activeConnectionUserIds.includes(u.id) && u.id !== currentUser.id);
+    }
 
-    return users.filter(u => activeConnectionUserIds.includes(u.id));
+    const map = new Map<string, UserProfile>();
+    list.forEach(u => {
+      const normEmail = u.email ? u.email.toLowerCase().trim() : "";
+      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+      const key = normEmail || normCompany || u.id;
+      if (!map.has(key)) {
+        map.set(key, u);
+      }
+    });
+
+    return Array.from(map.values());
   };
 
   const allowedPartners = getAllowedChatPartners();

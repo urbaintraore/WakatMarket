@@ -15,6 +15,25 @@ export interface SyncTask {
 }
 
 export const syncService = {
+  isProcessing: false,
+
+  notifyStatus(customStatus?: { isSyncing?: boolean; currentTask?: string; progress?: number }) {
+    const queue: SyncTask[] = erpDb.getSyncQueue();
+    const pendingTasks = queue.filter(t => t.status === 'pending');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wakat_sync_status_updated', {
+        detail: {
+          isSyncing: customStatus?.isSyncing ?? this.isProcessing,
+          pendingCount: pendingTasks.length,
+          totalCount: queue.length,
+          queue,
+          currentTask: customStatus?.currentTask || (pendingTasks.length > 0 ? pendingTasks[0].type : null),
+          progress: customStatus?.progress ?? (pendingTasks.length === 0 ? 100 : 0)
+        }
+      }));
+    }
+  },
+
   addToQueue(type: SyncActionType, payload: any) {
     const queue = erpDb.getSyncQueue();
     const newTask: SyncTask = {
@@ -25,18 +44,41 @@ export const syncService = {
       timestamp: Date.now()
     };
     erpDb.saveSyncQueue([...queue, newTask]);
+    this.notifyStatus();
     this.processQueue(); // Try to process immediately if online
   },
 
   async processQueue() {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine) {
+      this.notifyStatus({ isSyncing: false });
+      return;
+    }
     
-    const queue = erpDb.getSyncQueue();
+    const queue: SyncTask[] = erpDb.getSyncQueue();
     const pendingTasks = queue.filter(t => t.status === 'pending');
     
-    if (pendingTasks.length === 0) return;
+    if (pendingTasks.length === 0) {
+      this.isProcessing = false;
+      this.notifyStatus({ isSyncing: false, progress: 100 });
+      return;
+    }
 
-    for (const task of pendingTasks) {
+    this.isProcessing = true;
+    const totalPending = pendingTasks.length;
+
+    for (let i = 0; i < pendingTasks.length; i++) {
+      const task = pendingTasks[i];
+      const progressPercent = Math.round(((i + 1) / totalPending) * 100);
+
+      this.notifyStatus({
+        isSyncing: true,
+        currentTask: task.type,
+        progress: progressPercent
+      });
+
+      // Simulate a small network latency delay if running locally so users see progress feedback
+      await new Promise(resolve => setTimeout(resolve, 350));
+
       try {
         await this.executeTask(task);
         task.status = 'synced';
@@ -44,9 +86,12 @@ export const syncService = {
         console.error(`Sync error for task ${task.id}:`, err);
         task.status = 'error';
       }
+      
+      erpDb.saveSyncQueue(queue);
     }
 
-    erpDb.saveSyncQueue(queue);
+    this.isProcessing = false;
+    this.notifyStatus({ isSyncing: false, progress: 100 });
   },
 
   async executeTask(task: SyncTask) {

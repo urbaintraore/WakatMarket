@@ -7,6 +7,7 @@ import { Product, InventoryItem, LightClient, UserRole, UserProfile, Order, Debt
 import { formatCFA } from "../data";
 import { billingService } from "../services/billingService";
 import { pushNotificationService } from "../services/pushNotificationService";
+import { venteService } from "../services/venteService";
 
 interface CaisseModuleProps {
   currentUser: UserProfile;
@@ -251,7 +252,19 @@ export function CaisseModule({
       });
     });
 
-    return list;
+    const dedupedList: typeof list = [];
+    const seen = new Set<string>();
+    list.forEach((b) => {
+      const normCompany = b.companyName ? b.companyName.toLowerCase().trim() : "";
+      const normName = b.name ? b.name.toLowerCase().trim() : "";
+      const key = normCompany || normName || b.id;
+      if (!seen.has(key)) {
+        seen.add(key);
+        dedupedList.push(b);
+      }
+    });
+
+    return dedupedList;
   }, [currentUser, users, orders, lightClients]);
 
   // Filter buyers matching selection (FIDÈLE or PARTENAIRE)
@@ -376,8 +389,24 @@ export function CaisseModule({
         }
       }
 
+      const paymentMethod = amountPaid < totalAmount ? "DEFERRED" : "CASH";
+
+      // 1. Écriture directe Firestore (Offline-First dans /ventes/{venteId}) avec statut "en_attente_synchronisation"
+      const generatedVenteId = await venteService.enregistrerVenteHorsLigneDirecte({
+        vendeurId: currentUser.id,
+        vendeurNom: currentUser.companyName || currentUser.name,
+        vendeurRole: currentUser.role,
+        acheteurId: selectedClientId || "CLIENT_ANONYME",
+        acheteurNom,
+        typeVente: pricingType,
+        lignes: lines,
+        total: totalAmount,
+        paymentMethod,
+        amountPaid
+      });
+
       const invoiceData = {
-        venteId: "sale_" + Date.now().toString(),
+        venteId: generatedVenteId,
         vendeurId: currentUser.id,
         vendeurNom: currentUser.companyName || currentUser.name,
         vendeurRole: currentUser.role,
@@ -388,14 +417,12 @@ export function CaisseModule({
         total: totalAmount
       };
 
-      // Determine correct payment method and process
-      const paymentMethod = amountPaid < totalAmount ? "DEFERRED" : "CASH";
-
       const purchaseItems = Object.keys(cart).map((prodId) => ({
         productId: prodId,
         quantity: cart[prodId] || 0
       }));
 
+      // 2. Mettre à jour localement (décrément optimiste React)
       await onPlaceSale(
         selectedClientId || "CASH_CLIENT", 
         purchaseItems, 
@@ -408,7 +435,7 @@ export function CaisseModule({
           currentUser.id,
           amountPaid,
           acheteurNom,
-          invoiceData.venteId
+          generatedVenteId
         );
       }
 
@@ -572,7 +599,7 @@ export function CaisseModule({
               Aucun produit ne correspond à votre recherche.
             </div>
           ) : (
-            filteredInventory.map((item) => {
+            filteredInventory.map((item, idx) => {
               const prod = products.find((p) => p.id === item.productId);
               if (!prod) return null;
               const unitPrice = getProductPrice(item);
@@ -580,7 +607,7 @@ export function CaisseModule({
 
               return (
                 <div 
-                  key={item.id} 
+                  key={item.id ? `${item.id}_${idx}` : `inv_${idx}`} 
                   className={`p-3 bg-white dark:bg-zinc-900 border rounded-xl flex items-center justify-between shadow-xs transition-all ${
                     isSelected 
                       ? "border-emerald-500 ring-1 ring-emerald-500/20" 

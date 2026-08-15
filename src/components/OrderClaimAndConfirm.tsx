@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle, AlertOctagon, Mic, Send, X, MessageSquare, Download, Share2 } from "lucide-react";
+import { CheckCircle, AlertOctagon, Mic, Send, X, MessageSquare, Download, Share2, Smartphone, CheckCircle2, AlertTriangle } from "lucide-react";
 import { OrderStatus, Order, Product, UserProfile } from "../types";
 import { jsPDF } from "jspdf";
 
@@ -185,11 +185,60 @@ ${itemsText}
   return (
     <>
       <div className="flex flex-wrap gap-2 justify-end items-center mt-3 border-t border-zinc-150 dark:border-zinc-800 pt-3">
+        {/* Mobile Money Payment Proof Action & Badge */}
+        {order && (
+          <>
+            {(!order.statutPaiement || order.statutPaiement === "en_attente_preuve") && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('wakat_open_upload_proof', { detail: { order } }));
+                }}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs animate-pulse"
+                title="Payer via Mobile Money et envoyer une capture d'écran"
+              >
+                <Smartphone className="w-3.5 h-3.5" /> Payer par Mobile Money
+              </button>
+            )}
+
+            {order.statutPaiement === "preuve_soumise" && (
+              <div 
+                className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5"
+                title="Capture d'écran envoyée, en attente de validation du commerçant"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-amber-500 animate-spin" /> Preuve en validation
+              </div>
+            )}
+
+            {order.statutPaiement === "valide" && (
+              <div 
+                className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5"
+                title="Paiement vérifié et validé par le commerçant"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Paiement validé
+              </div>
+            )}
+
+            {order.statutPaiement === "rejete" && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('wakat_open_upload_proof', { detail: { order } }));
+                }}
+                className="bg-rose-500 hover:bg-rose-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                title={order.commentaireRejet ? `Rejeté: ${order.commentaireRejet}` : "Preuve rejetée - Cliquer pour renvoyer"}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" /> Preuve rejetée (Renvoyer)
+              </button>
+            )}
+          </>
+        )}
+
         {/* PDF Invoice Export */}
         {order && products && users && (
           <button
             onClick={handleExportPDF}
-            className="bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+            className="bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
             title="Télécharger la facture officielle PDF"
           >
             <Download className="w-3.5 h-3.5" /> Exporter PDF

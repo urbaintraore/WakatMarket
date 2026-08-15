@@ -33,6 +33,7 @@ export function ChatSidebar({ currentUser: propCurrentUser, conversations, users
   const getConvDisplay = (conv: Conversation) => {
     if (conv.type === "GROUP") {
       return {
+        key: `group-${conv.id}`,
         name: conv.groupName || "Groupe",
         image: conv.groupImage || "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=150",
         isGroup: true
@@ -40,7 +41,11 @@ export function ChatSidebar({ currentUser: propCurrentUser, conversations, users
     } else {
       const otherUserId = conv.participants.find(p => p !== currentUser?.id);
       const otherUser = getUserDetails(otherUserId || "");
+      const normEmail = otherUser?.email ? otherUser.email.toLowerCase().trim() : "";
+      const normCompany = otherUser?.companyName ? otherUser.companyName.toLowerCase().trim() : "";
+      const key = normEmail || normCompany || otherUserId || conv.id;
       return {
+        key,
         name: otherUser?.companyName || otherUser?.name || "Utilisateur inconnu",
         image: otherUser?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         isGroup: false,
@@ -49,7 +54,24 @@ export function ChatSidebar({ currentUser: propCurrentUser, conversations, users
     }
   };
 
-  const filteredConvs = conversations.filter(conv => {
+  const uniqueConvsMap = new Map<string, Conversation>();
+  conversations.forEach(conv => {
+    const display = getConvDisplay(conv);
+    if (!uniqueConvsMap.has(display.key)) {
+      uniqueConvsMap.set(display.key, conv);
+    } else {
+      const existing = uniqueConvsMap.get(display.key)!;
+      const existingTime = new Date(existing.lastMessageDate || existing.updatedAt || 0).getTime();
+      const currentTime = new Date(conv.lastMessageDate || conv.updatedAt || 0).getTime();
+      if (currentTime > existingTime) {
+        uniqueConvsMap.set(display.key, conv);
+      }
+    }
+  });
+
+  const uniqueConvs = Array.from(uniqueConvsMap.values());
+
+  const filteredConvs = uniqueConvs.filter(conv => {
     const display = getConvDisplay(conv);
     return display.name.toLowerCase().includes(searchTerm.toLowerCase());
   });
