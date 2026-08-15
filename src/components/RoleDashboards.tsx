@@ -11,7 +11,7 @@ import {
   Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
   Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet
 } from "lucide-react";
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive } from "../types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive, isBonkoungou } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
@@ -22,6 +22,7 @@ import { POSComponent } from "./POSComponent";
 import { CaisseModule } from "./CaisseModule";
 import { MyBuyersModule } from "./MyBuyersModule";
 import { AdminUserEditModal } from "./AdminUserEditModal";
+import { EditProductStockModal } from "./EditProductStockModal";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -582,6 +583,7 @@ interface ManufacturerDashboardProps {
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteLightClient: (clientId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
+  onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
 }
 
 export function ManufacturerDashboard({
@@ -660,7 +662,13 @@ export function ManufacturerDashboard({
 
   // Filter products created by this manufacturer
   const myProducts = products.filter((p) => p.creatorId === currentUser.id);
-  const myInventory = inventory.filter((i) => i.ownerId === currentUser.id);
+  const myInventory = useMemo(() => {
+    return inventory.filter((i) => 
+      i.ownerId === currentUser.id || 
+      i.ownerId === currentUser.email || 
+      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
+    );
+  }, [inventory, currentUser]);
 
   // Incoming Wholesaler Orders
   const myOrders = orders.filter((o) => o.receiverId === currentUser.id);
@@ -1276,6 +1284,7 @@ interface WholesalerDashboardProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onPayOrder?: (orderId: string) => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
+  onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
 }
 
 export function WholesalerDashboard({
@@ -1385,7 +1394,13 @@ export function WholesalerDashboard({
   }, [users, connections, currentUser.id]);
 
   // Wholesaler inventories
-  const myInventory = inventory.filter((i) => i.ownerId === currentUser.id);
+  const myInventory = useMemo(() => {
+    return inventory.filter((i) => 
+      i.ownerId === currentUser.id || 
+      i.ownerId === currentUser.email || 
+      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
+    );
+  }, [inventory, currentUser]);
 
   // Incoming B2B orders from Retailers & Semi-Wholesalers
   const incomingRetailerOrders = orders.filter((o) => o.receiverId === currentUser.id && (o.orderType === "B2B_W2R" || o.orderType === "B2B_W2SG"));
@@ -2357,6 +2372,7 @@ interface RetailerDashboardProps {
   onPayOrder?: (orderId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
+  onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
 }
 
 export function RetailerDashboard({
@@ -2470,7 +2486,13 @@ export function RetailerDashboard({
   }, [users, connections, lightClients, currentUser.id]);
 
   // Shop Inventory
-  const myInventory = useMemo(() => inventory.filter((i) => i.ownerId === currentUser.id), [inventory, currentUser.id]);
+  const myInventory = useMemo(() => {
+    return inventory.filter((i) => 
+      i.ownerId === currentUser.id || 
+      i.ownerId === currentUser.email || 
+      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
+    );
+  }, [inventory, currentUser]);
 
   // Shop Orders from client
   const myB2COrders = useMemo(() => orders.filter((o) => o.receiverId === currentUser.id && o.orderType === "B2C_R2C"), [orders, currentUser.id]);
@@ -4282,6 +4304,7 @@ interface SemiWholesalerDashboardProps {
   onPayOrder?: (orderId: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
+  onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
 }
 
 export function SemiWholesalerDashboard({
@@ -4308,6 +4331,7 @@ export function SemiWholesalerDashboard({
   onPayOrder,
   onUpdateOrderStatus,
   onUpdateCreditLimit,
+  onUpdateProductFull,
 }: SemiWholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
@@ -4318,6 +4342,9 @@ export function SemiWholesalerDashboard({
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [posReceipt, setPosReceipt] = useState<{ id: string; date: string; items: any[]; total: number; customerType: string } | null>(null);
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
+
+  // Full product edit modal state
+  const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
 
   // Edit stock state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -4412,7 +4439,13 @@ export function SemiWholesalerDashboard({
     }
     return filtered;
   }, [users, connections, currentUser.id]);
-  const myInventory = inventory.filter((i) => i.ownerId === currentUser.id);
+  const myInventory = useMemo(() => {
+    return inventory.filter((i) => 
+      i.ownerId === currentUser.id || 
+      i.ownerId === currentUser.email || 
+      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
+    );
+  }, [inventory, currentUser]);
 
   const myLightClientIds = useMemo(() => {
     return new Set(
@@ -5390,9 +5423,10 @@ export function SemiWholesalerDashboard({
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-zinc-50 dark:bg-zinc-950/40 text-zinc-500 border-b border-zinc-150 dark:border-zinc-850 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="p-4">Produit</th>
-                    <th className="p-4">Stock</th>
-                    <th className="p-4">Tarif Actuel</th>
+                    <th className="p-4">Produit & Péremption</th>
+                    <th className="p-4">Quantité & Seuil Alerte</th>
+                    <th className="p-4">Tarifs (Principal / Gros / Détail)</th>
+                    <th className="p-4">Min. Commande</th>
                     <th className="p-4 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -5401,19 +5435,25 @@ export function SemiWholesalerDashboard({
                     const prod = products.find((p) => p.id === item.productId);
                     if (!prod) return null;
                     const isEditing = editingItemId === item.id;
+                    const expDate = item.expirationDate || prod.expirationDate;
 
                     return (
                       <tr key={item.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-850/10 transition-colors">
                         <td className="p-4">
-                          <div className="flex gap-2 items-center">
-                            <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded object-cover" />
+                          <div className="flex gap-2.5 items-center">
+                            <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover border border-zinc-200 dark:border-zinc-800" />
                             <div>
-                              <p className="font-bold text-zinc-950 dark:text-white">{prod.name}</p>
+                              <p className="font-bold text-zinc-950 dark:text-white leading-tight">{prod.name}</p>
                               <p className="text-[10px] text-zinc-500 font-medium">{prod.brand} • {prod.unit}</p>
+                              {expDate && (
+                                <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 font-bold mt-1">
+                                  <Calendar className="w-2.5 h-2.5" /> Pér. {new Date(expDate).toLocaleDateString("fr-FR")}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 font-mono font-medium">
+                        <td className="p-4 font-mono">
                           {isEditing ? (
                             <input
                               type="number"
@@ -5422,12 +5462,22 @@ export function SemiWholesalerDashboard({
                               className="w-16 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 rounded text-zinc-900 dark:text-zinc-100"
                             />
                           ) : (
-                            <span className={item.stock <= item.threshold ? "text-rose-600 font-bold" : "text-zinc-700 dark:text-zinc-300"}>
-                              {item.stock}
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className={`font-bold text-xs block ${item.stock <= item.threshold ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-zinc-900 dark:text-zinc-100"}`}>
+                                {item.stock} unités
+                              </span>
+                              <span className="text-[10px] text-zinc-400 block font-sans">
+                                Seuil alerte : ≤ {item.threshold || 5} u
+                              </span>
+                              {item.stock <= item.threshold && (
+                                <span className="inline-block text-[9px] px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 font-bold uppercase tracking-wider">
+                                  Alerte Stock !
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
-                        <td className="p-4 font-mono font-bold text-emerald-600">
+                        <td className="p-4 font-mono text-xs">
                           {isEditing ? (
                             <input
                               type="number"
@@ -5436,10 +5486,21 @@ export function SemiWholesalerDashboard({
                               className="w-20 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 rounded text-zinc-900 dark:text-zinc-100"
                             />
                           ) : (
-                            formatCFA(item.price)
+                            <div className="space-y-0.5">
+                              <p className="font-extrabold text-emerald-600 dark:text-emerald-400">{formatCFA(item.price)}</p>
+                              <p className="text-[10px] text-zinc-500 font-sans">
+                                Gros: <span className="font-mono text-zinc-700 dark:text-zinc-300">{formatCFA(item.prixGros || prod.prixGros || item.price)}</span>
+                              </p>
+                              <p className="text-[10px] text-zinc-500 font-sans">
+                                Détail: <span className="font-mono text-zinc-700 dark:text-zinc-300">{formatCFA(item.prixDetail || prod.prixDetail || item.price)}</span>
+                              </p>
+                            </div>
                           )}
                         </td>
-                        <td className="p-4 text-right space-x-2">
+                        <td className="p-4 font-mono text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                          {item.quantiteMinimum || prod.quantiteMinimum || 1} min
+                        </td>
+                        <td className="p-4 text-right space-x-2 whitespace-nowrap">
                           {isEditing ? (
                             <button
                               onClick={saveEditItem}
@@ -5449,19 +5510,20 @@ export function SemiWholesalerDashboard({
                             </button>
                           ) : (
                             <button
-                              onClick={() => startEditItem(item)}
-                              className="bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2.5 py-1 rounded font-bold text-[10px]"
+                              onClick={() => {
+                                setEditingModalItem({ product: prod, inventoryItem: item });
+                              }}
+                              className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-xl font-bold text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
                             >
-                              Modif.
+                              Modi
                             </button>
                           )}
                           <button
-                            onClick={() => {
-                              if (confirm("Supprimer ce produit de votre stock ?")) onDeleteInventoryItem(item.id);
-                            }}
-                            className="text-rose-500 hover:bg-rose-50 p-1 rounded"
+                            onClick={() => onDeleteInventoryItem(item.id)}
+                            className="p-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                            title="Supprimer du stock"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
                       </tr>
@@ -5502,6 +5564,34 @@ export function SemiWholesalerDashboard({
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
+
+      {/* Edit Product & Stock Modal */}
+      <EditProductStockModal
+        isOpen={!!editingModalItem}
+        onClose={() => setEditingModalItem(null)}
+        product={editingModalItem?.product || null}
+        inventoryItem={editingModalItem?.inventoryItem || null}
+        onDelete={(itemId) => {
+          onDeleteInventoryItem(itemId);
+          setEditingModalItem(null);
+        }}
+        onSave={(productId, productData, inventoryItemId, inventoryData) => {
+          if (onUpdateProductFull) {
+            onUpdateProductFull(productId, productData, inventoryItemId, inventoryData);
+          } else {
+            onUpdateInventory(
+              inventoryItemId || "",
+              inventoryData?.stock || 0,
+              inventoryData?.price || 0,
+              inventoryData?.prixGros,
+              inventoryData?.prixDetail,
+              inventoryData?.quantiteMinimum,
+              productId
+            );
+          }
+          setEditingModalItem(null);
+        }}
+      />
     </div>
   );
 }

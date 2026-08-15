@@ -5,7 +5,7 @@ import { authService } from "../services/authService";
 import { userService, FirebaseUser, saveLocalUser } from "../services/userService";
 import { formatFirebaseError } from "../utils/firebaseErrors";
 import { db } from "../data";
-import { UserRole, normalizeUserRole } from "../types";
+import { UserRole, normalizeUserRole, isBonkoungou } from "../types";
 
 interface AuthContextType {
   firebaseUser: User | null;
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const emailPrefix = email.split("@")[0] || "utilisateur";
             const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
             let roleToSet = effectiveRole || "CLIENT";
-            if (email === "sayouba@ujkz.bf") roleToSet = "SEMI_WHOLESALER";
+            if (isBonkoungou(email, profile?.companyName, profile?.nom)) roleToSet = "SEMI_WHOLESALER";
             else if (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) roleToSet = "ADMIN";
             
             const normRole = normalizeUserRole(roleToSet);
@@ -167,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (e) {}
 
-        if (email === "sayouba@ujkz.bf") determinedRole = "SEMI_WHOLESALER";
+        if (isBonkoungou(email)) determinedRole = "SEMI_WHOLESALER";
         else if (email.includes("detaillant")) determinedRole = "RETAILER";
         else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) determinedRole = "SEMI_WHOLESALER";
         else if (email.includes("grossiste") || email.includes("wholesaler")) determinedRole = "WHOLESALER";

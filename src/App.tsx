@@ -13,9 +13,9 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole } from "./types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole, isBonkoungou } from "./types";
 import {
-  db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice
+  db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice, DEFAULT_PRODUCTS
 } from "./data";
 import { useAuth } from "./hooks/useAuth";
 import { authService } from "./services/authService";
@@ -107,33 +107,48 @@ export default function App() {
 
   const [isRealUserAuthenticated, setIsRealUserAuthenticated] = useState(false);
 
-  useEffect(() => {
-    setIsRealUserAuthenticated(!!firebaseUser && !!dbUser);
-  }, [firebaseUser, dbUser]);
-
   // DB States
   const [users, setUsers] = useState<UserProfile[]>(() => db.getUsers());
   const [products, setProducts] = useState<Product[]>(() => db.getProducts());
+  const [inventory, setInventory] = useState<InventoryItem[]>(() => db.getInventory());
+  const [orders, setOrders] = useState<Order[]>(() => db.getOrders());
+  const [messages, setMessages] = useState<ChatMessage[]>(() => db.getMessages());
+  const [recommendations, setRecommendations] = useState<AIRecommendation[]>(() => db.getRecommendations());
+  const [platformStats, setPlatformStats] = useState(() => db.getPlatformStats());
+  const [lightClients, setLightClients] = useState<LightClient[]>(() => db.getLightClients());
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => db.getStockMovements());
+  const [payments, setPayments] = useState<DebtPayment[]>(() => db.getPayments());
+  const [syncQueue, setSyncQueue] = useState<any[]>(() => db.getSyncQueue());
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Active User session simulation
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    // Default to Admin or first active user on launch
+    const list = db.getUsers();
+    return list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
+  });
+
+  useEffect(() => {
+    setIsRealUserAuthenticated(!!firebaseUser && !!dbUser);
+  }, [firebaseUser, dbUser]);
 
   // Firestore Sync for users
   useEffect(() => {
     if (isRealUserAuthenticated) {
       const unsubscribe = userService.subscribeToAllUsers((fbUsers) => {
         const mappedUsers: UserProfile[] = fbUsers.map(u => {
-          const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-          const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-          const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
+          const isBonk = isBonkoungou(u.email, u.companyName, `${u.prénom || ""} ${u.nom || ""}`);
           return {
             id: u.uid,
-            name: isSayouba ? "Sayouba BONKOUNGOU" : `${u.prénom || ""} ${u.nom || ""}`.trim() || "Utilisateur",
+            name: isBonk ? "Sayouba BONKOUNGOU" : `${u.prénom || ""} ${u.nom || ""}`.trim() || "Utilisateur",
             email: u.email,
             phone: u.téléphone,
-            role: isSayouba ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
+            role: isBonk ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
             status: u.statut as any,
             country: u.pays || "Burkina Faso",
             region: u.ville || "Ouagadougou",
             avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-            companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
+            companyName: isBonk ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
           };
         });
         const dedupedUsers = deduplicateUsers(mappedUsers);
@@ -143,17 +158,49 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
+  // Firestore Sync for products
+  useEffect(() => {
+    const unsubscribe = productService.subscribeToProducts((fbProducts) => {
+      if (fbProducts && fbProducts.length > 0) {
+        setProducts(fbProducts);
+        db.saveProducts(fbProducts);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Firestore Sync for inventory
   useEffect(() => {
-    if (isRealUserAuthenticated) {
-      const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
-        if (fbInventory && fbInventory.length > 0) {
+    const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
+      if (fbInventory && fbInventory.length > 0) {
+        setInventory(prev => {
+          const updatedMap = new Map<string, InventoryItem>();
+          prev.forEach(item => {
+            if (item && item.id) updatedMap.set(item.id, item);
+          });
+          fbInventory.forEach(item => {
+            if (item && item.id) updatedMap.set(item.id, item);
+          });
+          const nextList = Array.from(updatedMap.values());
+          db.saveInventory(nextList);
+          return nextList;
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sub-collection user stock sync
+  useEffect(() => {
+    if (currentUser?.id) {
+      const unsub = inventoryService.subscribeToUserStock(currentUser.id, (subItems) => {
+        if (subItems && subItems.length > 0) {
           setInventory(prev => {
             const updatedMap = new Map<string, InventoryItem>();
             prev.forEach(item => {
               if (item && item.id) updatedMap.set(item.id, item);
             });
-            fbInventory.forEach(item => {
+            subItems.forEach(item => {
               if (item && item.id) updatedMap.set(item.id, item);
             });
             const nextList = Array.from(updatedMap.values());
@@ -162,9 +209,9 @@ export default function App() {
           });
         }
       });
-      return () => unsubscribe();
+      return () => unsub();
     }
-  }, [isRealUserAuthenticated]);
+  }, [currentUser?.id]);
 
   // Firestore Sync for orders
   useEffect(() => {
@@ -188,39 +235,22 @@ export default function App() {
       return () => unsubscribe();
     }
   }, [isRealUserAuthenticated]);
-  const [inventory, setInventory] = useState<InventoryItem[]>(() => db.getInventory());
-  const [orders, setOrders] = useState<Order[]>(() => db.getOrders());
-  const [messages, setMessages] = useState<ChatMessage[]>(() => db.getMessages());
-  const [recommendations, setRecommendations] = useState<AIRecommendation[]>(() => db.getRecommendations());
-  const [platformStats, setPlatformStats] = useState(() => db.getPlatformStats());
-  const [lightClients, setLightClients] = useState<LightClient[]>(() => db.getLightClients());
-  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => db.getStockMovements());
-  const [payments, setPayments] = useState<DebtPayment[]>(() => db.getPayments());
-  const [syncQueue, setSyncQueue] = useState<any[]>(() => db.getSyncQueue());
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  // Active User session simulation
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    // Default to Admin or first active user on launch
-    const list = db.getUsers();
-    return list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
-  });
 
   // Sync currentUser with real Firebase user
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
       const normEmail = dbUser.email ? dbUser.email.toLowerCase().trim() : "";
       const normCompany = dbUser.companyName ? dbUser.companyName.toLowerCase().trim() : "";
-      const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
+      const isBonk = isBonkoungou(dbUser.email, dbUser.companyName, `${dbUser.prénom || ""} ${dbUser.nom || ""}`);
       const determinedRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com")
         ? UserRole.ADMIN
-        : isSayouba
+        : isBonk
           ? UserRole.SEMI_WHOLESALER
           : normalizeUserRole(dbUser.rôle || dbUser.role || UserRole.CLIENT);
 
       const mapped: UserProfile = {
         id: dbUser.uid,
-        name: isSayouba ? "Sayouba BONKOUNGOU" : `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() || "Utilisateur",
+        name: isBonk ? "Sayouba BONKOUNGOU" : `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() || "Utilisateur",
         email: dbUser.email,
         phone: dbUser.téléphone,
         role: determinedRole,
@@ -228,7 +258,7 @@ export default function App() {
         country: dbUser.pays || "Burkina Faso",
         region: dbUser.ville || "Ouagadougou",
         avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-        companyName: isSayouba ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
+        companyName: isBonk ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
       };
       setCurrentUser(mapped);
     }
@@ -1302,6 +1332,82 @@ export default function App() {
       addNotification(`Nouveau produit ajouté à votre stock.`);
     }
   };
+
+  const handleUpdateProductFull = (
+    productId: string,
+    productData: Partial<Product>,
+    inventoryItemId?: string,
+    inventoryData?: Partial<InventoryItem>
+  ) => {
+    if (!currentUser) return;
+
+    if (productData && Object.keys(productData).length > 0) {
+      const updatedProducts = products.map((p) => {
+        if (p.id === productId) {
+          return { ...p, ...productData };
+        }
+        return p;
+      });
+      syncProducts(updatedProducts);
+      if (isRealUserAuthenticated) {
+        productService.createOrUpdateProduct({ id: productId, ...productData } as any);
+      }
+    }
+
+    if (inventoryItemId && inventoryData) {
+      const targetItem = inventory.find((i) => i.id === inventoryItemId);
+      if (targetItem) {
+        const oldStock = targetItem.stock;
+        const newStock = inventoryData.stock !== undefined ? inventoryData.stock : oldStock;
+        const delta = newStock - oldStock;
+        if (delta !== 0) {
+          recordStockMovement(
+            targetItem.productId,
+            delta > 0 ? "IN" : "OUT",
+            Math.abs(delta),
+            "Modification via page d'édition de stock"
+          );
+        }
+        const updatedInventory = inventory.map((i) => {
+          if (i.id === inventoryItemId) {
+            return { ...i, ...inventoryData };
+          }
+          return i;
+        });
+        syncInventory(updatedInventory);
+        if (isRealUserAuthenticated) {
+          inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
+        }
+      }
+    }
+
+    addNotification("Produit et stock mis à jour avec succès !");
+  };
+
+  // Stock protection effect for Bonkoungou (Demi-Grossiste)
+  useEffect(() => {
+    if (currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+      const bonkItems = inventory.filter(i => 
+        i.ownerId === currentUser.id || 
+        i.ownerId === currentUser.email || 
+        isBonkoungou(i.ownerId)
+      );
+      if (bonkItems.length === 0 && products.length > 0) {
+        const newItems: InventoryItem[] = products.map((p, index) => ({
+          id: `inv-bonk-${p.id}-${Date.now()}`,
+          productId: p.id,
+          ownerId: currentUser.id,
+          stock: 120 + index * 30,
+          threshold: 10,
+          price: p.prixGros || p.prixDetail || 5000,
+          prixGros: p.prixGros || 4500,
+          prixDetail: p.prixDetail || 5000,
+          quantiteMinimum: p.quantiteMinimum || 1
+        }));
+        syncInventory([...inventory, ...newItems]);
+      }
+    }
+  }, [currentUser, inventory, products]);
 
   const handleDeleteInventoryItem = async (itemId: string) => {
     if (window.confirm("Voulez-vous vraiment retirer ce produit de votre inventaire ?")) {
@@ -3139,6 +3245,7 @@ export default function App() {
                   stockMovements={stockMovements}
                   onCreateProduct={handleCreateProduct}
                   onUpdateInventory={handleUpdateInventory}
+                  onUpdateProductFull={handleUpdateProductFull}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
                   onPlaceSale={handlePlaceSale}
                   onCreateLightClient={handleCreateLightClient}
@@ -3163,6 +3270,7 @@ export default function App() {
                   stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
+                  onUpdateProductFull={handleUpdateProductFull}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
                   onCreateProduct={handleCreateProduct}
                   onPlaceSale={handlePlaceSale}
@@ -3190,6 +3298,7 @@ export default function App() {
                   stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
+                  onUpdateProductFull={handleUpdateProductFull}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
                   onCreateProduct={handleCreateProduct}
                   onPlaceQuickB2CSale={handlePlaceQuickB2CSale}
@@ -3218,6 +3327,7 @@ export default function App() {
                   stockMovements={stockMovements}
                   onPlaceB2BOrder={handlePlaceB2BOrder}
                   onUpdateInventory={handleUpdateInventory}
+                  onUpdateProductFull={handleUpdateProductFull}
                   onDeleteInventoryItem={handleDeleteInventoryItem}
                   onCreateProduct={handleCreateProduct}
                   onPlaceQuickB2CSale={handlePlaceQuickB2CSale}

@@ -27,7 +27,7 @@ export const inventoryService = {
           list.push(docSnap.data() as InventoryItem);
         }
       });
-      return filterMockData(list);
+      return list;
     } catch (error: any) {
       console.warn("Firestore error during getAllInventory:", error);
       return [];
@@ -45,7 +45,7 @@ export const inventoryService = {
             list.push(docSnap.data() as InventoryItem);
           }
         });
-        callback(filterMockData(list));
+        callback(list);
       }, (error) => {
         console.warn("Firestore error during subscribeToInventory:", error);
       });
@@ -61,9 +61,59 @@ export const inventoryService = {
     };
   },
 
+  subscribeToUserStock(uid: string, callback: (items: InventoryItem[]) => void) {
+    if (!uid) return () => {};
+    const q = query(collection(db, "stocks", uid, "items"));
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const list: InventoryItem[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            list.push({
+              id: `inv-${uid}-${data.produitId || docSnap.id}`,
+              productId: data.produitId || docSnap.id,
+              ownerId: uid,
+              stock: Number(data.quantite || 0),
+              threshold: Number(data.seuilAlerte || 10),
+              price: Number(data.prixUnitaire || 0),
+              prixGros: Number(data.prixUnitaire || 0),
+              prixDetail: Number(data.prixUnitaire || 0),
+              quantiteMinimum: 1
+            });
+          }
+        });
+        callback(list);
+      }, (error) => {
+        console.warn("Firestore error during subscribeToUserStock:", error);
+      });
+    } catch (e) {
+      console.warn("Failed to set up real-time listener for user stock:", e);
+    }
+    return () => {
+      try {
+        unsub();
+      } catch (e) {}
+    };
+  },
+
   async updateInventoryItem(item: InventoryItem): Promise<void> {
     try {
       await setDoc(doc(db, COLLECTION_NAME, item.id), item);
+      if (item.ownerId && item.productId) {
+        try {
+          await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), {
+            produitId: item.productId,
+            quantite: item.stock,
+            seuilAlerte: item.threshold || 10,
+            prixUnitaire: item.price || 1000,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        } catch (subErr) {
+          console.warn("Notice: Could not sync to /stocks/{uid}/items:", subErr);
+        }
+      }
     } catch (error: any) {
       console.warn("Firestore error during updateInventoryItem:", error);
     }

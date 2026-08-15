@@ -17,13 +17,39 @@ export enum UserRole {
   DRIVER_SG2R = "DRIVER_SG2R", // Demi-Grossiste -> Détaillant
 }
 
+export function isBonkoungou(email?: string, companyName?: string, name?: string): boolean {
+  if (!email && !companyName && !name) return false;
+  const e = (email || "").toLowerCase().trim();
+  const c = (companyName || "").toLowerCase().trim();
+  const n = (name || "").toLowerCase().trim();
+  return (
+    e.includes("bonkoungou") ||
+    e.includes("ujkz.bf") ||
+    e.includes("sayouba") ||
+    c.includes("bonkoungou") ||
+    n.includes("bonkoungou")
+  );
+}
+
 export function normalizeUserRole(inputRole?: string | UserRole | null): UserRole {
   if (!inputRole) return UserRole.CLIENT;
   const raw = String(inputRole).trim().toUpperCase();
   
   if (raw === UserRole.ADMIN || raw.includes("ADMIN")) return UserRole.ADMIN;
   if (raw === UserRole.MANUFACTURER || raw.includes("FABRICANT") || raw.includes("MANUFACTURER") || raw.includes("USINE")) return UserRole.MANUFACTURER;
-  if (raw === UserRole.SEMI_WHOLESALER || raw.includes("SEMI_WHOLESALER") || raw.includes("DEMI") || raw.includes("SEMI") || raw.includes("DEMIGROSSISTE") || raw.includes("DEMI-GROSSISTE")) return UserRole.SEMI_WHOLESALER;
+  if (
+    raw === UserRole.SEMI_WHOLESALER || 
+    raw.includes("SEMI_WHOLESALER") || 
+    raw.includes("SEMI-WHOLESALER") || 
+    raw.includes("SEMI_GROSSISTE") || 
+    raw.includes("SEMI-GROSSISTE") || 
+    raw.includes("DEMIGROSSISTE") || 
+    raw.includes("DEMI-GROSSISTE") || 
+    raw.includes("DEMI_GROSSISTE") ||
+    raw.includes("HALF_WHOLESALER") ||
+    raw.includes("DEMI") || 
+    raw.includes("SEMI")
+  ) return UserRole.SEMI_WHOLESALER;
   if (raw === UserRole.WHOLESALER || raw.includes("WHOLESALER") || raw.includes("GROSSISTE")) return UserRole.WHOLESALER;
   if (raw === UserRole.RETAILER || raw.includes("RETAILER") || raw.includes("DETAILLANT") || raw.includes("DÉTAILLANT") || raw.includes("BOUTIQUE")) return UserRole.RETAILER;
   if (raw === UserRole.DRIVER_M2W || raw.includes("DRIVER_M2W") || raw.includes("M2W")) return UserRole.DRIVER_M2W;

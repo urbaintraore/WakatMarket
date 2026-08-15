@@ -1,5 +1,5 @@
 import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { doc, setDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { doc, setDoc, collection, getDocs, deleteDoc, query, onSnapshot } from "firebase/firestore";
 import { Product } from "../types";
 import { filterMockData } from "../data";
 import { supabase } from "../supabase";
@@ -23,11 +23,38 @@ export const productService = {
           list.push(docSnap.data() as Product);
         }
       });
-      return filterMockData(list);
+      return list;
     } catch (error: any) {
       console.warn("Firestore error during getAllProducts:", error);
       return [];
     }
+  },
+
+  subscribeToProducts(callback: (products: Product[]) => void) {
+    const q = query(collection(db, COLLECTION_NAME));
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(q, (snapshot) => {
+        const list: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          if (docSnap.exists()) {
+            list.push(docSnap.data() as Product);
+          }
+        });
+        callback(list);
+      }, (error) => {
+        console.warn("Firestore error during subscribeToProducts:", error);
+      });
+    } catch (e) {
+      console.warn("Failed to set up real-time listener for products:", e);
+    }
+    return () => {
+      try {
+        unsub();
+      } catch (e) {
+        console.warn("Error unsubscribing from products:", e);
+      }
+    };
   },
 
   async uploadProductImage(file: File): Promise<string | null> {
@@ -97,6 +124,10 @@ export const productService = {
     } catch (error: any) {
       console.warn("Firestore error during createProduct:", error);
     }
+  },
+
+  async createOrUpdateProduct(product: Product): Promise<void> {
+    return this.createProduct(product);
   },
 
   async deleteProduct(id: string): Promise<void> {
