@@ -9,7 +9,7 @@ import {
   Settings, UserCheck, UserX, ToggleLeft, ToggleRight, Plus, Tag, 
   BarChart, Sparkles, Check, Play, Map, Navigation, CheckCircle, 
   Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
-  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet
+  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet, Calendar
 } from "lucide-react";
 import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive, isBonkoungou } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
@@ -607,6 +607,7 @@ export function ManufacturerDashboard({
   onAddPayment,
   onDeleteLightClient,
   onUpdateOrderStatus,
+  onUpdateProductFull,
 }: ManufacturerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"catalog" | "orders" | "sales" | "ai" | "buyers" | "clients" | "sync">("catalog");
   const [isAdding, setIsAdding] = useState(false);
@@ -1357,6 +1358,7 @@ export function WholesalerDashboard({
   onUpdateOrderStatus,
   onPayOrder,
   onUpdateCreditLimit,
+  onUpdateProductFull,
 }: WholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
@@ -2494,6 +2496,7 @@ export function RetailerDashboard({
   onPayOrder,
   onUpdateOrderStatus,
   onUpdateCreditLimit,
+  onUpdateProductFull,
 }: RetailerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync">("procure");
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
@@ -3485,14 +3488,14 @@ export function RetailerDashboard({
       </AnimatePresence>
 
       <CreateProductModal
-        isOpen={isAddingStockModalOpen}
-        onClose={() => setIsAddingStockModalOpen(false)}
+        isOpen={isAdding}
+        onClose={() => setIsAdding(false)}
         defaultBrand={currentUser.companyName || currentUser.name}
         onSubmit={(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate) => {
           if (onCreateProduct) {
             onCreateProduct(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate);
           }
-          setIsAddingStockModalOpen(false);
+          setIsAdding(false);
         }}
       />
 

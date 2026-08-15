@@ -1275,7 +1275,8 @@ export default function App() {
     prixGros?: number, 
     prixDetail?: number, 
     quantiteMinimum?: number,
-    productId?: string
+    productId?: string,
+    expirationDate?: string
   ) => {
     if (!currentUser) return;
 
@@ -1304,7 +1305,8 @@ export default function App() {
             price: price !== undefined ? price : item.price,
             prixGros: prixGros !== undefined ? prixGros : item.prixGros,
             prixDetail: prixDetail !== undefined ? prixDetail : item.prixDetail,
-            quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : item.quantiteMinimum
+            quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : item.quantiteMinimum,
+            expirationDate: expirationDate !== undefined ? expirationDate : item.expirationDate
           };
           return changedItem;
         }
@@ -1325,7 +1327,8 @@ export default function App() {
         price: price || 1000,
         prixGros: prixGros,
         prixDetail: prixDetail,
-        quantiteMinimum: quantiteMinimum || 1
+        quantiteMinimum: quantiteMinimum || 1,
+        expirationDate: expirationDate
       };
       if (isRealUserAuthenticated) inventoryService.updateInventoryItem(newItem);
       syncInventory([...inventory, newItem]);

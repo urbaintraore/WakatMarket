@@ -2,6 +2,7 @@ import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 import { InventoryItem, Product } from "../types";
 import { filterMockData } from "../data";
+import { supabase } from "../supabase";
 
 const COLLECTION_NAME = "inventory";
 
@@ -114,6 +115,32 @@ export const inventoryService = {
           console.warn("Notice: Could not sync to /stocks/{uid}/items:", subErr);
         }
       }
+
+      // Sync to Supabase
+      if (supabase) {
+        try {
+          const { error } = await supabase
+            .from("inventory")
+            .upsert({
+              id: item.id,
+              product_id: item.productId,
+              owner_id: item.ownerId,
+              stock: item.stock,
+              threshold: item.threshold || 10,
+              price: item.price || 0,
+              expiration_date: item.expirationDate || null,
+              prix_gros: item.prixGros || null,
+              prix_detail: item.prixDetail || null,
+              quantite_minimum: item.quantiteMinimum || null,
+              updated_at: new Date().toISOString()
+            });
+          if (error) {
+            console.warn("Supabase upsert error on inventory table:", error.message);
+          }
+        } catch (supErr) {
+          console.warn("Supabase is not accessible or table inventory does not exist:", supErr);
+        }
+      }
     } catch (error: any) {
       console.warn("Firestore error during updateInventoryItem:", error);
     }
@@ -122,6 +149,21 @@ export const inventoryService = {
   async deleteInventoryItem(id: string): Promise<void> {
     try {
       await deleteDoc(doc(db, COLLECTION_NAME, id));
+
+      // Delete from Supabase
+      if (supabase) {
+        try {
+          const { error } = await supabase
+            .from("inventory")
+            .delete()
+            .eq("id", id);
+          if (error) {
+            console.warn("Supabase delete error on inventory table:", error.message);
+          }
+        } catch (supErr) {
+          console.warn("Supabase delete error:", supErr);
+        }
+      }
     } catch (error: any) {
       console.warn("Firestore error during deleteInventoryItem:", error);
     }

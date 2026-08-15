@@ -304,6 +304,76 @@ export function ProductDetailModal({
             </div>
           </div>
 
+          {/* Tarification Différenciée & Paramètres de Stock */}
+          <div className="bg-zinc-50 dark:bg-zinc-950/60 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
+            <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-650 dark:text-emerald-400 flex items-center gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+              <Info className="w-4 h-4" /> Tarifs Différenciés & Gestion des Alertes
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Prix de Gros B2B</span>
+                <span className="font-mono text-base font-extrabold text-zinc-900 dark:text-white">
+                  {formatCFA(inventoryItem?.prixGros || product.prixGros || currentSellingPrice)}
+                </span>
+                <span className="text-[10px] text-zinc-500 block mt-1">Tarif pour professionnels</span>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Prix de Détail</span>
+                <span className="font-mono text-base font-extrabold text-zinc-900 dark:text-white">
+                  {formatCFA(inventoryItem?.prixDetail || product.prixDetail || currentSellingPrice)}
+                </span>
+                <span className="text-[10px] text-zinc-500 block mt-1">Tarif grand public</span>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Quantité Minimum (MOQ)</span>
+                <span className="text-base font-extrabold text-zinc-900 dark:text-white">
+                  {inventoryItem?.quantiteMinimum || product.quantiteMinimum || 1} unité(s)
+                </span>
+                <span className="text-[10px] text-zinc-500 block mt-1">Seuil minimal de commande</span>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Seuil Alerte Réappro.</span>
+                <span className="text-base font-extrabold text-amber-600 dark:text-amber-400">
+                  {thresholdValue} unité(s)
+                </span>
+                <span className="text-[10px] text-zinc-500 block mt-1">Alerte si stock inférieur</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              <div className="bg-amber-50/40 dark:bg-amber-950/20 p-3 rounded-xl border border-amber-200/50 dark:border-amber-900/30 flex items-center gap-3">
+                <Calendar className="w-8 h-8 text-amber-600 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold block uppercase">Date de Péremption</span>
+                  <span className="font-mono text-sm font-extrabold text-zinc-900 dark:text-white">
+                    {inventoryItem?.expirationDate || product.expirationDate ? (
+                      new Date(inventoryItem?.expirationDate || product.expirationDate || "").toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric"
+                      })
+                    ) : (
+                      "Non renseignée / Non périssable"
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/40 dark:bg-emerald-950/20 p-3 rounded-xl border border-emerald-200/50 dark:border-emerald-900/30 flex items-center gap-3">
+                <Box className="w-8 h-8 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold block uppercase">Statut Critique de Stock</span>
+                  <span className={`text-sm font-extrabold ${isLowStock ? "text-rose-600 dark:text-rose-400 animate-pulse" : "text-emerald-600 dark:text-emerald-400"}`}>
+                    {isLowStock ? "Niveau Critique (Réapprovisionner)" : "Niveau de Stock Correct"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* QR Code Generation Section for Boutique Scanning */}
           <div className="bg-zinc-50 dark:bg-zinc-950/60 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col md:flex-row items-center gap-6">
             <div className="bg-white p-3 rounded-2xl shadow-sm border border-zinc-200 shrink-0">

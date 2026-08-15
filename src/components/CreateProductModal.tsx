@@ -28,9 +28,24 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
   currentUserRole,
   defaultBrand = ""
 }) => {
+  const PREDEFINED_CATEGORIES = [
+    "Alimentation",
+    "Boissons",
+    "Électronique",
+    "Quincaillerie",
+    "Cosmétiques",
+    "Hygiène & Entretien",
+    "Vêtements & Mode",
+    "Pharmacie / Santé",
+    "Matériaux de construction",
+    "Pièces de rechange",
+    "Divers"
+  ];
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("Alimentaire");
+  const [category, setCategory] = useState("Alimentation");
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [brand, setBrand] = useState(defaultBrand);
   const [unit, setUnit] = useState("Carton de 24");
   const [weight, setWeight] = useState<number>(1.0);
@@ -211,14 +226,55 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
                       Catégorie *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                      placeholder="Alimentaire, Boissons..."
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
-                    />
+                    {!isCustomCategory ? (
+                      <div className="relative">
+                        <select
+                          value={PREDEFINED_CATEGORIES.includes(category) ? category : "AUTRE"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "AUTRE") {
+                              setIsCustomCategory(true);
+                              setCategory("");
+                            } else {
+                              setCategory(val);
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                        >
+                          {PREDEFINED_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                          <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
+                          ▼
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          placeholder="Saisir la catégorie..."
+                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomCategory(false);
+                            setCategory("Alimentation");
+                          }}
+                          className="px-2.5 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold transition text-[10px]"
+                        >
+                          Retour
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
