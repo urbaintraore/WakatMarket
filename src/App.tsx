@@ -1384,9 +1384,10 @@ export default function App() {
     addNotification("Produit et stock mis à jour avec succès !");
   };
 
-  // Stock protection effect for Bonkoungou (Demi-Grossiste)
+  // Stock protection effect for Bonkoungou (Demi-Grossiste) - runs once at init
+  const bonkInitializedRef = useRef(false);
   useEffect(() => {
-    if (currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+    if (!bonkInitializedRef.current && currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
       const bonkItems = inventory.filter(i => 
         i.ownerId === currentUser.id || 
         i.ownerId === currentUser.email || 
@@ -1406,21 +1407,36 @@ export default function App() {
         }));
         syncInventory([...inventory, ...newItems]);
       }
+      bonkInitializedRef.current = true;
     }
-  }, [currentUser, inventory, products]);
+  }, [currentUser]);
 
-  const handleDeleteInventoryItem = async (itemId: string) => {
-    if (window.confirm("Voulez-vous vraiment retirer ce produit de votre inventaire ?")) {
-      const updated = inventory.filter((item) => item.id !== itemId);
-      setInventory(updated); // Immediate UI update
-      db.saveInventory(updated);
-      
-      if (isRealUserAuthenticated) {
-        await inventoryService.deleteInventoryItem(itemId);
+  const handleDeleteInventoryItem = async (itemId: string, productId?: string, skipConfirm: boolean = false) => {
+    const shouldDelete = skipConfirm || window.confirm("Voulez-vous vraiment retirer ce produit de votre stock ?");
+    if (!shouldDelete) return;
+
+    const itemToDelete = inventory.find(i => i.id === itemId || i.productId === itemId || (productId && i.productId === productId));
+    const targetItemId = itemToDelete ? itemToDelete.id : itemId;
+    const targetProdId = productId || itemToDelete?.productId || itemId;
+
+    // Filter out from local state
+    const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
+    syncInventory(updatedInventory);
+
+    const updatedProducts = products.filter((p) => p.id !== targetProdId);
+    syncProducts(updatedProducts);
+
+    // Sync deletion to Firestore / Supabase
+    if (isRealUserAuthenticated) {
+      if (targetItemId) {
+        await inventoryService.deleteInventoryItem(targetItemId);
       }
-      
-      addNotification("Produit retiré de votre stock.");
+      if (targetProdId) {
+        await productService.deleteProduct(targetProdId);
+      }
     }
+
+    addNotification("Produit retiré de votre stock avec succès.");
   };
 
   // Order Placement logic (B2B Procurement)

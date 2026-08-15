@@ -23,6 +23,7 @@ import { CaisseModule } from "./CaisseModule";
 import { MyBuyersModule } from "./MyBuyersModule";
 import { AdminUserEditModal } from "./AdminUserEditModal";
 import { EditProductStockModal } from "./EditProductStockModal";
+import { CreateProductModal } from "./CreateProductModal";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -575,9 +576,9 @@ interface ManufacturerDashboardProps {
   syncQueue: any[];
   isOnline: boolean;
   stockMovements?: StockMovement[];
-  onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number) => void;
-  onUpdateInventory: (itemId: string, stock: number, price: number) => void;
-  onDeleteInventoryItem: (itemId: string) => void;
+  onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, threshold?: number, expirationDate?: string) => void;
+  onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
+  onDeleteInventoryItem: (itemId: string, productId?: string, skipConfirm?: boolean) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
   onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
@@ -619,6 +620,7 @@ export function ManufacturerDashboard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedProductForChart, setSelectedProductForChart] = useState<string | null>(null);
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
+  const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
 
   useEffect(() => {
     if (!isAdding) {
@@ -1066,10 +1068,18 @@ export function ManufacturerDashboard({
                         />
                       </div>
                       <button
-                        onClick={() => onDeleteInventoryItem(item.id)}
-                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition"
+                        onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
+                        className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                        title="Modifier tous les champs (page d'édition)"
                       >
-                        Suppr.
+                        Modi
+                      </button>
+                      <button
+                        onClick={() => onDeleteInventoryItem(item.id, item.productId)}
+                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                        title="Supprimer ce produit du stock"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Suppr.
                       </button>
                     </div>
                   </div>
@@ -1254,6 +1264,43 @@ export function ManufacturerDashboard({
       )}
         </motion.div>
       </AnimatePresence>
+
+      <CreateProductModal
+        isOpen={isAdding}
+        onClose={() => setIsAdding(false)}
+        defaultBrand={currentUser.companyName || currentUser.name}
+        onSubmit={(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate) => {
+          onCreateProduct(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate);
+          setIsAdding(false);
+        }}
+      />
+
+      <EditProductStockModal
+        isOpen={!!editingModalItem}
+        onClose={() => setEditingModalItem(null)}
+        product={editingModalItem?.product || null}
+        inventoryItem={editingModalItem?.inventoryItem || null}
+        onDelete={(itemId, productId) => {
+          onDeleteInventoryItem(itemId, productId, true);
+          setEditingModalItem(null);
+        }}
+        onSave={(productId, productData, inventoryItemId, inventoryData) => {
+          if (onUpdateProductFull) {
+            onUpdateProductFull(productId, productData, inventoryItemId, inventoryData);
+          } else {
+            onUpdateInventory(
+              inventoryItemId || "",
+              inventoryData?.stock || 0,
+              inventoryData?.price || 0,
+              inventoryData?.prixGros,
+              inventoryData?.prixDetail,
+              inventoryData?.quantiteMinimum,
+              productId
+            );
+          }
+          setEditingModalItem(null);
+        }}
+      />
     </div>
   );
 }
@@ -1275,8 +1322,8 @@ interface WholesalerDashboardProps {
   stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
-  onDeleteInventoryItem: (itemId: string) => void;
-  onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
+  onDeleteInventoryItem: (itemId: string, productId?: string, skipConfirm?: boolean) => void;
+  onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, threshold?: number, expirationDate?: string) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
   onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
   onAddPayment: (clientId: string, amount: number) => void;
@@ -1320,6 +1367,7 @@ export function WholesalerDashboard({
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddingStockModalOpen, setIsAddingStockModalOpen] = useState(false);
+  const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
   const [selectedProdToAdd, setSelectedProdToAdd] = useState<string>("");
   const [quantityToAdd, setQuantityToAdd] = useState<string>("50");
   const [priceToAdd, setPriceToAdd] = useState<string>("15000");
@@ -2049,10 +2097,18 @@ export function WholesalerDashboard({
                       />
                     </div>
                     <button
-                      onClick={() => onDeleteInventoryItem(item.id)}
-                      className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition"
+                      onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
+                      className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                      title="Modifier tous les champs (page d'édition)"
                     >
-                      Suppr.
+                      Modi
+                    </button>
+                    <button
+                      onClick={() => onDeleteInventoryItem(item.id, item.productId)}
+                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                      title="Supprimer ce produit du stock"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Suppr.
                     </button>
                   </div>
                 </div>
@@ -2341,6 +2397,45 @@ export function WholesalerDashboard({
       )}
         </motion.div>
       </AnimatePresence>
+
+      <CreateProductModal
+        isOpen={isAddingStockModalOpen}
+        onClose={() => setIsAddingStockModalOpen(false)}
+        defaultBrand={currentUser.companyName || currentUser.name}
+        onSubmit={(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate) => {
+          if (onCreateProduct) {
+            onCreateProduct(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate);
+          }
+          setIsAddingStockModalOpen(false);
+        }}
+      />
+
+      <EditProductStockModal
+        isOpen={!!editingModalItem}
+        onClose={() => setEditingModalItem(null)}
+        product={editingModalItem?.product || null}
+        inventoryItem={editingModalItem?.inventoryItem || null}
+        onDelete={(itemId, productId) => {
+          onDeleteInventoryItem(itemId, productId, true);
+          setEditingModalItem(null);
+        }}
+        onSave={(productId, productData, inventoryItemId, inventoryData) => {
+          if (onUpdateProductFull) {
+            onUpdateProductFull(productId, productData, inventoryItemId, inventoryData);
+          } else {
+            onUpdateInventory(
+              inventoryItemId || "",
+              inventoryData?.stock || 0,
+              inventoryData?.price || 0,
+              inventoryData?.prixGros,
+              inventoryData?.prixDetail,
+              inventoryData?.quantiteMinimum,
+              productId
+            );
+          }
+          setEditingModalItem(null);
+        }}
+      />
     </div>
   );
 }
@@ -2362,8 +2457,8 @@ interface RetailerDashboardProps {
   stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
-  onDeleteInventoryItem: (itemId: string) => void;
-  onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
+  onDeleteInventoryItem: (itemId: string, productId?: string, skipConfirm?: boolean) => void;
+  onCreateProduct: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, threshold?: number, expirationDate?: string) => void;
   onPlaceQuickB2CSale: (items: { productId: string; quantity: number }[]) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
   onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
@@ -2405,6 +2500,7 @@ export function RetailerDashboard({
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [isAdding, setIsAdding] = useState(false);
+  const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
   const [selectedProdId, setSelectedProdId] = useState<string>("");
   const [uploadMode, setUploadMode] = useState<"url" | "file">("url");
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
@@ -3387,6 +3483,45 @@ export function RetailerDashboard({
       )}
         </motion.div>
       </AnimatePresence>
+
+      <CreateProductModal
+        isOpen={isAddingStockModalOpen}
+        onClose={() => setIsAddingStockModalOpen(false)}
+        defaultBrand={currentUser.companyName || currentUser.name}
+        onSubmit={(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate) => {
+          if (onCreateProduct) {
+            onCreateProduct(productData, stock, price, prixGros, prixDetail, quantiteMinimum, threshold, expirationDate);
+          }
+          setIsAddingStockModalOpen(false);
+        }}
+      />
+
+      <EditProductStockModal
+        isOpen={!!editingModalItem}
+        onClose={() => setEditingModalItem(null)}
+        product={editingModalItem?.product || null}
+        inventoryItem={editingModalItem?.inventoryItem || null}
+        onDelete={(itemId, productId) => {
+          onDeleteInventoryItem(itemId, productId, true);
+          setEditingModalItem(null);
+        }}
+        onSave={(productId, productData, inventoryItemId, inventoryData) => {
+          if (onUpdateProductFull) {
+            onUpdateProductFull(productId, productData, inventoryItemId, inventoryData);
+          } else {
+            onUpdateInventory(
+              inventoryItemId || "",
+              inventoryData?.stock || 0,
+              inventoryData?.price || 0,
+              inventoryData?.prixGros,
+              inventoryData?.prixDetail,
+              inventoryData?.quantiteMinimum,
+              productId
+            );
+          }
+          setEditingModalItem(null);
+        }}
+      />
     </div>
   );
 }
@@ -4294,8 +4429,8 @@ interface SemiWholesalerDashboardProps {
   stockMovements?: StockMovement[];
   onPlaceB2BOrder: (receiverId: string, items: { productId: string; quantity: number }[]) => void;
   onUpdateInventory: (itemId: string, stock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, productId?: string) => void;
-  onDeleteInventoryItem: (itemId: string) => void;
-  onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number) => void;
+  onDeleteInventoryItem: (itemId: string, productId?: string, skipConfirm?: boolean) => void;
+  onCreateProduct?: (p: Omit<Product, "id" | "creatorId">, initialStock: number, price: number, prixGros?: number, prixDetail?: number, quantiteMinimum?: number, threshold?: number, expirationDate?: string) => void;
   onPlaceQuickB2CSale?: (items: { productId: string; quantity: number }[]) => void;
   onPlaceSale: (clientId: string | "CASH_CLIENT", items: { productId: string; quantity: number }[], amountPaid: number, paymentMethod: Order["paymentMethod"]) => void;
   onCreateLightClient: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
