@@ -73,15 +73,16 @@ export const inventoryService = {
           if (docSnap.exists()) {
             const data = docSnap.data();
             list.push({
-              id: `inv-${uid}-${data.produitId || docSnap.id}`,
+              id: data.id || `inv-${uid}-${data.produitId || docSnap.id}`,
               productId: data.produitId || docSnap.id,
               ownerId: uid,
               stock: Number(data.quantite || 0),
               threshold: Number(data.seuilAlerte || 10),
               price: Number(data.prixUnitaire || 0),
-              prixGros: Number(data.prixUnitaire || 0),
-              prixDetail: Number(data.prixUnitaire || 0),
-              quantiteMinimum: 1
+              prixGros: Number(data.prixGros ?? data.prixUnitaire ?? 0),
+              prixDetail: Number(data.prixDetail ?? data.prixUnitaire ?? 0),
+              quantiteMinimum: Number(data.quantiteMinimum ?? 1),
+              expirationDate: data.expirationDate || undefined
             });
           }
         });
@@ -105,10 +106,15 @@ export const inventoryService = {
       if (item.ownerId && item.productId) {
         try {
           await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), {
+            id: item.id,
             produitId: item.productId,
             quantite: item.stock,
             seuilAlerte: item.threshold || 10,
             prixUnitaire: item.price || 1000,
+            prixGros: item.prixGros || item.price || 1000,
+            prixDetail: item.prixDetail || item.price || 1000,
+            quantiteMinimum: item.quantiteMinimum || 1,
+            expirationDate: item.expirationDate || null,
             updatedAt: new Date().toISOString()
           }, { merge: true });
         } catch (subErr) {

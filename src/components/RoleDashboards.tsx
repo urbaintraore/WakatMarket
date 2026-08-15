@@ -111,6 +111,20 @@ export function handleDownloadOrderPDF(order: Order, productsList: Product[]) {
   }
 }
 
+const PREDEFINED_CATEGORIES = [
+  "Alimentation",
+  "Boissons",
+  "Électronique",
+  "Quincaillerie",
+  "Cosmétiques",
+  "Hygiène & Entretien",
+  "Vêtements & Mode",
+  "Pharmacie / Santé",
+  "Matériaux de construction",
+  "Pièces de rechange",
+  "Divers"
+];
+
 // ----------------------------------------------------------------------
 // Shared Price History Chart (30 Days - Purchase & Selling Prices)
 // ----------------------------------------------------------------------
@@ -615,6 +629,8 @@ export function ManufacturerDashboard({
   const [posSelectedLightClientId, setPosSelectedLightClientId] = useState<string>("");
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [mfgCategory, setMfgCategory] = useState("Alimentation");
+  const [isCustomMfgCategory, setIsCustomMfgCategory] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string>("");
   const [uploadMode, setUploadMode] = useState<"url" | "file">("file");
   const [isDragging, setIsDragging] = useState(false);
@@ -896,8 +912,58 @@ export function ManufacturerDashboard({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Catégorie</label>
-                    <input required name="category" defaultValue="Alimentaire" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold">Catégorie</label>
+                    {!isCustomMfgCategory ? (
+                      <div className="relative">
+                        <select
+                          value={PREDEFINED_CATEGORIES.includes(mfgCategory) ? mfgCategory : "AUTRE"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "AUTRE") {
+                              setIsCustomMfgCategory(true);
+                              setMfgCategory("");
+                            } else {
+                              setMfgCategory(val);
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                        >
+                          {PREDEFINED_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                          <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
+                          ▼
+                        </div>
+                        <input type="hidden" name="category" value={mfgCategory} />
+                      </div>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          value={mfgCategory}
+                          onChange={(e) => setMfgCategory(e.target.value)}
+                          placeholder="Saisir la catégorie..."
+                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                          name="category"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsCustomMfgCategory(false);
+                            setMfgCategory("Alimentation");
+                          }}
+                          className="px-2.5 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold transition text-[10px]"
+                        >
+                          Retour
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Marque</label>
@@ -1375,6 +1441,7 @@ export function WholesalerDashboard({
   const [priceToAdd, setPriceToAdd] = useState<string>("15000");
   const [newProdName, setNewProdName] = useState("");
   const [newProdCategory, setNewProdCategory] = useState("Alimentaire");
+  const [isCustomWholesaleCategory, setIsCustomWholesaleCategory] = useState(false);
   const [newProdUnit, setNewProdUnit] = useState("Carton");
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
   const [uploadedImage, setUploadedImage] = useState("");
@@ -2171,12 +2238,55 @@ export function WholesalerDashboard({
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">Catégorie</label>
-                          <input
-                            type="text"
-                            value={newProdCategory}
-                            onChange={(e) => setNewProdCategory(e.target.value)}
-                            className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold"
-                          />
+                          {!isCustomWholesaleCategory ? (
+                            <div className="relative">
+                              <select
+                                value={PREDEFINED_CATEGORIES.includes(newProdCategory) ? newProdCategory : "AUTRE"}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === "AUTRE") {
+                                    setIsCustomWholesaleCategory(true);
+                                    setNewProdCategory("");
+                                  } else {
+                                    setNewProdCategory(val);
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold appearance-none pr-8 cursor-pointer"
+                              >
+                                {PREDEFINED_CATEGORIES.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat}
+                                  </option>
+                                ))}
+                                <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                              </select>
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
+                                ▼
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                required
+                                autoFocus
+                                value={newProdCategory}
+                                onChange={(e) => setNewProdCategory(e.target.value)}
+                                placeholder="Catégorie..."
+                                className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsCustomWholesaleCategory(false);
+                                  setNewProdCategory("Alimentation");
+                                }}
+                                className="px-1.5 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold transition text-[9px]"
+                              >
+                                Retour
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">Unité</label>
@@ -2511,6 +2621,8 @@ export function RetailerDashboard({
   const [posSelectedLightClientId, setPosSelectedLightClientId] = useState<string>("");
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [retailerCategory, setRetailerCategory] = useState("Alimentation");
+  const [isCustomRetailerCategory, setIsCustomRetailerCategory] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [adjustingStockItem, setAdjustingStockItem] = useState<InventoryItem | null>(null);
   const [adjustingStockValue, setAdjustingStockValue] = useState<string>("");
@@ -3192,8 +3304,58 @@ export function RetailerDashboard({
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Catégorie</label>
-                            <input required name="category" defaultValue="Alimentaire" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold">Catégorie</label>
+                            {!isCustomRetailerCategory ? (
+                              <div className="relative">
+                                <select
+                                  value={PREDEFINED_CATEGORIES.includes(retailerCategory) ? retailerCategory : "AUTRE"}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "AUTRE") {
+                                      setIsCustomRetailerCategory(true);
+                                      setRetailerCategory("");
+                                    } else {
+                                      setRetailerCategory(val);
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                                >
+                                  {PREDEFINED_CATEGORIES.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                      {cat}
+                                    </option>
+                                  ))}
+                                  <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                                </select>
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
+                                  ▼
+                                </div>
+                                <input type="hidden" name="category" value={retailerCategory} />
+                              </div>
+                            ) : (
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="text"
+                                  required
+                                  autoFocus
+                                  value={retailerCategory}
+                                  onChange={(e) => setRetailerCategory(e.target.value)}
+                                  placeholder="Saisir la catégorie..."
+                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                                  name="category"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsCustomRetailerCategory(false);
+                                    setRetailerCategory("Alimentation");
+                                  }}
+                                  className="px-2.5 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold transition text-[10px]"
+                                >
+                                  Retour
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Marque</label>
@@ -4494,6 +4656,8 @@ export function SemiWholesalerDashboard({
 
   // Product addition state
   const [isAdding, setIsAdding] = useState(false);
+  const [semiWholesalerCategory, setSemiWholesalerCategory] = useState("Alimentation");
+  const [isCustomSemiWholesalerCategory, setIsCustomSemiWholesalerCategory] = useState(false);
   const [selectedProdId, setSelectedProdId] = useState("");
   const [newStock, setNewStock] = useState(10);
   const [newPrice, setNewPrice] = useState(1000);
@@ -5438,7 +5602,57 @@ export function SemiWholesalerDashboard({
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Catégorie</label>
-                            <input required name="category" defaultValue="Alimentaire" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            {!isCustomSemiWholesalerCategory ? (
+                              <div className="relative">
+                                <select
+                                  value={PREDEFINED_CATEGORIES.includes(semiWholesalerCategory) ? semiWholesalerCategory : "AUTRE"}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "AUTRE") {
+                                      setIsCustomSemiWholesalerCategory(true);
+                                      setSemiWholesalerCategory("");
+                                    } else {
+                                      setSemiWholesalerCategory(val);
+                                    }
+                                  }}
+                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                                >
+                                  {PREDEFINED_CATEGORIES.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                      {cat}
+                                    </option>
+                                  ))}
+                                  <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                                </select>
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
+                                  ▼
+                                </div>
+                                <input type="hidden" name="category" value={semiWholesalerCategory} />
+                              </div>
+                            ) : (
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="text"
+                                  required
+                                  autoFocus
+                                  value={semiWholesalerCategory}
+                                  onChange={(e) => setSemiWholesalerCategory(e.target.value)}
+                                  placeholder="Saisir la catégorie..."
+                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                                  name="category"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsCustomSemiWholesalerCategory(false);
+                                    setSemiWholesalerCategory("Alimentation");
+                                  }}
+                                  className="px-2.5 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-xl font-bold transition text-[10px]"
+                                >
+                                  Retour
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Marque</label>
