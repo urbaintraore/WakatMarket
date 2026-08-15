@@ -682,11 +682,13 @@ export function ManufacturerDashboard({
   // Filter products created by this manufacturer
   const myProducts = products.filter((p) => p.creatorId === currentUser.id);
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => 
-      i.ownerId === currentUser.id || 
-      i.ownerId === currentUser.email || 
-      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
-    );
+    return inventory.filter((i) => {
+      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
+      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
+      }
+      return false;
+    });
   }, [inventory, currentUser]);
 
   // Incoming Wholesaler Orders
@@ -1512,11 +1514,13 @@ export function WholesalerDashboard({
 
   // Wholesaler inventories
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => 
-      i.ownerId === currentUser.id || 
-      i.ownerId === currentUser.email || 
-      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
-    );
+    return inventory.filter((i) => {
+      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
+      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
+      }
+      return false;
+    });
   }, [inventory, currentUser]);
 
   // Incoming B2B orders from Retailers & Semi-Wholesalers
@@ -2698,11 +2702,13 @@ export function RetailerDashboard({
 
   // Shop Inventory
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => 
-      i.ownerId === currentUser.id || 
-      i.ownerId === currentUser.email || 
-      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
-    );
+    return inventory.filter((i) => {
+      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
+      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
+      }
+      return false;
+    });
   }, [inventory, currentUser]);
 
   // Shop Orders from client
@@ -4742,11 +4748,13 @@ export function SemiWholesalerDashboard({
     return filtered;
   }, [users, connections, currentUser.id]);
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => 
-      i.ownerId === currentUser.id || 
-      i.ownerId === currentUser.email || 
-      (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name) && (isBonkoungou(i.ownerId) || i.ownerId === currentUser.id))
-    );
+    return inventory.filter((i) => {
+      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
+      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
+      }
+      return false;
+    });
   }, [inventory, currentUser]);
 
   const myLightClientIds = useMemo(() => {

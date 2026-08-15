@@ -1387,14 +1387,14 @@ export default function App() {
     addNotification("Produit et stock mis à jour avec succès !");
   };
 
-  // Stock protection effect for Bonkoungou (Demi-Grossiste) - runs once at init
-  const bonkInitializedRef = useRef(false);
+  // Stock protection effect for Bonkoungou (Demi-Grossiste)
   useEffect(() => {
-    if (!bonkInitializedRef.current && currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
+    if (currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
       const bonkItems = inventory.filter(i => 
         i.ownerId === currentUser.id || 
         i.ownerId === currentUser.email || 
-        isBonkoungou(i.ownerId)
+        isBonkoungou(i.ownerId) ||
+        !i.ownerId
       );
       if (bonkItems.length === 0 && products.length > 0) {
         const newItems: InventoryItem[] = products.map((p, index) => ({
@@ -1410,9 +1410,8 @@ export default function App() {
         }));
         syncInventory([...inventory, ...newItems]);
       }
-      bonkInitializedRef.current = true;
     }
-  }, [currentUser]);
+  }, [currentUser, inventory, products]);
 
   const handleDeleteInventoryItem = async (itemId: string, productId?: string, skipConfirm: boolean = false) => {
     const shouldDelete = skipConfirm || window.confirm("Voulez-vous vraiment retirer ce produit de votre stock ?");
