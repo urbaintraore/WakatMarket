@@ -14,6 +14,8 @@ import {
 import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive, isBonkoungou } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
 import { inventoryService } from "../services/inventoryService";
+import { venteService } from "../services/venteService";
+import { orderService } from "../services/orderService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
 import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner, ClaimsSummaryWidget, StockEvolutionBarChart, handleExportInventoryCSV } from "./CommonDashboardParts";
 import { AccountingDashboard } from "./AccountingDashboard";
@@ -1595,17 +1597,20 @@ export function WholesalerDashboard({
   };
 
   const handleCheckoutPOS = async (saleData: any) => {
-    // 1. Appel de la Cloud Function 'enregistrerVente' (simulé ou réel)
     try {
-      /* 
-      // VRAI APPEL CLOUD FUNCTION (Décommenter si Firebase configuré)
-      import { getFunctions, httpsCallable } from "firebase/functions";
-      const functions = getFunctions();
-      const enregistrerVente = httpsCallable(functions, 'enregistrerVente');
-      await enregistrerVente(saleData);
-      */
-      
-      // Simulation pour l'UI React locale :
+      await venteService.enregistrerVenteHorsLigneDirecte({
+        vendeurId: currentUser.id,
+        vendeurNom: currentUser.companyName || currentUser.name,
+        vendeurRole: currentUser.role,
+        acheteurId: saleData.acheteurId || "CASH_CLIENT",
+        acheteurNom: saleData.acheteurNom || "Client comptoir",
+        typeVente: saleData.typeVente || "GROS",
+        lignes: saleData.lignes || [],
+        total: saleData.total || 0,
+        paymentMethod: "CASH",
+        amountPaid: posAmountPaid
+      });
+
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
       
@@ -1613,7 +1618,11 @@ export function WholesalerDashboard({
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
     } catch (e: any) {
-      throw new Error("Erreur de transaction : " + e.message);
+      console.warn("Erreur sauvegarde Vente POS Firestore:", e);
+      const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
+      onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
+      setPosCart({});
+      setPosAmountPaid(0);
     }
   };
 

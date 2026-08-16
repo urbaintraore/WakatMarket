@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  Users, Shield, Compass, Landmark, Truck, ShoppingCart, ShoppingBag, 
+  Users, Shield, ShieldCheck, Compass, Landmark, Truck, ShoppingCart, ShoppingBag, 
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
@@ -23,6 +23,7 @@ import { userService, FirebaseUser } from "./services/userService";
 import { inventoryService } from "./services/inventoryService";
 import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
+import { venteService } from "./services/venteService";
 import { connectionService } from "./services/connectionService";
 import { relationService } from "./services/relationService";
 import { syncService } from "./services/syncService";
@@ -33,6 +34,7 @@ import { ProductDetailModal } from "./components/ProductDetailModal";
 import { OnboardingTour } from "./components/OnboardingTour";
 import { ResetPasswordModal } from "./components/ResetPasswordModal";
 import DeleteUserConfirmationModal from "./components/DeleteUserConfirmationModal";
+import { DiagnosticModule } from "./components/DiagnosticModule";
 import { pushNotificationService } from "./services/pushNotificationService";
 import wakatLogo from "./assets/images/wakatmarket_logo_1785061321209.jpg";
 
@@ -106,6 +108,15 @@ export default function App() {
   } = useAuth();
 
   const [isRealUserAuthenticated, setIsRealUserAuthenticated] = useState(false);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (window.location.hash === "#diagnostic" || window.location.pathname === "/diagnostic") {
+        setShowDiagnostic(true);
+      }
+    }
+  }, []);
 
   // DB States
   const [users, setUsers] = useState<UserProfile[]>(() => db.getUsers());
@@ -2754,6 +2765,20 @@ export default function App() {
               )}
             </div>
 
+            {/* Diagnostic Button */}
+            <button
+              onClick={() => setShowDiagnostic(!showDiagnostic)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
+                showDiagnostic 
+                  ? "bg-emerald-600 text-white" 
+                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-100"
+              }`}
+              title="Audit & Diagnostic de la persistance serveur"
+              id="diagnostic-btn"
+            >
+              <ShieldCheck className="w-4 h-4" /> Diagnostic
+            </button>
+
             {/* Auth Simulation button */}
             <button
               onClick={async () => {
@@ -3391,7 +3416,9 @@ export default function App() {
 
         {/* Core Role Dashboard Injector */}
         <section className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xs transition-colors">
-          {currentUser ? (
+          {showDiagnostic ? (
+            <DiagnosticModule onBack={() => setShowDiagnostic(false)} />
+          ) : currentUser ? (
             <>
               {currentUser.role === UserRole.ADMIN && (
                 <AdminDashboard

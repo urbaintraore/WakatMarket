@@ -1,5 +1,7 @@
 import { jsPDF } from "jspdf";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../firebase/firebase";
 import { supabase } from "../supabase";
 
 // Définition des types pour la facture
@@ -161,7 +163,18 @@ export const billingService = {
             }
           }
         } catch (stErr) {
-          console.warn("Storage upload warn (fallback local blob used):", stErr);
+          console.warn("Supabase upload warn:", stErr);
+        }
+
+        // Fallback to Firebase Storage if urlPDF is still local
+        if (urlPDF === localUrl && storage) {
+          try {
+            const storageRef = ref(storage, `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`);
+            await uploadBytes(storageRef, pdfBlob, { contentType: 'application/pdf' });
+            urlPDF = await getDownloadURL(storageRef);
+          } catch (fbErr) {
+            console.warn("Firebase Storage upload warn for PDF:", fbErr);
+          }
         }
 
         try {

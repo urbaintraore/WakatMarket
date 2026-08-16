@@ -1,5 +1,6 @@
-import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { db, storage, handleFirestoreError, OperationType } from "../firebase/firebase";
 import { doc, setDoc, collection, getDocs, deleteDoc, query, onSnapshot } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Product } from "../types";
 import { filterMockData } from "../data";
 import { supabase } from "../supabase";
@@ -59,7 +60,7 @@ export const productService = {
 
   async uploadProductImage(file: File): Promise<string | null> {
     if (supabase) {
-      const ext = file.name.split('.').pop() || 'jpg';
+      const ext = file.name ? file.name.split('.').pop() : 'jpg';
       const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
       
       try {
@@ -75,13 +76,24 @@ export const productService = {
             .from('chat')
             .getPublicUrl(filePath);
             
-          return data.publicUrl;
+          if (data?.publicUrl) return data.publicUrl;
         }
       } catch (err) {
-        console.warn("Notice: Uploading product image to Supabase storage failed, using inline Data URL fallback:", err);
+        console.warn("Notice: Uploading product image to Supabase storage failed, trying Firebase Storage:", err);
       }
-    } else {
-      console.info("Supabase storage not configured, using inline Data URL for product image.");
+    }
+
+    // Fallback to Firebase Storage
+    try {
+      if (storage) {
+        const ext = file.name ? file.name.split('.').pop() : 'jpg';
+        const storageRef = ref(storage, `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`);
+        await uploadBytes(storageRef, file, { contentType: file.type || "image/jpeg" });
+        const downloadUrl = await getDownloadURL(storageRef);
+        return downloadUrl;
+      }
+    } catch (fbErr) {
+      console.warn("Firebase Storage upload error for product image:", fbErr);
     }
 
     // Fallback to Data URL
