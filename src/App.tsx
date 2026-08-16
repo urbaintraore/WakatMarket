@@ -145,6 +145,7 @@ export default function App() {
 
   // Firestore Sync for users
   useEffect(() => {
+    
     if (isRealUserAuthenticated) {
       const unsubscribe = userService.subscribeToAllUsers((fbUsers) => {
         const mappedUsers: UserProfile[] = fbUsers.map(u => {
@@ -170,6 +171,7 @@ export default function App() {
 
   // Firestore Sync for products
   useEffect(() => {
+    
     if (isRealUserAuthenticated) {
       const unsubscribe = productService.subscribeToProducts((fbProducts) => {
         if (fbProducts && fbProducts.length > 0) {
@@ -183,6 +185,7 @@ export default function App() {
 
   // Firestore Sync for inventory
   useEffect(() => {
+    
     if (isRealUserAuthenticated) {
       const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
         if (fbInventory && fbInventory.length > 0) {
@@ -381,6 +384,7 @@ export default function App() {
 
   // Firestore Sync for orders
   useEffect(() => {
+    
     if (isRealUserAuthenticated) {
       const unsubscribe = orderService.subscribeToOrders((fbOrders) => {
         if (fbOrders && fbOrders.length > 0) {
@@ -833,10 +837,6 @@ export default function App() {
   const syncProducts = (list: Product[]) => {
     setProducts(list);
     db.saveProducts(list);
-    if (isRealUserAuthenticated) {
-      // Sync products not in initial mock set or those modified
-      list.forEach(p => productService.createProduct(p));
-    }
   };
 
   const syncInventory = (list: InventoryItem[]) => {
@@ -1287,7 +1287,7 @@ export default function App() {
           db.saveUsers(filteredLocal);
  
           // 3. Update Firestore if authenticated
-          if (isRealUserAuthenticated) {
+          {
             for (const u of usersToDelete) {
               try {
                 await userService.deleteUser(u.id);
@@ -1343,7 +1343,7 @@ export default function App() {
     };
 
     syncProducts([...products, newProd]);
-    if (isRealUserAuthenticated) inventoryService.updateInventoryItem(newInvItem);
+    inventoryService.updateInventoryItem(newInvItem);
     syncInventory([...inventory, newInvItem]);
     addNotification(`Nouveau produit créé : ${p.name}`);
   };
@@ -1466,7 +1466,7 @@ export default function App() {
         }
         return item;
       });
-      if (changedItem && isRealUserAuthenticated) {
+      if (changedItem) {
         inventoryService.updateInventoryItem(changedItem);
       }
       syncInventory(updated);
@@ -1484,7 +1484,7 @@ export default function App() {
         quantiteMinimum: quantiteMinimum || 1,
         expirationDate: expirationDate
       };
-      if (isRealUserAuthenticated) inventoryService.updateInventoryItem(newItem);
+      inventoryService.updateInventoryItem(newItem);
       syncInventory([...inventory, newItem]);
       addNotification(`Nouveau produit ajouté à votre stock.`);
     }
@@ -1506,7 +1506,7 @@ export default function App() {
         return p;
       });
       syncProducts(updatedProducts);
-      if (isRealUserAuthenticated) {
+      {
         productService.createOrUpdateProduct({ id: productId, ...productData } as any);
       }
     }
@@ -1532,7 +1532,7 @@ export default function App() {
           return i;
         });
         syncInventory(updatedInventory);
-        if (isRealUserAuthenticated) {
+        {
           inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
         }
       }
@@ -1600,7 +1600,7 @@ export default function App() {
     );
     syncInventory(remainingInventory);
 
-    if (isRealUserAuthenticated) {
+    {
       addNotification("Suppression en cours du catalogue en ligne...");
       await Promise.allSettled(
         itemsToDelete.map(item => inventoryService.deleteInventoryItem(item.id))
@@ -1695,7 +1695,7 @@ export default function App() {
       deliveryAddress: currentUser.address || "Dakar Medina"
     };
 
-    if (isRealUserAuthenticated) orderService.createOrder(newOrder);
+    orderService.createOrder(newOrder);
     syncOrders([newOrder, ...orders]);
     addNotification(`Nouvelle commande B2B passée auprès de ${vendorObj?.companyName || vendorObj?.name}`);
   };
@@ -1750,7 +1750,7 @@ export default function App() {
       otpCode
     };
 
-    if (isRealUserAuthenticated) orderService.createOrder(newOrder);
+    orderService.createOrder(newOrder);
     syncOrders([newOrder, ...orders]);
     addNotification(`Votre commande client ${newOrder.id} a été validée ! Suivi en cours.`);
   };
@@ -1840,9 +1840,9 @@ export default function App() {
       }
     });
 
-    if (isRealUserAuthenticated) {
+    
       changedItems.forEach((item) => inventoryService.updateInventoryItem(item));
-    }
+
     syncInventory(newInventory);
   };
 
@@ -1863,7 +1863,7 @@ export default function App() {
       return invItem;
     });
 
-    if (isRealUserAuthenticated) { changedItems.forEach(item => inventoryService.updateInventoryItem(item)); }
+     changedItems.forEach(item => inventoryService.updateInventoryItem(item));
     syncInventory(updatedInv);
     addNotification("Vente comptoir boutique enregistrée. Stocks synchronisés.");
   };
@@ -1922,7 +1922,7 @@ export default function App() {
     };
 
     // 1. Save Sale
-    if (isRealUserAuthenticated) orderService.createOrder(newSale);
+    orderService.createOrder(newSale);
     syncOrders([newSale, ...orders]);
 
     // 2. Decrement Stock & Record movements
@@ -1970,7 +1970,7 @@ export default function App() {
       });
     }
 
-    if (isRealUserAuthenticated) { changedItems.forEach(item => inventoryService.updateInventoryItem(item)); }
+     changedItems.forEach(item => inventoryService.updateInventoryItem(item));
     syncInventory(updatedInv);
 
     // 3. Record Payment if any
@@ -2061,7 +2061,7 @@ export default function App() {
       if (status === OrderStatus.DELIVERED && oldOrder && oldOrder.status !== OrderStatus.DELIVERED) {
         processOrderStockUpdate(changedOrder);
       }
-      if (isRealUserAuthenticated) {
+      {
         orderService.updateOrder(changedOrder.id, changedOrder);
       }
     }
@@ -2119,7 +2119,7 @@ export default function App() {
     
     if (success) {
       const changedOrder = updatedOrders.find(o => o.id === orderId);
-      if (changedOrder && isRealUserAuthenticated) {
+      if (changedOrder) {
         orderService.updateOrder(changedOrder.id, changedOrder);
       }
       syncOrders(updatedOrders);
@@ -2152,7 +2152,7 @@ export default function App() {
         processOrderStockUpdate(orderToDeliver);
       }
       
-      if (isRealUserAuthenticated) {
+      {
         orderService.updateOrder(orderToDeliver.id, orderToDeliver);
       }
       syncOrders(updated);
@@ -3720,4 +3720,5 @@ export default function App() {
       </footer>
     </div>
   );
+
 }
