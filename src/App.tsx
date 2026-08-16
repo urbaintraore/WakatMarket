@@ -57,6 +57,12 @@ import { NotificationBell } from "./components/NotificationBell";
 
 export default function App() {
   const [showResetModal, setShowResetModal] = useState(false);
+  const [confirmDeleteAction, setConfirmDeleteAction] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [userToDeleteForConfirmation, setUserToDeleteForConfirmation] = useState<UserProfile | null>(null);
   const [showPaiementsAValider, setShowPaiementsAValider] = useState(false);
   const [orderForPaymentProof, setOrderForPaymentProof] = useState<Order | null>(null);
@@ -1327,7 +1333,9 @@ export default function App() {
     const newProd: Product = {
       ...p,
       id: newId,
-      creatorId: currentUser.id
+      creatorId: currentUser.id,
+      prixGros: prixGros !== undefined ? prixGros : price,
+      prixDetail: prixDetail !== undefined ? prixDetail : price,
     };
     const newInvItem: InventoryItem = {
       id: `i-${Date.now()}`,
@@ -1342,6 +1350,7 @@ export default function App() {
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
     };
 
+    productService.createProduct(newProd);
     syncProducts([...products, newProd]);
     inventoryService.updateInventoryItem(newInvItem);
     syncInventory([...inventory, newInvItem]);
@@ -1544,70 +1553,79 @@ export default function App() {
 
 
   const handleDeleteInventoryItem = async (itemId: string, productId?: string, skipConfirm: boolean = false) => {
-    const shouldDelete = skipConfirm || window.confirm("Voulez-vous vraiment retirer ce produit de votre stock ?");
-    if (!shouldDelete) return;
+    const doDelete = async () => {
+      const itemToDelete = inventory.find(i => i.id === itemId || i.productId === itemId || (productId && i.productId === productId));
+      const targetItemId = itemToDelete ? itemToDelete.id : itemId;
+      const targetProdId = productId || itemToDelete?.productId || itemId;
 
-    const itemToDelete = inventory.find(i => i.id === itemId || i.productId === itemId || (productId && i.productId === productId));
-    const targetItemId = itemToDelete ? itemToDelete.id : itemId;
-    const targetProdId = productId || itemToDelete?.productId || itemId;
+      try {
+        if (targetItemId) await inventoryService.deleteInventoryItem(targetItemId);
+        if (targetProdId) await productService.deleteProduct(targetProdId);
+      } catch (err) {
+        console.warn("Error deleting inventory item via service:", err);
+      }
 
-    // Call service to delete from backend database
-    try {
-      if (targetItemId) {
-        await inventoryService.deleteInventoryItem(targetItemId);
-      }
-      if (targetProdId) {
-        await productService.deleteProduct(targetProdId);
-      }
-    } catch (err) {
-      console.warn("Error deleting inventory item via service:", err);
+      const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
+      syncInventory(updatedInventory);
+
+      const updatedProducts = products.filter((p) => p.id !== targetProdId);
+      syncProducts(updatedProducts);
+
+      addNotification("Produit retiré de votre stock avec succès.");
+    };
+
+    if (skipConfirm) {
+      doDelete();
+    } else {
+      setConfirmDeleteAction({
+        isOpen: true,
+        title: "Retirer du stock",
+        message: "Voulez-vous vraiment retirer ce produit de votre stock ?",
+        onConfirm: doDelete
+      });
     }
-
-    // Filter out from local state after deletion
-    const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
-    syncInventory(updatedInventory);
-
-    const updatedProducts = products.filter((p) => p.id !== targetProdId);
-    syncProducts(updatedProducts);
-
-    addNotification("Produit retiré de votre stock avec succès.");
   };
 
   const handleClearMyCatalog = async () => {
     if (!currentUser) return;
-    const shouldClear = window.confirm("Voulez-vous vraiment effacer tous les articles fictifs et réels de votre catalogue stock pour recommencer manuellement ? Cette action est irréversible.");
-    if (!shouldClear) return;
-
-    // Filter items owned by user or having mock prefixes
-    const itemsToDelete = inventory.filter(i => 
-      i.ownerId === currentUser.id || 
-      i.ownerId === currentUser.email || 
-      i.id.includes("bonk") || 
-      i.id.includes("sayouba")
-    );
-
-    if (itemsToDelete.length === 0) {
-      addNotification("Votre catalogue de stock est déjà vide.");
-      return;
-    }
-
-    // Local state filter
-    const remainingInventory = inventory.filter(i => 
-      !(i.ownerId === currentUser.id || 
+    
+    const doClear = async () => {
+      const itemsToDelete = inventory.filter(i => 
+        i.ownerId === currentUser.id || 
         i.ownerId === currentUser.email || 
         i.id.includes("bonk") || 
-        i.id.includes("sayouba"))
-    );
-    syncInventory(remainingInventory);
-
-    {
-      addNotification("Suppression en cours du catalogue en ligne...");
-      await Promise.allSettled(
-        itemsToDelete.map(item => inventoryService.deleteInventoryItem(item.id))
+        i.id.includes("sayouba")
       );
-    }
 
-    addNotification("Votre catalogue a été entièrement vidé. Vous pouvez maintenant le renseigner manuellement.");
+      if (itemsToDelete.length === 0) {
+        addNotification("Votre catalogue de stock est déjà vide.");
+        return;
+      }
+
+      const remainingInventory = inventory.filter(i => 
+        !(i.ownerId === currentUser.id || 
+          i.ownerId === currentUser.email || 
+          i.id.includes("bonk") || 
+          i.id.includes("sayouba"))
+      );
+      syncInventory(remainingInventory);
+
+      {
+        addNotification("Suppression en cours du catalogue en ligne...");
+        await Promise.allSettled(
+          itemsToDelete.map(item => inventoryService.deleteInventoryItem(item.id))
+        );
+      }
+
+      addNotification("Votre catalogue a été entièrement vidé. Vous pouvez maintenant le renseigner manuellement.");
+    };
+
+    setConfirmDeleteAction({
+      isOpen: true,
+      title: "Vider mon stock",
+      message: "Voulez-vous vraiment effacer tous les articles fictifs et réels de votre catalogue stock pour recommencer manuellement ? Cette action est irréversible.",
+      onConfirm: doClear
+    });
   };
 
   // Order Placement logic (B2B Procurement)
@@ -3609,6 +3627,45 @@ export default function App() {
         />
 
         {/* Admin Password Challenge Reset Modal */}
+        {/* Custom Confirm Modal for Iframe compatibility */}
+        <AnimatePresence>
+          {confirmDeleteAction && confirmDeleteAction.isOpen && (
+            <div className="fixed inset-0 bg-zinc-900/60 dark:bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }} 
+                animate={{ opacity: 1, scale: 1 }} 
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl max-w-sm w-full p-6 border border-zinc-200 dark:border-zinc-800"
+              >
+                <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400 mb-4">
+                  <Trash2 className="w-6 h-6" />
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">{confirmDeleteAction.title}</h3>
+                </div>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-6 leading-relaxed">
+                  {confirmDeleteAction.message}
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button 
+                    onClick={() => setConfirmDeleteAction(null)} 
+                    className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      confirmDeleteAction.onConfirm(); 
+                      setConfirmDeleteAction(null); 
+                    }} 
+                    className="px-4 py-2 bg-rose-600 text-white font-semibold rounded-xl hover:bg-rose-500 transition shadow-sm shadow-rose-600/20"
+                  >
+                    Confirmer
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         <ResetPasswordModal
           isOpen={showResetModal}
           onClose={() => setShowResetModal(false)}

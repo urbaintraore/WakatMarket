@@ -45,6 +45,7 @@ export function EditProductStockModal({
   const [uploadedImage, setUploadedImage] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -603,18 +604,40 @@ export function EditProductStockModal({
                   Annuler
                 </button>
                 {(inventoryItem || product) && onDelete && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce produit du stock ?")) {
-                        onDelete(inventoryItem?.id || "", product?.id || "");
-                        onClose();
-                      }
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" /> Supprimer du stock
-                  </button>
+                  <div className="relative">
+                    {showConfirmDelete ? (
+                      <div className="absolute bottom-full mb-2 right-0 bg-white dark:bg-zinc-800 border border-rose-200 dark:border-rose-900 p-3 rounded-xl shadow-xl w-64 z-50 animate-fade-in">
+                        <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">Confirmer la suppression définitive ?</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmDelete(false)}
+                            className="flex-1 px-2 py-1.5 bg-zinc-100 dark:bg-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-bold transition"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onDelete(inventoryItem?.id || "", product?.id || "");
+                              setShowConfirmDelete(false);
+                              onClose();
+                            }}
+                            className="flex-1 px-2 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                          >
+                            Oui, Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmDelete(true)}
+                      className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" /> Supprimer du stock
+                    </button>
+                  </div>
                 )}
               </div>
 
