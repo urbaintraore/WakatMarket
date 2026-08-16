@@ -28,7 +28,7 @@ export async function uploadToSupabaseStorage(
 ): Promise<{ publicUrl: string; bucket: string } | null> {
   if (!supabase) return null;
 
-  const candidateBuckets = ['chat', 'public', 'uploads', 'documents', 'media'];
+  const candidateBuckets = ['products', 'images', 'public', 'uploads', 'documents', 'media', 'chat', 'wakatmarket'];
 
   for (const bucket of candidateBuckets) {
     try {

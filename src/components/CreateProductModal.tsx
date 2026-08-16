@@ -83,8 +83,9 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
       if (imageUrl) {
         setUploadedImage(imageUrl);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erreur lors de l'upload d'image :", err);
+      alert(err.message || "Erreur lors de l'envoi de l'image sur Supabase.");
     } finally {
       setIsUploading(false);
     }

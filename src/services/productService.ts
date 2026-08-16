@@ -59,68 +59,19 @@ export const productService = {
   },
 
   async uploadProductImage(file: File): Promise<string | null> {
-    if (supabase) {
-      const ext = file.name ? file.name.split('.').pop() : 'jpg';
-      const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-      
-      const res = await uploadToSupabaseStorage(filePath, file);
-      if (res?.publicUrl) {
-        return res.publicUrl;
-      }
+    if (!supabase) {
+      throw new Error("Supabase n'est pas configuré. Veuillez ajouter VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans vos variables d'environnement.");
     }
 
-    // Fallback to Firebase Storage
-    try {
-      if (storage) {
-        const ext = file.name ? file.name.split('.').pop() : 'jpg';
-        const storageRef = ref(storage, `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`);
-        await uploadBytes(storageRef, file, { contentType: file.type || "image/jpeg" });
-        const downloadUrl = await getDownloadURL(storageRef);
-        return downloadUrl;
-      }
-    } catch (fbErr) {
-      console.warn("Firebase Storage upload error for product image:", fbErr);
+    const ext = file.name ? file.name.split('.').pop() : 'jpg';
+    const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    
+    const res = await uploadToSupabaseStorage(filePath, file);
+    if (res?.publicUrl) {
+      return res.publicUrl;
     }
 
-    // Fallback to Data URL with Compression
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_SIZE = 600;
-          
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width;
-              width = MAX_SIZE;
-            }
-          } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height;
-              height = MAX_SIZE;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
-          } else {
-            resolve(reader.result as string);
-          }
-        };
-        img.onerror = () => resolve(reader.result as string);
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
+    throw new Error("L'upload vers Supabase a échoué. Assurez-vous d'avoir un bucket public (ex: 'products', 'public' ou 'images') configuré sur votre projet Supabase.");
   },
 
   async createProduct(product: Product): Promise<void> {
@@ -134,7 +85,8 @@ export const productService = {
             product.image = url;
           }
         } catch (e) {
-          console.error("Failed to convert/upload base64 product image", e);
+          console.error("Failed to upload base64 product image to Supabase", e);
+          throw new Error("Impossible d'uploader l'image principale sur Supabase. Création de produit refusée.");
         }
       }
       
@@ -146,7 +98,8 @@ export const productService = {
             product.imageUrl = url;
           }
         } catch (e) {
-          console.error("Failed to convert/upload base64 product imageUrl", e);
+          console.error("Failed to upload base64 product imageUrl to Supabase", e);
+          throw new Error("Impossible d'uploader l'image secondaire sur Supabase. Création de produit refusée.");
         }
       }
 
