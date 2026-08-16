@@ -3,7 +3,7 @@ import { doc, setDoc, collection, getDocs, deleteDoc, query, onSnapshot } from "
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Product } from "../types";
 import { filterMockData } from "../data";
-import { supabase } from "../supabase";
+import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable, deleteFromSupabaseTable } from "../supabase";
 
 const COLLECTION_NAME = "products";
 
@@ -63,23 +63,9 @@ export const productService = {
       const ext = file.name ? file.name.split('.').pop() : 'jpg';
       const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
       
-      try {
-        const { error } = await supabase.storage
-          .from('chat')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-          
-        if (!error) {
-          const { data } = supabase.storage
-            .from('chat')
-            .getPublicUrl(filePath);
-            
-          if (data?.publicUrl) return data.publicUrl;
-        }
-      } catch (err) {
-        console.warn("Notice: Uploading product image to Supabase storage failed, trying Firebase Storage:", err);
+      const res = await uploadToSupabaseStorage(filePath, file);
+      if (res?.publicUrl) {
+        return res.publicUrl;
       }
     }
 
@@ -132,9 +118,27 @@ export const productService = {
         }
       }
 
+      // Save to Firestore
       await setDoc(doc(db, COLLECTION_NAME, product.id), product);
+
+      // Sync to Supabase
+      if (supabase) {
+        await upsertToSupabaseTable("products", {
+          id: product.id,
+          name: product.name,
+          description: product.description || "",
+          category: product.category || "",
+          brand: product.brand || "",
+          unit: product.unit || "",
+          creator_id: product.creatorId || null,
+          prix_gros: product.prixGros || null,
+          prix_detail: product.prixDetail || null,
+          image: product.image || product.imageUrl || null,
+          created_at: new Date().toISOString()
+        });
+      }
     } catch (error: any) {
-      console.warn("Firestore error during createProduct:", error);
+      console.warn("Firestore/Supabase error during createProduct:", error);
     }
   },
 
@@ -145,6 +149,9 @@ export const productService = {
   async deleteProduct(id: string): Promise<void> {
     try {
       await deleteDoc(doc(db, COLLECTION_NAME, id));
+      if (supabase) {
+        await deleteFromSupabaseTable("products", id);
+      }
     } catch (error: any) {
       console.warn("Firestore error during deleteProduct:", error);
     }

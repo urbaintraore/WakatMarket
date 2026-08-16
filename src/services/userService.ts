@@ -2,6 +2,7 @@ import { db, handleFirestoreError, OperationType, auth } from "../firebase/fireb
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db as mockDb, filterMockData } from "../data";
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou } from "../types";
+import { supabase, upsertToSupabaseTable } from "../supabase";
 
 export interface FirebaseUser {
   uid: string;
@@ -129,6 +130,23 @@ export const userService = {
         setDoc(doc(db, "users", userToSave.uid), sanitized),
         setDoc(doc(db, "utilisateurs", userToSave.uid), sanitized)
       ]);
+
+      // Sync to Supabase
+      if (supabase) {
+        await upsertToSupabaseTable("users", {
+          id: userToSave.uid,
+          uid: userToSave.uid,
+          nom: userToSave.nom,
+          prenom: userToSave.prénom,
+          email: userToSave.email,
+          telephone: userToSave.téléphone,
+          role: normRole,
+          company_name: userToSave.companyName || null,
+          country: userToSave.pays || null,
+          city: userToSave.ville || null,
+          created_at: new Date().toISOString()
+        });
+      }
     } catch (error: any) {
       console.warn("Firestore setDoc failed during createUser (relying on offline fallback):", error.message || error);
     }
@@ -323,6 +341,19 @@ export const userService = {
         setTimeout(() => reject(new Error("Firestore timeout - fallback local")), 2500)
       );
       await Promise.race([firestorePromise, timeoutPromise]);
+
+      if (supabase) {
+        const payload: Record<string, any> = { id: uid, uid, updated_at: new Date().toISOString() };
+        if (updatedFields.nom !== undefined) payload.nom = updatedFields.nom;
+        if (updatedFields.prénom !== undefined) payload.prenom = updatedFields.prénom;
+        if (updatedFields.email !== undefined) payload.email = updatedFields.email;
+        if (updatedFields.téléphone !== undefined) payload.telephone = updatedFields.téléphone;
+        if (updatedFields.rôle !== undefined) payload.role = updatedFields.rôle;
+        if (updatedFields.companyName !== undefined) payload.company_name = updatedFields.companyName;
+        if (updatedFields.pays !== undefined) payload.country = updatedFields.pays;
+        if (updatedFields.ville !== undefined) payload.city = updatedFields.ville;
+        await upsertToSupabaseTable("users", payload);
+      }
     } catch (error: any) {
       console.warn("Firestore setDoc failed during updateUser (relying on offline fallback):", error.message || error);
     }
@@ -335,6 +366,10 @@ export const userService = {
         deleteDoc(doc(db, "users", uid)),
         deleteDoc(doc(db, "utilisateurs", uid))
       ]);
+
+      if (supabase) {
+        await supabase.from("users").delete().eq("id", uid);
+      }
     } catch (e) {
       console.error("Firestore error during deleteUser:", e);
       throw e;

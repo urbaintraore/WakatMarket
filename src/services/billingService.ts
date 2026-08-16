@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase/firebase";
-import { supabase } from "../supabase";
+import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable } from "../supabase";
 
 // Définition des types pour la facture
 interface LigneFacture {
@@ -147,19 +147,9 @@ export const billingService = {
         try {
           if (supabase) {
             const filePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
-            const { error } = await supabase.storage
-              .from('chat')
-              .upload(filePath, pdfBlob, {
-                contentType: 'application/pdf',
-                upsert: true
-              });
-            if (!error) {
-              const { data: publicUrlData } = supabase.storage
-                .from('chat')
-                .getPublicUrl(filePath);
-              if (publicUrlData?.publicUrl) {
-                urlPDF = publicUrlData.publicUrl;
-              }
+            const res = await uploadToSupabaseStorage(filePath, pdfBlob, 'application/pdf');
+            if (res?.publicUrl) {
+              urlPDF = res.publicUrl;
             }
           }
         } catch (stErr) {

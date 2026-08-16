@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { db, storage } from "../firebase/firebase";
 import { doc, setDoc, getDocFromServer } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { supabase } from "../supabase";
+import { supabase, uploadToSupabaseStorage } from "../supabase";
 import { 
   CheckCircle2, 
   XCircle, 
@@ -188,16 +188,10 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
       if (supabase) {
         try {
           const filePath = `diagnostic/test_${Date.now()}.png`;
-          const { error: uploadErr } = await supabase.storage
-            .from("chat")
-            .upload(filePath, testBlob, { contentType: "image/png", upsert: true });
-
-          if (!uploadErr) {
-            const { data: pubData } = supabase.storage.from("chat").getPublicUrl(filePath);
-            if (pubData?.publicUrl) {
-              publicUrl = pubData.publicUrl;
-              storageProvider = "Supabase Storage (Bucket: chat)";
-            }
+          const res = await uploadToSupabaseStorage(filePath, testBlob, "image/png");
+          if (res?.publicUrl) {
+            publicUrl = res.publicUrl;
+            storageProvider = `Supabase Storage (Bucket: ${res.bucket})`;
           }
         } catch (supErr) {
           console.warn("Supabase diagnostic upload fallback to Firebase Storage:", supErr);

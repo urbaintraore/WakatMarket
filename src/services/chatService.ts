@@ -16,7 +16,7 @@ import {
   increment
 } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { supabase } from "../supabase";
+import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable } from "../supabase";
 import { Conversation, ChatMessage, MessageType, MessageStatus, isConnectionActive } from "../types";
 import { db as localDb } from "../data";
 
@@ -334,6 +334,19 @@ export const chatService = {
       console.log(`[chatService.sendMessage] Updating conversation document (convId=${convId}) with lastMessage info...`);
       await setDoc(convRef, updates, { merge: true });
       console.log(`[chatService.sendMessage] Conversation document updated successfully.`);
+
+      // Sync message to Supabase
+      if (supabase) {
+        await upsertToSupabaseTable("messages", {
+          id: msgId,
+          conversation_id: convId,
+          sender_id: senderId,
+          type,
+          content,
+          status: MessageStatus.SENT,
+          created_at: nowIso
+        });
+      }
     } catch (error: any) {
       console.warn("[chatService.sendMessage] Failed to send message to Firestore (using offline mode):", error);
       // Don't throw so that offline user experience remains uninterrupted
@@ -365,23 +378,10 @@ export const chatService = {
         const filePath = `${folder}/${filename}`;
         console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
         
-        const { error } = await supabase.storage
-          .from('chat')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-          
-        if (!error) {
-          const { data: publicUrlData } = supabase.storage
-            .from('chat')
-            .getPublicUrl(filePath);
-            
-          const url = publicUrlData.publicUrl;
-          console.log(`[chatService.uploadMedia] Public URL generated: ${url.substring(0, 50)}...`);
-          return url;
-        } else {
-          console.warn("[chatService.uploadMedia] Supabase storage upload notice, proceeding with local Data URL fallback:", error.message || error);
+        const res = await uploadToSupabaseStorage(filePath, file);
+        if (res?.publicUrl) {
+          console.log(`[chatService.uploadMedia] Public URL generated via bucket '${res.bucket}': ${res.publicUrl.substring(0, 50)}...`);
+          return res.publicUrl;
         }
       } catch (err) {
         console.warn("[chatService.uploadMedia] Supabase storage upload exception, proceeding with local Data URL fallback:", err);
