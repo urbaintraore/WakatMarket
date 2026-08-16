@@ -682,13 +682,7 @@ export function ManufacturerDashboard({
   // Filter products created by this manufacturer
   const myProducts = products.filter((p) => p.creatorId === currentUser.id);
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => {
-      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
-      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
-        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
-      }
-      return false;
-    });
+    return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
   // Incoming Wholesaler Orders
@@ -1141,14 +1135,14 @@ export function ManufacturerDashboard({
                         className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
                         title="Modifier tous les champs (page d'édition)"
                       >
-                        Modi
+                        Modifier
                       </button>
                       <button
                         onClick={() => onDeleteInventoryItem(item.id, item.productId)}
                         className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                         title="Supprimer ce produit du stock"
                       >
-                        <Trash2 className="w-3.5 h-3.5" /> Suppr.
+                        <Trash2 className="w-3.5 h-3.5" /> Supprimer
                       </button>
                     </div>
                   </div>
@@ -1514,13 +1508,7 @@ export function WholesalerDashboard({
 
   // Wholesaler inventories
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => {
-      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
-      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
-        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
-      }
-      return false;
-    });
+    return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
   // Incoming B2B orders from Retailers & Semi-Wholesalers
@@ -2174,14 +2162,14 @@ export function WholesalerDashboard({
                       className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
                       title="Modifier tous les champs (page d'édition)"
                     >
-                      Modi
+                      Modifier
                     </button>
                     <button
                       onClick={() => onDeleteInventoryItem(item.id, item.productId)}
                       className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
                       title="Supprimer ce produit du stock"
                     >
-                      <Trash2 className="w-3.5 h-3.5" /> Suppr.
+                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
                     </button>
                   </div>
                 </div>
@@ -2702,13 +2690,7 @@ export function RetailerDashboard({
 
   // Shop Inventory
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => {
-      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
-      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
-        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
-      }
-      return false;
-    });
+    return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
   // Shop Orders from client
@@ -3524,21 +3506,29 @@ export function RetailerDashboard({
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <button
+                      onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
+                      className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                      title="Modifier tous les champs"
+                    >
+                      Modifier
+                    </button>
                     <button
                       onClick={() => {
                         setAdjustingStockItem(item);
                         setAdjustingStockValue(item.stock.toString());
                       }}
-                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-lg transition"
+                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-lg transition cursor-pointer"
                     >
                       Ajuster Stock
                     </button>
                     <button
-                      onClick={() => onDeleteInventoryItem(item.id)}
-                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition"
+                      onClick={() => onDeleteInventoryItem(item.id, item.productId)}
+                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                      title="Supprimer ce produit du catalogue"
                     >
-                      Supprimer
+                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
                     </button>
                     <button
                       onClick={() => {
@@ -3547,7 +3537,7 @@ export function RetailerDashboard({
                           onUpdateInventory(item.id, item.stock, parseFloat(pr));
                         }
                       }}
-                      className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg transition"
+                      className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg transition cursor-pointer"
                     >
                       Prix Public
                     </button>
@@ -4748,13 +4738,7 @@ export function SemiWholesalerDashboard({
     return filtered;
   }, [users, connections, currentUser.id]);
   const myInventory = useMemo(() => {
-    return inventory.filter((i) => {
-      if (i.ownerId === currentUser.id || i.ownerId === currentUser.email) return true;
-      if (isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
-        if (isBonkoungou(i.ownerId) || !i.ownerId || i.ownerId.includes("bonk") || i.ownerId.includes("sayouba")) return true;
-      }
-      return false;
-    });
+    return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
   const myLightClientIds = useMemo(() => {
@@ -5875,15 +5859,15 @@ export function SemiWholesalerDashboard({
                               }}
                               className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-xl font-bold text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
                             >
-                              Modi
+                              Modifier
                             </button>
                           )}
                           <button
-                            onClick={() => onDeleteInventoryItem(item.id)}
-                            className="p-1.5 text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                            onClick={() => onDeleteInventoryItem(item.id, item.productId)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer inline-flex items-center gap-1"
                             title="Supprimer du stock"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" /> Supprimer
                           </button>
                         </td>
                       </tr>

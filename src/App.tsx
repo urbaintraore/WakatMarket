@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -137,18 +137,17 @@ export default function App() {
     if (isRealUserAuthenticated) {
       const unsubscribe = userService.subscribeToAllUsers((fbUsers) => {
         const mappedUsers: UserProfile[] = fbUsers.map(u => {
-          const isBonk = isBonkoungou(u.email, u.companyName, `${u.prénom || ""} ${u.nom || ""}`);
           return {
             id: u.uid,
-            name: isBonk ? "Sayouba BONKOUNGOU" : `${u.prénom || ""} ${u.nom || ""}`.trim() || "Utilisateur",
+            name: `${u.prénom || ""} ${u.nom || ""}`.trim() || "Utilisateur",
             email: u.email,
             phone: u.téléphone,
-            role: isBonk ? UserRole.SEMI_WHOLESALER : (u.rôle as any),
+            role: (u.rôle as any),
             status: u.statut as any,
             country: u.pays || "Burkina Faso",
             region: u.ville || "Ouagadougou",
             avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-            companyName: isBonk ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || "Entreprise"} Entreprise`)
+            companyName: u.companyName || `${u.nom || "Entreprise"} Entreprise`
           };
         });
         const dedupedUsers = deduplicateUsers(mappedUsers);
@@ -160,35 +159,191 @@ export default function App() {
 
   // Firestore Sync for products
   useEffect(() => {
-    const unsubscribe = productService.subscribeToProducts((fbProducts) => {
-      if (fbProducts && fbProducts.length > 0) {
-        setProducts(fbProducts);
-        db.saveProducts(fbProducts);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+    if (isRealUserAuthenticated) {
+      const unsubscribe = productService.subscribeToProducts((fbProducts) => {
+        if (fbProducts && fbProducts.length > 0) {
+          setProducts(fbProducts);
+          db.saveProducts(fbProducts);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [isRealUserAuthenticated]);
 
   // Firestore Sync for inventory
   useEffect(() => {
-    const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
-      if (fbInventory && fbInventory.length > 0) {
-        setInventory(prev => {
-          const updatedMap = new Map<string, InventoryItem>();
-          prev.forEach(item => {
-            if (item && item.id) updatedMap.set(item.id, item);
+    if (isRealUserAuthenticated) {
+      const unsubscribe = inventoryService.subscribeToInventory((fbInventory) => {
+        if (fbInventory && fbInventory.length > 0) {
+          setInventory(prev => {
+            const updatedMap = new Map<string, InventoryItem>();
+            prev.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            fbInventory.forEach(item => {
+              if (item && item.id) updatedMap.set(item.id, item);
+            });
+            const nextList = Array.from(updatedMap.values());
+            db.saveInventory(nextList);
+            return nextList;
           });
-          fbInventory.forEach(item => {
-            if (item && item.id) updatedMap.set(item.id, item);
-          });
-          const nextList = Array.from(updatedMap.values());
-          db.saveInventory(nextList);
-          return nextList;
-        });
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [isRealUserAuthenticated]);
+
+  // Silent background cleanup of any remaining mock/fictional inventory items & target users
+  useEffect(() => {
+    const runDeepCleanup = async () => {
+      if (!isRealUserAuthenticated) return;
+      
+      // 1. Clean local state and db inventory items matching the mock conditions
+      if (inventory.length > 0) {
+        const mockItems = inventory.filter(i => 
+          i.id.includes("bonk") || 
+          i.id.includes("sayouba") || 
+          (i.ownerId && (i.ownerId.includes("bonk") || i.ownerId.includes("sayouba") || i.ownerId.includes("ujk.b") || i.ownerId.includes("ujkz")))
+        );
+        if (mockItems.length > 0) {
+          console.log("[Auto-Cleanup] Detected mock inventory items, deleting:", mockItems.map(i => i.id));
+          for (const item of mockItems) {
+            await inventoryService.deleteInventoryItem(item.id).catch(err => {
+              console.error("Failed to delete mock item from database:", item.id, err);
+            });
+          }
+          const cleanInventory = inventory.filter(i => 
+            !i.id.includes("bonk") && 
+            !i.id.includes("sayouba") && 
+            !(i.ownerId && (i.ownerId.includes("bonk") || i.ownerId.includes("sayouba") || i.ownerId.includes("ujk.b") || i.ownerId.includes("ujkz")))
+          );
+          syncInventory(cleanInventory);
+        }
       }
-    });
-    return () => unsubscribe();
-  }, []);
+
+      // 2. Query Firestore dynamically to find and delete catalog of bonkoungou@ujkz.bf & sayouba@ujkz.bf
+      try {
+        const { collection, getDocs, doc, deleteDoc } = await import("firebase/firestore");
+        const { db: firestoreDb } = await import("./firebase/firebase");
+        
+        const targetEmails = ["bonkoungou@ujkz.bf", "sayouba@ujkz.bf"];
+        
+        // Find UIDs of these emails in users collection and restore SEMI_WHOLESALER role
+        const usersCol = collection(firestoreDb, "users");
+        const usersSnap = await getDocs(usersCol);
+        const { updateDoc: updateFirestoreDoc } = await import("firebase/firestore");
+        
+        const targetUids: string[] = [];
+        usersSnap.forEach(async (uDoc) => {
+          if (uDoc.exists()) {
+            const data = uDoc.data();
+            const email = (data.email || "").toLowerCase().trim();
+            if (targetEmails.includes(email)) {
+              targetUids.push(uDoc.id);
+              if (data.rôle !== "SEMI_WHOLESALER" || data.role !== "SEMI_WHOLESALER") {
+                await updateFirestoreDoc(doc(firestoreDb, "users", uDoc.id), {
+                  rôle: "SEMI_WHOLESALER",
+                  role: "SEMI_WHOLESALER"
+                }).catch(() => {});
+              }
+            }
+          }
+        });
+
+        // Also query "utilisateurs" collection just in case
+        try {
+          const utilsCol = collection(firestoreDb, "utilisateurs");
+          const utilsSnap = await getDocs(utilsCol);
+          utilsSnap.forEach(uDoc => {
+            if (uDoc.exists()) {
+              const data = uDoc.data();
+              const email = (data.email || "").toLowerCase().trim();
+              if (targetEmails.includes(email) && !targetUids.includes(uDoc.id)) {
+                targetUids.push(uDoc.id);
+              }
+            }
+          });
+        } catch (e) {}
+
+        // Add default known domains or identifiers to ensure full removal
+        const allTargetIdentifiers = [...targetUids, ...targetEmails, "sayouba", "bonkoungou"];
+
+        // Query the global inventory collection and delete matching ownerIds
+        const inventoryCol = collection(firestoreDb, "inventory");
+        const inventorySnap = await getDocs(inventoryCol);
+        inventorySnap.forEach(async (invDoc) => {
+          if (invDoc.exists()) {
+            const data = invDoc.data();
+            const ownerId = (data.ownerId || "").toLowerCase().trim();
+            const id = invDoc.id;
+            
+            const matchesTarget = allTargetIdentifiers.some(ident => {
+              const cleanIdent = ident.toLowerCase().trim();
+              return ownerId === cleanIdent || id.includes(cleanIdent);
+            });
+
+            if (matchesTarget) {
+              console.log(`[Deep-Cleanup] Deleting global inventory item ${id} for ${ownerId}`);
+              await deleteDoc(doc(firestoreDb, "inventory", id)).catch(() => {});
+            }
+          }
+        });
+
+        // Clear subcollections /stocks/{uid}/items for each target UID found
+        for (const uid of targetUids) {
+          try {
+            const itemsCol = collection(firestoreDb, "stocks", uid, "items");
+            const itemsSnap = await getDocs(itemsCol);
+            if (!itemsSnap.empty) {
+              console.log(`[Deep-Cleanup] Found ${itemsSnap.size} subcollection stock items to clear for UID: ${uid}`);
+              for (const itemDoc of itemsSnap.docs) {
+                await deleteDoc(doc(firestoreDb, "stocks", uid, "items", itemDoc.id)).catch(() => {});
+              }
+            }
+          } catch (subErr) {
+            console.error(`[Deep-Cleanup] Error clearing stock items for UID ${uid}:`, subErr);
+          }
+        }
+
+        // Query products collection and delete products created by target emails/UIDs
+        try {
+          const productsCol = collection(firestoreDb, "products");
+          const productsSnap = await getDocs(productsCol);
+          productsSnap.forEach(async (pDoc) => {
+            if (pDoc.exists()) {
+              const data = pDoc.data();
+              const creatorId = (data.creatorId || "").toLowerCase().trim();
+              const pId = pDoc.id;
+              const matchesTarget = allTargetIdentifiers.some(ident => {
+                const cleanIdent = ident.toLowerCase().trim();
+                return creatorId === cleanIdent || pId.includes(cleanIdent);
+              });
+              if (matchesTarget) {
+                console.log(`[Deep-Cleanup] Deleting product ${pId} created by ${creatorId}`);
+                await deleteDoc(doc(firestoreDb, "products", pId)).catch(() => {});
+              }
+            }
+          });
+        } catch (pErr) {
+          console.error(`[Deep-Cleanup] Error clearing products:`, pErr);
+        }
+
+        // Ensure users local state is synced to SEMI_WHOLESALER
+        setUsers(prev => prev.map(u => {
+          const email = (u.email || "").toLowerCase().trim();
+          if (targetEmails.includes(email) || email.includes("bonkoungou")) {
+            return { ...u, role: UserRole.SEMI_WHOLESALER };
+          }
+          return u;
+        }));
+
+      } catch (err) {
+        console.error("[Deep-Cleanup] Error during Firestore deep cleanup execution:", err);
+      }
+    };
+
+    runDeepCleanup();
+  }, [isRealUserAuthenticated, inventory, users]);
 
   // Sub-collection user stock sync
   useEffect(() => {
@@ -240,17 +395,13 @@ export default function App() {
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
       const normEmail = dbUser.email ? dbUser.email.toLowerCase().trim() : "";
-      const normCompany = dbUser.companyName ? dbUser.companyName.toLowerCase().trim() : "";
-      const isBonk = isBonkoungou(dbUser.email, dbUser.companyName, `${dbUser.prénom || ""} ${dbUser.nom || ""}`);
       const determinedRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com")
         ? UserRole.ADMIN
-        : isBonk
-          ? UserRole.SEMI_WHOLESALER
-          : normalizeUserRole(dbUser.rôle || dbUser.role || UserRole.CLIENT);
+        : normalizeUserRole(dbUser.rôle || dbUser.role || UserRole.CLIENT);
 
       const mapped: UserProfile = {
         id: dbUser.uid,
-        name: isBonk ? "Sayouba BONKOUNGOU" : `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() || "Utilisateur",
+        name: `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() || "Utilisateur",
         email: dbUser.email,
         phone: dbUser.téléphone,
         role: determinedRole,
@@ -258,14 +409,19 @@ export default function App() {
         country: dbUser.pays || "Burkina Faso",
         region: dbUser.ville || "Ouagadougou",
         avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-        companyName: isBonk ? "BONKOUNGOU Entreprise" : (dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`)
+        companyName: dbUser.companyName || `${dbUser.nom || "Entreprise"} Entreprise`
       };
       setCurrentUser(mapped);
     }
   }, [isRealUserAuthenticated, dbUser]);
 
   // UI state managers
-  const [isAuthScreen, setIsAuthScreen] = useState(false);
+  const [initialLoadingTimeout, setInitialLoadingTimeout] = useState(false);
+  const [isAuthScreen, setIsAuthScreen] = useState(() => {
+    const list = db.getUsers();
+    const hasUser = list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
+    return !hasUser;
+  });
   const [authStep, setAuthStep] = useState<"login" | "otp" | "reset">("login");
   const [authEmail, setAuthEmail] = useState("");
   const [authPhone, setAuthPhone] = useState("");
@@ -313,14 +469,6 @@ export default function App() {
       const normEmail = u.email ? u.email.toLowerCase().trim() : "";
       const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
 
-      const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
-      if (isSayouba) {
-        u.role = UserRole.SEMI_WHOLESALER;
-        u.companyName = "BONKOUNGOU Entreprise";
-        u.name = "Sayouba BONKOUNGOU";
-        u.email = u.email || "sayouba@ujkz.bf";
-      }
-
       const cleanEmail = u.email ? u.email.toLowerCase().trim() : "";
       const cleanCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
 
@@ -342,9 +490,9 @@ export default function App() {
           ...existing,
           ...u,
           id: targetId,
-          role: (isSayouba || existing.role === UserRole.SEMI_WHOLESALER) ? UserRole.SEMI_WHOLESALER : (u.role || existing.role),
-          companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || existing.companyName),
-          name: isSayouba ? "Sayouba BONKOUNGOU" : (u.name || existing.name)
+          role: u.role || existing.role,
+          companyName: u.companyName || existing.companyName,
+          name: u.name || existing.name
         };
         map.set(targetId, merged);
         if (u.id) idMap.set(u.id, targetId);
@@ -381,9 +529,7 @@ export default function App() {
         phone: profileSource.téléphone,
         role: (profileSource.email === "urbain.traore@yahoo.fr" || profileSource.email === "urbain.traoreurb@gmail.com") 
           ? UserRole.ADMIN 
-          : profileSource.email === "sayouba@ujkz.bf" 
-            ? UserRole.SEMI_WHOLESALER 
-            : normalizeUserRole(profileSource.rôle || profileSource.role || UserRole.CLIENT),
+          : normalizeUserRole(profileSource.rôle || profileSource.role || UserRole.CLIENT),
         status: (profileSource.statut as any) || "ACTIVE",
         country: profileSource.pays || "Burkina Faso",
         region: profileSource.ville || "Ouagadougou",
@@ -392,7 +538,7 @@ export default function App() {
         longitude: profileSource.longitude,
         avatar: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         balance: existingUser?.balance || 0,
-        companyName: profileSource.email === "sayouba@ujkz.bf" ? "BONKOUNGOU Entreprise" : (profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`),
+        companyName: profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`,
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
       };
       
@@ -428,15 +574,12 @@ export default function App() {
         if (fbUsers && fbUsers.length > 0) {
           fbUsers.forEach((u) => {
             const existing = combinedMap.get(u.uid);
-            const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-            const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-            const isSayouba = normEmail === "sayouba@ujkz.bf" || normCompany === "bonkoungou entreprise";
             const mappedUser: UserProfile = {
               id: u.uid,
-              name: isSayouba ? "Sayouba BONKOUNGOU" : (`${u.prénom || ""} ${u.nom || ""}`.trim() || u.email?.split("@")[0] || "Utilisateur"),
+              name: `${u.prénom || ""} ${u.nom || ""}`.trim() || u.email?.split("@")[0] || "Utilisateur",
               email: u.email || "",
               phone: u.téléphone || "",
-              role: isSayouba ? UserRole.SEMI_WHOLESALER : ((u.rôle as UserRole) || UserRole.CLIENT),
+              role: ((u.rôle as UserRole) || UserRole.CLIENT),
               status: (u.statut as any) || "ACTIVE",
               country: u.pays || "Burkina Faso",
               region: u.ville || "Ouagadougou",
@@ -445,7 +588,7 @@ export default function App() {
               longitude: u.longitude,
               avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
               balance: existing?.balance || 0,
-              companyName: isSayouba ? "BONKOUNGOU Entreprise" : (u.companyName || `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`),
+              companyName: u.companyName || `${u.nom || u.email?.split("@")[0] || "Entreprise"} Entreprise`,
               address: u.ville && u.quartier ? `${u.quartier}, ${u.ville}, ${u.pays || ""}` : "Non spécifié"
             };
             combinedMap.set(mappedUser.id, mappedUser);
@@ -1387,31 +1530,7 @@ export default function App() {
     addNotification("Produit et stock mis à jour avec succès !");
   };
 
-  // Stock protection effect for Bonkoungou (Demi-Grossiste)
-  useEffect(() => {
-    if (currentUser && isBonkoungou(currentUser.email, currentUser.companyName, currentUser.name)) {
-      const bonkItems = inventory.filter(i => 
-        i.ownerId === currentUser.id || 
-        i.ownerId === currentUser.email || 
-        isBonkoungou(i.ownerId) ||
-        !i.ownerId
-      );
-      if (bonkItems.length === 0 && products.length > 0) {
-        const newItems: InventoryItem[] = products.map((p, index) => ({
-          id: `inv-bonk-${p.id}-${Date.now()}`,
-          productId: p.id,
-          ownerId: currentUser.id,
-          stock: 120 + index * 30,
-          threshold: 10,
-          price: p.prixGros || p.prixDetail || 5000,
-          prixGros: p.prixGros || 4500,
-          prixDetail: p.prixDetail || 5000,
-          quantiteMinimum: p.quantiteMinimum || 1
-        }));
-        syncInventory([...inventory, ...newItems]);
-      }
-    }
-  }, [currentUser, inventory, products]);
+
 
   const handleDeleteInventoryItem = async (itemId: string, productId?: string, skipConfirm: boolean = false) => {
     const shouldDelete = skipConfirm || window.confirm("Voulez-vous vraiment retirer ce produit de votre stock ?");
@@ -1421,24 +1540,63 @@ export default function App() {
     const targetItemId = itemToDelete ? itemToDelete.id : itemId;
     const targetProdId = productId || itemToDelete?.productId || itemId;
 
-    // Filter out from local state
-    const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
-    syncInventory(updatedInventory);
-
-    const updatedProducts = products.filter((p) => p.id !== targetProdId);
-    syncProducts(updatedProducts);
-
-    // Sync deletion to Firestore / Supabase
-    if (isRealUserAuthenticated) {
+    // Call service to delete from backend database
+    try {
       if (targetItemId) {
         await inventoryService.deleteInventoryItem(targetItemId);
       }
       if (targetProdId) {
         await productService.deleteProduct(targetProdId);
       }
+    } catch (err) {
+      console.warn("Error deleting inventory item via service:", err);
     }
 
+    // Filter out from local state after deletion
+    const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
+    syncInventory(updatedInventory);
+
+    const updatedProducts = products.filter((p) => p.id !== targetProdId);
+    syncProducts(updatedProducts);
+
     addNotification("Produit retiré de votre stock avec succès.");
+  };
+
+  const handleClearMyCatalog = async () => {
+    if (!currentUser) return;
+    const shouldClear = window.confirm("Voulez-vous vraiment effacer tous les articles fictifs et réels de votre catalogue stock pour recommencer manuellement ? Cette action est irréversible.");
+    if (!shouldClear) return;
+
+    // Filter items owned by user or having mock prefixes
+    const itemsToDelete = inventory.filter(i => 
+      i.ownerId === currentUser.id || 
+      i.ownerId === currentUser.email || 
+      i.id.includes("bonk") || 
+      i.id.includes("sayouba")
+    );
+
+    if (itemsToDelete.length === 0) {
+      addNotification("Votre catalogue de stock est déjà vide.");
+      return;
+    }
+
+    // Local state filter
+    const remainingInventory = inventory.filter(i => 
+      !(i.ownerId === currentUser.id || 
+        i.ownerId === currentUser.email || 
+        i.id.includes("bonk") || 
+        i.id.includes("sayouba"))
+    );
+    syncInventory(remainingInventory);
+
+    if (isRealUserAuthenticated) {
+      addNotification("Suppression en cours du catalogue en ligne...");
+      await Promise.allSettled(
+        itemsToDelete.map(item => inventoryService.deleteInventoryItem(item.id))
+      );
+    }
+
+    addNotification("Votre catalogue a été entièrement vidé. Vous pouvez maintenant le renseigner manuellement.");
   };
 
   // Order Placement logic (B2B Procurement)
@@ -2052,8 +2210,6 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [authLoading]);
-
-  const [initialLoadingTimeout, setInitialLoadingTimeout] = useState(false);
 
   // Filter data - filter out demo mock data when Firebase active session is detected
   const displayUsers = useMemo(() => deduplicateUsers(isRealUserAuthenticated
@@ -2687,7 +2843,7 @@ export default function App() {
       {/* Main ERP Canvas Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {isAuthScreen ? (
+        {(!currentUser || isAuthScreen) ? (
           <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 max-w-lg mx-auto space-y-4">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
@@ -3018,6 +3174,13 @@ export default function App() {
                       >
                         <UserCog className="w-3 h-3" /> Modifier
                       </button>
+                      <button
+                        onClick={handleClearMyCatalog}
+                        className="text-[10px] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 transition cursor-pointer border border-rose-200/50 dark:border-rose-900/30"
+                        title="Effacer tout mon catalogue pour le renseigner manuellement"
+                      >
+                        <Trash2 className="w-3 h-3" /> Vider mon stock
+                      </button>
                     </div>
                     <p className="text-xs text-zinc-500 mt-1">
                       Hiérarchie Géographique : <span className="font-semibold text-zinc-700 dark:text-zinc-300">{currentUser.country} - {currentUser.region}</span>
@@ -3227,7 +3390,7 @@ export default function App() {
         </section>
 
         {/* Core Role Dashboard Injector */}
-        <section className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-6 shadow-xs transition-colors">
+        <section className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xs transition-colors">
           {currentUser ? (
             <>
               {currentUser.role === UserRole.ADMIN && (

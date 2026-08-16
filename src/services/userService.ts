@@ -30,7 +30,12 @@ export function getLocalUser(uid: string): FirebaseUser | null {
     if (data) {
       const parsed = JSON.parse(data);
       if (parsed) {
-        const normRole = normalizeUserRole(parsed.rôle || parsed.role);
+        let normRole = normalizeUserRole(parsed.rôle || parsed.role);
+        if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
+          normRole = UserRole.ADMIN;
+        } else if (isBonkoungou(parsed.email, parsed.companyName || (parsed as any).nomDEntreprise, parsed.nom || parsed.prénom)) {
+          normRole = UserRole.SEMI_WHOLESALER;
+        }
         parsed.rôle = normRole;
         parsed.role = normRole;
         return parsed as FirebaseUser;
@@ -44,7 +49,12 @@ export function getLocalUser(uid: string): FirebaseUser | null {
 
 export function saveLocalUser(uid: string, user: FirebaseUser): void {
   try {
-    const normRole = normalizeUserRole(user.rôle || user.role);
+    let normRole = normalizeUserRole(user.rôle || user.role);
+    if (user.email === "urbain.traore@yahoo.fr" || user.email === "urbain.traoreurb@gmail.com") {
+      normRole = UserRole.ADMIN;
+    } else if (isBonkoungou(user.email, user.companyName || (user as any).nomDEntreprise, user.nom || user.prénom)) {
+      normRole = UserRole.SEMI_WHOLESALER;
+    }
     const completeUser = {
       ...user,
       rôle: normRole,
@@ -167,34 +177,7 @@ export const userService = {
             ]);
           } catch (e) {}
         }
-        if (isBonkoungou(data.email, data.companyName, `${data.prénom || ""} ${data.nom || ""}`)) {
-          let updated = false;
-          const updates: any = {};
-          if (data.rôle !== "SEMI_WHOLESALER") {
-            data.rôle = "SEMI_WHOLESALER";
-            data.role = "SEMI_WHOLESALER";
-            updates.rôle = "SEMI_WHOLESALER";
-            updates.role = "SEMI_WHOLESALER";
-            updated = true;
-          }
-          if (data.nom !== "BONKOUNGOU" || data.companyName !== "BONKOUNGOU Entreprise") {
-            data.nom = "BONKOUNGOU";
-            data.prénom = data.prénom || "Sayouba";
-            data.companyName = "BONKOUNGOU Entreprise";
-            updates.nom = "BONKOUNGOU";
-            updates.prénom = data.prénom;
-            updates.companyName = "BONKOUNGOU Entreprise";
-            updated = true;
-          }
-          if (updated) {
-            try { 
-              await Promise.allSettled([
-                setDoc(doc(db, "users", uid), updates, { merge: true }),
-                setDoc(doc(db, "utilisateurs", uid), updates, { merge: true })
-              ]);
-            } catch (e) {}
-          }
-        }
+
         saveLocalUser(uid, data);
         return data;
       }
@@ -209,23 +192,7 @@ export const userService = {
         local.role = "ADMIN";
         saveLocalUser(uid, local);
       }
-      if (isBonkoungou(local.email, local.companyName, `${local.prénom || ""} ${local.nom || ""}`)) {
-        let localUpdated = false;
-        if (local.rôle !== "SEMI_WHOLESALER") {
-          local.rôle = "SEMI_WHOLESALER";
-          local.role = "SEMI_WHOLESALER";
-          localUpdated = true;
-        }
-        if (local.nom !== "BONKOUNGOU" || local.companyName !== "BONKOUNGOU Entreprise") {
-          local.nom = "BONKOUNGOU";
-          local.prénom = local.prénom || "Sayouba";
-          local.companyName = "BONKOUNGOU Entreprise";
-          localUpdated = true;
-        }
-        if (localUpdated) {
-          saveLocalUser(uid, local);
-        }
-      }
+
       return local;
     }
 
@@ -266,12 +233,7 @@ export const userService = {
       } catch (e) {}
       
       let determinedRole = normalizeUserRole(chosenRole || "CLIENT");
-      if (isBonkoungou(email, companyName, cleanName)) {
-        determinedRole = UserRole.SEMI_WHOLESALER;
-        cleanName = "BONKOUNGOU";
-        firstName = firstName || "Sayouba";
-        companyName = "BONKOUNGOU Entreprise";
-      } else if (email.includes("detaillant")) {
+      if (email.includes("detaillant")) {
         determinedRole = UserRole.RETAILER;
         firstName = "Détaillant";
       } else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) {
@@ -422,7 +384,12 @@ export const userService = {
           if (data) {
             const parsed = JSON.parse(data) as FirebaseUser;
             if (parsed && parsed.uid) {
-              const normRole = normalizeUserRole(parsed.rôle || parsed.role);
+              let normRole = normalizeUserRole(parsed.rôle || parsed.role);
+              if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
+                normRole = UserRole.ADMIN;
+              } else if (isBonkoungou(parsed.email, parsed.companyName, parsed.nom || parsed.prénom)) {
+                normRole = UserRole.SEMI_WHOLESALER;
+              }
               localUsers.push({
                 ...parsed,
                 rôle: normRole,
@@ -438,7 +405,12 @@ export const userService = {
         const erpList: any[] = JSON.parse(erpUsersRaw);
         erpList.forEach(eu => {
           if (eu && eu.id) {
-            const normRole = normalizeUserRole(eu.role || eu.rôle);
+            let normRole = normalizeUserRole(eu.role || eu.rôle);
+            if (eu.email === "urbain.traore@yahoo.fr" || eu.email === "urbain.traoreurb@gmail.com") {
+              normRole = UserRole.ADMIN;
+            } else if (isBonkoungou(eu.email, eu.companyName, eu.name)) {
+              normRole = UserRole.SEMI_WHOLESALER;
+            }
             localUsers.push({
               uid: eu.id,
               nom: eu.name?.split(" ").slice(1).join(" ") || eu.name || "",
@@ -468,13 +440,10 @@ export const userService = {
       const rawCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
       
       let normRole = normalizeUserRole(u.rôle || u.role);
-      if (isBonkoungou(u.email, u.companyName, `${u.prénom || ""} ${u.nom || ""}`)) {
-        normRole = UserRole.SEMI_WHOLESALER;
-        u.nom = "BONKOUNGOU";
-        u.prénom = u.prénom || "Sayouba";
-        u.companyName = "BONKOUNGOU Entreprise";
-      } else if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
+      if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
         normRole = UserRole.ADMIN;
+      } else if (isBonkoungou(u.email, u.companyName, u.nom)) {
+        normRole = UserRole.SEMI_WHOLESALER;
       }
       u.rôle = normRole;
       u.role = normRole;
@@ -551,13 +520,7 @@ export const userService = {
         u.rôle = UserRole.ADMIN;
         u.role = UserRole.ADMIN;
       }
-      if (isBonkoungou(u.email, u.companyName, `${u.prénom || ""} ${u.nom || ""}`)) {
-        u.rôle = UserRole.SEMI_WHOLESALER;
-        u.role = UserRole.SEMI_WHOLESALER;
-        u.nom = "BONKOUNGOU";
-        u.prénom = u.prénom || "Sayouba";
-        u.companyName = "BONKOUNGOU Entreprise";
-      }
+
     });
     return finalArray;
   },
@@ -577,7 +540,12 @@ export const userService = {
         const users: FirebaseUser[] = [];
         snapshot.forEach((doc: any) => {
           const raw = doc.data();
-          const normRole = normalizeUserRole(raw.rôle || raw.role || raw.userRole);
+          let normRole = normalizeUserRole(raw.rôle || raw.role || raw.userRole);
+          if (raw.email === "urbain.traore@yahoo.fr" || raw.email === "urbain.traoreurb@gmail.com") {
+            normRole = UserRole.ADMIN;
+          } else if (isBonkoungou(raw.email, raw.companyName || raw.nomDEntreprise, raw.nom || raw.prénom || raw.name)) {
+            normRole = UserRole.SEMI_WHOLESALER;
+          }
           users.push({ 
             uid: doc.id, 
             ...raw,
@@ -597,13 +565,10 @@ export const userService = {
             const rawEmail = u.email ? u.email.toLowerCase().trim() : "";
             const rawCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
             let normRole = normalizeUserRole(u.rôle || u.role);
-            if (isBonkoungou(u.email, u.companyName, `${u.prénom || ""} ${u.nom || ""}`)) {
-              normRole = UserRole.SEMI_WHOLESALER;
-              u.nom = "BONKOUNGOU";
-              u.prénom = u.prénom || "Sayouba";
-              u.companyName = "BONKOUNGOU Entreprise";
-            } else if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
+            if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
               normRole = UserRole.ADMIN;
+            } else if (isBonkoungou(u.email, u.companyName, u.nom || (u as any).name)) {
+              normRole = UserRole.SEMI_WHOLESALER;
             }
             u.rôle = normRole;
             u.role = normRole;

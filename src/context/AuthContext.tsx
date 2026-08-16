@@ -101,8 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const emailPrefix = email.split("@")[0] || "utilisateur";
             const cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
             let roleToSet = effectiveRole || "CLIENT";
-            if (isBonkoungou(email, profile?.companyName, profile?.nom)) roleToSet = "SEMI_WHOLESALER";
-            else if (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) roleToSet = "ADMIN";
+            if (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) roleToSet = "ADMIN";
             
             const normRole = normalizeUserRole(roleToSet);
             profile = {
@@ -167,8 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (e) {}
 
-        if (isBonkoungou(email)) determinedRole = "SEMI_WHOLESALER";
-        else if (email.includes("detaillant")) determinedRole = "RETAILER";
+        if (email.includes("detaillant")) determinedRole = "RETAILER";
         else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) determinedRole = "SEMI_WHOLESALER";
         else if (email.includes("grossiste") || email.includes("wholesaler")) determinedRole = "WHOLESALER";
         else if (email.includes("fabricant") || email.includes("manufacturer")) determinedRole = "MANUFACTURER";
@@ -249,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normEmail = email.toLowerCase().trim();
     const finalRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) 
       ? UserRole.ADMIN 
-      : normEmail === "sayouba@ujkz.bf" 
+      : (isBonkoungou(normEmail) || normEmail.includes("bonkoungou") || normEmail.includes("bonkougou")) 
         ? UserRole.SEMI_WHOLESALER 
         : normalizeUserRole(rôle);
 

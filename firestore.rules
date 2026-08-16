@@ -20,22 +20,20 @@ service cloud.firestore {
       return isAuthenticated() && (
         isSpecialAdminEmail() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rôle == "ADMIN")
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data['rôle'] == "ADMIN")
       );
     }
 
     // Helper: Vérifie si une relation de partenariat ACTIVE existe entre deux UIDs
     function estPartenaireActif(autreUid) {
-      let relId1 = request.auth.uid + "_" + autreUid;
-      let relId2 = autreUid + "_" + request.auth.uid;
-      return (exists(/databases/$(database)/documents/relations/$(relId1)) && 
-              (get(/databases/$(database)/documents/relations/$(relId1)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(relId1)).data.statut == 'active'))
-          || (exists(/databases/$(database)/documents/relations/$(relId2)) && 
-              (get(/databases/$(database)/documents/relations/$(relId2)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(relId2)).data.statut == 'active'))
-          || (exists(/databases/$(database)/documents/connections/$(relId1)) && 
-              (get(/databases/$(database)/documents/connections/$(relId1)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(relId1)).data.status == 'actif'))
-          || (exists(/databases/$(database)/documents/connections/$(relId2)) && 
-              (get(/databases/$(database)/documents/connections/$(relId2)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(relId2)).data.status == 'actif'));
+      return (exists(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)) && 
+              (get(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)).data.statut == 'active'))
+          || (exists(/databases/$(database)/documents/relations/$(autreUid + "_" + request.auth.uid)) && 
+              (get(/databases/$(database)/documents/relations/$(autreUid + "_" + request.auth.uid)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(autreUid + "_" + request.auth.uid)).data.statut == 'active'))
+          || (exists(/databases/$(database)/documents/connections/$(request.auth.uid + "_" + autreUid)) && 
+              (get(/databases/$(database)/documents/connections/$(request.auth.uid + "_" + autreUid)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(request.auth.uid + "_" + autreUid)).data.status == 'actif'))
+          || (exists(/databases/$(database)/documents/connections/$(autreUid + "_" + request.auth.uid)) && 
+              (get(/databases/$(database)/documents/connections/$(autreUid + "_" + request.auth.uid)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(autreUid + "_" + request.auth.uid)).data.status == 'actif'));
     }
 
     // 1. Profils Utilisateurs
@@ -43,7 +41,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && (!('rôle' in request.resource.data) || request.resource.data.rôle == resource.data.rôle)) || 
+        (request.auth.uid == userId && (!('rôle' in request.resource.data) || request.resource.data['rôle'] == resource.data['rôle'])) || 
         isAdmin()
       );
       allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
@@ -53,7 +51,7 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow update: if isAuthenticated() && (
-        (request.auth.uid == userId && (!('rôle' in request.resource.data) || request.resource.data.rôle == resource.data.rôle)) || 
+        (request.auth.uid == userId && (!('rôle' in request.resource.data) || request.resource.data['rôle'] == resource.data['rôle'])) || 
         isAdmin()
       );
       allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
@@ -81,12 +79,7 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow read: if isAuthenticated() && (
-        resource == null || 
-        resource.data.senderId == request.auth.uid || 
-        resource.data.receiverId == request.auth.uid || 
-        isAdmin()
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
         resource == null || 
@@ -198,13 +191,7 @@ service cloud.firestore {
     }
 
     match /inventory/{inventoryId} {
-      allow read: if isAuthenticated() && (
-        resource == null ||
-        request.auth.uid == resource.data.userId || 
-        request.auth.uid == resource.data.ownerId || 
-        ('userId' in resource.data && estPartenaireActif(resource.data.userId)) ||
-        ('ownerId' in resource.data && estPartenaireActif(resource.data.ownerId))
-      );
+      allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
       allow delete: if isAuthenticated() && (
         resource == null ||
@@ -215,7 +202,12 @@ service cloud.firestore {
 
     match /products/{productId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow write: if isAuthenticated() && (
+        resource == null ||
+        resource.data.creatorId == request.auth.uid ||
+        request.resource.data.creatorId == request.auth.uid ||
+        isAdmin()
+      );
     }
 
     // 5. Conversations / Messages Chat

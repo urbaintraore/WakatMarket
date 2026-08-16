@@ -24,10 +24,13 @@ export function isBonkoungou(email?: string, companyName?: string, name?: string
   const n = (name || "").toLowerCase().trim();
   return (
     e.includes("bonkoungou") ||
-    e.includes("ujkz.bf") ||
+    e.includes("bonkougou") ||
     e.includes("sayouba") ||
     c.includes("bonkoungou") ||
-    n.includes("bonkoungou")
+    c.includes("bonkougou") ||
+    n.includes("bonkoungou") ||
+    n.includes("bonkougou") ||
+    n.includes("sayouba")
   );
 }
 

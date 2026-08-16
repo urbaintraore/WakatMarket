@@ -63,11 +63,45 @@ export const inventoryService = {
   },
 
   subscribeToUserStock(uid: string, callback: (items: InventoryItem[]) => void) {
-    if (!uid) return () => {};
+    const startTime = Date.now();
+    const logPrefix = `[DIAGNOSTIC - subscribeToUserStock] [User: ${uid}]`;
+    const connectionStatus = navigator.onLine ? "ONLINE" : "OFFLINE";
+    
+    const logMsg = (msg: string, isError = false) => {
+      const timestamp = new Date().toISOString();
+      const formatted = `${timestamp} - ${logPrefix} - ${msg} (Network: ${connectionStatus})`;
+      if (isError) {
+        console.error(formatted);
+      } else {
+        console.log(formatted);
+      }
+      if (typeof window !== "undefined") {
+        (window as any).__WAKAT_DIAGNOSTICS = (window as any).__WAKAT_DIAGNOSTICS || [];
+        (window as any).__WAKAT_DIAGNOSTICS.push({
+          timestamp,
+          userId: uid,
+          event: "subscribeToUserStock",
+          message: msg,
+          status: isError ? "ERROR" : "SUCCESS",
+          network: connectionStatus,
+          latencyMs: Date.now() - startTime
+        });
+      }
+    };
+
+    logMsg(`Initiating Firestore subcollection subscription...`);
+
+    if (!uid) {
+      logMsg(`Subscription aborted: No valid user UID provided.`, true);
+      return () => {};
+    }
+
     const q = query(collection(db, "stocks", uid, "items"));
     let unsub = () => {};
     try {
       unsub = onSnapshot(q, (snapshot) => {
+        const latency = Date.now() - startTime;
+        logMsg(`Snapshot successfully received! Count: ${snapshot.size} items. Sync duration: ${latency}ms.`);
         const list: InventoryItem[] = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
@@ -88,12 +122,14 @@ export const inventoryService = {
         });
         callback(list);
       }, (error) => {
-        console.warn("Firestore error during subscribeToUserStock:", error);
+        const latency = Date.now() - startTime;
+        logMsg(`Firestore subscription error after ${latency}ms: ${error.message} (Code: ${error.code})`, true);
       });
-    } catch (e) {
-      console.warn("Failed to set up real-time listener for user stock:", e);
+    } catch (e: any) {
+      logMsg(`Exception setting up onSnapshot for subcollection: ${e?.message || e}`, true);
     }
     return () => {
+      logMsg(`Unsubscribing from user stock subscription.`);
       try {
         unsub();
       } catch (e) {}

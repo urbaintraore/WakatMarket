@@ -323,15 +323,12 @@ class ERPStorage {
       if (!u) return;
 
       const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
       
       let normRole = normalizeUserRole(u.role);
-      if (isBonkoungou(u.email, u.companyName, u.name)) {
-        normRole = UserRole.SEMI_WHOLESALER;
-        u.companyName = "BONKOUNGOU Entreprise";
-        u.name = "Sayouba BONKOUNGOU";
-      } else if (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) {
+      if (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) {
         normRole = UserRole.ADMIN;
+      } else if (isBonkoungou(u.email, u.companyName, u.name)) {
+        normRole = UserRole.SEMI_WHOLESALER;
       }
       u.role = normRole;
 
@@ -376,16 +373,16 @@ class ERPStorage {
             if (parsed && (parsed.uid || parsed.email)) {
               const uid = parsed.uid || parsed.email;
               if (uid) {
-                const parsedEmail = parsed.email ? parsed.email.toLowerCase().trim() : "";
-                const parsedCompany = parsed.companyName ? parsed.companyName.toLowerCase().trim() : "";
-                const isSayouba = parsedEmail === "sayouba@ujkz.bf" || parsedCompany === "bonkoungou entreprise";
-                const roleDetermined = isSayouba 
-                  ? UserRole.SEMI_WHOLESALER 
-                  : normalizeUserRole(parsed.rôle || parsed.role || UserRole.CLIENT);
+                let roleDetermined = normalizeUserRole(parsed.rôle || parsed.role || UserRole.CLIENT);
+                if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
+                  roleDetermined = UserRole.ADMIN;
+                } else if (isBonkoungou(parsed.email, parsed.companyName || parsed.nomDEntreprise, `${parsed.prénom || ""} ${parsed.nom || ""}`)) {
+                  roleDetermined = UserRole.SEMI_WHOLESALER;
+                }
 
                 const profile: UserProfile = {
                   id: uid,
-                  name: isSayouba ? "Sayouba BONKOUNGOU" : (`${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur"),
+                  name: `${parsed.prénom || ""} ${parsed.nom || ""}`.trim() || parsed.email?.split("@")[0] || "Utilisateur",
                   email: parsed.email || "",
                   phone: parsed.téléphone || "",
                   role: roleDetermined,
@@ -395,7 +392,7 @@ class ERPStorage {
                   sector: parsed.quartier,
                   avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
                   balance: 0,
-                  companyName: isSayouba ? "BONKOUNGOU Entreprise" : `${parsed.nom || parsed.email?.split("@")[0] || "Entreprise"} Entreprise`,
+                  companyName: parsed.companyName || `${parsed.nom || parsed.email?.split("@")[0] || "Entreprise"} Entreprise`,
                   address: parsed.ville && parsed.quartier ? `${parsed.quartier}, ${parsed.ville}` : "Non spécifié"
                 };
                 processAndAddUser(profile);
@@ -405,16 +402,6 @@ class ERPStorage {
         }
       }
     } catch (e) {}
-
-    userMap.forEach((u) => {
-      const e = u.email ? u.email.toLowerCase().trim() : "";
-      const c = u.companyName ? u.companyName.toLowerCase().trim() : "";
-      if (e === "sayouba@ujkz.bf" || c === "bonkoungou entreprise") {
-        u.role = UserRole.SEMI_WHOLESALER;
-        u.companyName = "BONKOUNGOU Entreprise";
-        u.name = "Sayouba BONKOUNGOU";
-      }
-    });
 
     const result = Array.from(userMap.values()).filter(u => (u.status as any) !== "DELETED");
     return result;
