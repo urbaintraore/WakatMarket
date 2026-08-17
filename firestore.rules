@@ -2,12 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Vérifie si l'utilisateur est authentifié
+    // =========================================================================
+    // 0. FONCTIONS ET HELPERS GLOBAUX (Partagés CampusBF & WakatMarket)
+    // =========================================================================
+
+    // Helper: Vérifie si l'utilisateur est connecté
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper: Vérifie si l'utilisateur possède un email d'administrateur
+    // Helper: Vérifie si l'utilisateur possède un email d'administrateur principal
     function isSpecialAdminEmail() {
       return isAuthenticated() && (
         request.auth.token.email == "urbain.traore@yahoo.fr" || 
@@ -15,7 +19,7 @@ service cloud.firestore {
       );
     }
 
-    // Helper: Vérifie si l'utilisateur est un administrateur
+    // Helper: Vérifie si l'utilisateur est un administrateur système
     function isAdmin() {
       return isAuthenticated() && (
         isSpecialAdminEmail() ||
@@ -24,7 +28,7 @@ service cloud.firestore {
       );
     }
 
-    // Helper: Vérifie si une relation de partenariat ACTIVE existe entre deux UIDs
+    // Helper: Vérifie si une relation B2B active existe entre l'utilisateur connecté et un tiers
     function estPartenaireActif(autreUid) {
       return (exists(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)) && 
               (get(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)).data.statut == 'actif' || get(/databases/$(database)/documents/relations/$(request.auth.uid + "_" + autreUid)).data.statut == 'active'))
@@ -36,7 +40,10 @@ service cloud.firestore {
               (get(/databases/$(database)/documents/connections/$(autreUid + "_" + request.auth.uid)).data.status == 'active' || get(/databases/$(database)/documents/connections/$(autreUid + "_" + request.auth.uid)).data.status == 'actif'));
     }
 
-    // 1. Profils Utilisateurs
+    // =========================================================================
+    // SECTION 1 : UTILISATEURS & AUTHENTIFICATION (Partagé CampusBF & WakatMarket)
+    // =========================================================================
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
@@ -57,7 +64,11 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Ventes et Commandes (Flux de paiement manuel et validation)
+    // =========================================================================
+    // SECTION 2 : WAKATMARKET (Commerce B2B/B2C, Stocks, Ventes, Facturation)
+    // =========================================================================
+
+    // 2.1 Ventes et Commandes directes
     match /ventes/{venteId} {
       allow read: if isAuthenticated() && (
         resource == null || 
@@ -67,6 +78,7 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (
         request.resource.data.vendeurId == request.auth.uid ||
+        request.resource.data.acheteurId == request.auth.uid ||
         isAdmin()
       );
       allow update: if isAuthenticated() && (
@@ -100,94 +112,104 @@ service cloud.firestore {
       allow create, update: if isAuthenticated();
     }
 
-    // 2. Collection /relations/{relationId} (Structure stricte demandée)
+    // 2.2 Relations de Partenariat B2B (/relations/{relationId})
     match /relations/{relationId} {
-      // Un utilisateur ne peut lire un document relation que s'il est participant
       allow read: if isAuthenticated() && (
         resource == null ||
         request.auth.uid in resource.data.participants ||
         request.auth.uid == resource.data.demandeurId ||
-        request.auth.uid == resource.data.destinataireId
-      );
-
-      // Création de demande de connexion ou enregistrement direct de partenaire
-      allow create: if isAuthenticated() && 
-        request.auth.uid == request.resource.data.demandeurId &&
-        request.auth.uid in request.resource.data.participants &&
-        (request.resource.data.statut == 'en_attente' || request.resource.data.statut == 'actif' || request.resource.data.statut == 'active');
-
-      // Réponse par le destinataire, renvoi par le demandeur, ou admin
-      allow update: if isAuthenticated() && (
-        // Cas 1 : Le destinataire répond à la demande (accepter ou refuser)
-        (request.auth.uid == resource.data.destinataireId &&
-         (request.resource.data.statut == 'actif' || request.resource.data.statut == 'refuse') &&
-         request.resource.data.demandeurId == resource.data.demandeurId) ||
-         
-        // Cas 2 : Le demandeur renvoie ou met à jour la demande
-        (request.auth.uid == resource.data.demandeurId &&
-         request.resource.data.statut == 'en_attente' &&
-         request.resource.data.destinataireId == resource.data.destinataireId) ||
-         
-        // Cas 3 : Administrateur
+        request.auth.uid == resource.data.destinataireId ||
         isAdmin()
       );
 
-      // Suppression par l'un des deux participants
+      allow create: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.demandeurId ||
+        request.auth.uid in request.resource.data.participants ||
+        isAdmin()
+      );
+
+      allow update: if isAuthenticated() && (
+        (request.auth.uid == resource.data.destinataireId) ||
+        (request.auth.uid == resource.data.demandeurId) ||
+        (request.auth.uid in resource.data.participants) ||
+        isAdmin()
+      );
+
       allow delete: if isAuthenticated() && (
         request.auth.uid in resource.data.participants ||
         request.auth.uid == resource.data.demandeurId ||
-        request.auth.uid == resource.data.destinataireId
+        request.auth.uid == resource.data.destinataireId ||
+        isAdmin()
       );
     }
 
-    // 3. Sous-collection /notifications/{uid}/items/{notifId} (Sous-collection par utilisateur)
-    match /notifications/{uid}/items/{notifId} {
-      // Un utilisateur ne peut lire que ses propres notifications
-      allow read: if isAuthenticated() && request.auth.uid == uid;
-
-      // Un utilisateur peut marquer ses notifications comme lues
-      allow update: if isAuthenticated() && request.auth.uid == uid;
-
-      // Création de notification : soit par l'expéditeur lors d'une action, soit pour soi-même
-      allow create: if isAuthenticated() && (
-        request.auth.uid == request.resource.data.expediteurId ||
-        request.auth.uid == uid
-      );
-
-      // Suppression de ses propres notifications
-      allow delete: if isAuthenticated() && request.auth.uid == uid;
-    }
-
-    // Rétrocompatibilité : Collection globale /notifications
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
-      allow update: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
-      allow create: if isAuthenticated();
-      allow delete: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || resource.data.receiverId == request.auth.uid);
-    }
-
-    // Rétrocompatibilité : Collection /connections
+    // Rétrocompatibilité B2B: /connections/{connectionId}
     match /connections/{connectionId} {
       allow read: if isAuthenticated() && (
         resource == null ||
         request.auth.uid == resource.data.senderId || 
-        request.auth.uid == resource.data.receiverId
+        request.auth.uid == resource.data.receiverId ||
+        isAdmin()
       );
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.receiverId ||
-        request.auth.uid == resource.data.senderId
+        request.auth.uid == resource.data.senderId ||
+        isAdmin()
       );
       allow delete: if isAuthenticated() && (
         request.auth.uid == resource.data.senderId || 
-        request.auth.uid == resource.data.receiverId
+        request.auth.uid == resource.data.receiverId ||
+        isAdmin()
       );
     }
 
-    // 4. Stocks / Inventaire conditionnés par la relation ACTIVE
+    // 2.3 Notifications par utilisateur (/notifications/{uid}/items/{notifId})
+    match /notifications/{uid}/items/{notifId} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow create: if isAuthenticated() && (
+        request.auth.uid == request.resource.data.expediteurId ||
+        request.auth.uid == uid ||
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // Rétrocompatibilité : Collection globale /notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated();
+      allow delete: if isAuthenticated() && (
+        resource == null || 
+        resource.data.userId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+    }
+
+    // 2.4 Stocks, Inventaires et Catalogue Produits
     match /stocks/{ownerId}/items/{itemId} {
-      allow read: if isAuthenticated() && (request.auth.uid == ownerId || estPartenaireActif(ownerId));
-      allow write: if isAuthenticated() && request.auth.uid == ownerId;
+      allow read: if isAuthenticated() && (
+        request.auth.uid == ownerId || 
+        estPartenaireActif(ownerId) || 
+        isAdmin()
+      );
+      allow write: if isAuthenticated() && (
+        request.auth.uid == ownerId || 
+        isAdmin()
+      );
     }
 
     match /inventory/{inventoryId} {
@@ -196,7 +218,8 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (
         resource == null ||
         request.auth.uid == resource.data.userId || 
-        request.auth.uid == resource.data.ownerId
+        request.auth.uid == resource.data.ownerId ||
+        isAdmin()
       );
     }
 
@@ -210,11 +233,22 @@ service cloud.firestore {
       );
     }
 
-    // 5. Conversations / Messages Chat
+    // 2.5 Messagerie & Chat B2B
     match /conversations/{conversationId} {
-      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
-      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow read: if isAuthenticated() && (
+        resource == null || 
+        request.auth.uid in resource.data.participants || 
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.auth.uid in request.resource.data.participants ||
+        isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        resource == null || 
+        request.auth.uid in resource.data.participants || 
+        isAdmin()
+      );
 
       match /messages/{messageId} {
         allow read: if isAuthenticated();
@@ -224,9 +258,46 @@ service cloud.firestore {
       }
     }
 
-    // 6. Comptabilité privée par utilisateur (/comptabilite/{uid}/**)
+    // 2.6 Comptabilité privée par utilisateur (/comptabilite/{uid}/**)
     match /comptabilite/{uid}/{document=**} {
-      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+      allow read, write: if isAuthenticated() && (
+        request.auth.uid == uid || 
+        isAdmin()
+      );
+    }
+
+    // =========================================================================
+    // SECTION 3 : CAMPUSBF (Préservation des collections étudiantes et académiques)
+    // =========================================================================
+
+    // Collections académiques et étudiantes spécifiques à CampusBF
+    match /etudiants/{docId=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /formations/{docId=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /cours/{docId=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /inscriptions/{docId=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /logements/{docId=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /offres/{docId=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /universites/{docId=**} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /actualites/{docId=**} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

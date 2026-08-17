@@ -116,6 +116,17 @@ export default function App() {
 
   const [isRealUserAuthenticated, setIsRealUserAuthenticated] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
+  const [firestorePermissionError, setFirestorePermissionError] = useState<{ message: string; path?: string; rawError?: string } | null>(null);
+
+  useEffect(() => {
+    const handlePermissionError = (e: any) => {
+      if (e.detail) {
+        setFirestorePermissionError(e.detail);
+      }
+    };
+    window.addEventListener("wakat_firestore_permission_error", handlePermissionError);
+    return () => window.removeEventListener("wakat_firestore_permission_error", handlePermissionError);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2385,6 +2396,27 @@ export default function App() {
           <span>
             Attention: Supabase n'est pas configuré correctement. L'envoi et la synchronisation de vos médias (produits, factures, chat) seront impossibles. <span className="underline opacity-90">Détail : {supabaseConfigError}</span>
           </span>
+        </div>
+      )}
+
+      {/* Global Firestore Permission Error Banner */}
+      {firestorePermissionError && (
+        <div className="bg-amber-600 text-white px-4 py-2.5 text-[11px] font-bold flex items-center justify-between gap-2 shadow-lg z-50 leading-normal">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 animate-pulse text-amber-100" />
+            <span>
+              <strong>Accès Firestore refusé :</strong> {firestorePermissionError.message}
+              {firestorePermissionError.path && (
+                <span className="opacity-90 ml-1">(Collection / Document : <code>{firestorePermissionError.path}</code>)</span>
+              )}
+            </span>
+          </div>
+          <button 
+            onClick={() => setFirestorePermissionError(null)} 
+            className="px-2 py-0.5 bg-black/20 hover:bg-black/30 rounded text-[10px] text-white shrink-0 ml-2"
+          >
+            Fermer
+          </button>
         </div>
       )}
 

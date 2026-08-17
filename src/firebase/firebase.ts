@@ -10,8 +10,8 @@ import {
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
-// Silence Firestore connection warnings which are common in sandboxed preview environments
-setLogLevel('silent');
+// 1. Expose Firestore errors in console instead of hiding them
+setLogLevel('error');
 
 const firebaseConfig = {
   apiKey: "AIzaSyBrfPqaxbmIlC0vdfAQZxvT6XLZ-RnQd10",
@@ -44,10 +44,17 @@ try {
 }
 export const functions = functionsInstance;
 
-// Use Long Polling to bypass potential WebSocket restrictions in the preview environment
+// Adaptive long polling: use experimentalForceLongPolling only in sandboxed preview iframe/containers where WebSockets are restricted.
+// In standard browser / production environments (like Vercel), standard WebSockets provide faster real-time updates and lower latency.
+const isSandboxPreview = typeof window !== "undefined" && (
+  window.location.hostname.includes("run.app") || 
+  window.location.hostname.includes("localhost") ||
+  window.self !== window.top
+);
+
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({}),
-  experimentalForceLongPolling: true
+  experimentalForceLongPolling: isSandboxPreview
 });
 
 export enum OperationType {
@@ -76,9 +83,35 @@ export interface FirestoreErrorInfo {
   }
 }
 
+/**
+ * Notifie l'application d'une erreur critique de permission ou de connexion Firestore
+ * afin qu'elle s'affiche clairement à l'écran de l'utilisateur.
+ */
+export function notifyFirestorePermissionError(details: { path?: string | null; operationType?: string; error?: string }) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("wakat_firestore_permission_error", {
+        detail: {
+          path: details.path || "données",
+          operationType: details.operationType || "opération",
+          message: "Impossible de charger ou enregistrer vos données — problème de permissions Firestore (vérifiez votre authentification ou les règles de sécurité).",
+          rawError: details.error
+        }
+      })
+    );
+  }
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isPermissionDenied = errMsg.toLowerCase().includes("permission") || errMsg.toLowerCase().includes("denied") || errMsg.toLowerCase().includes("missing or insufficient");
+
+  if (isPermissionDenied) {
+    notifyFirestorePermissionError({ path, operationType: String(operationType), error: errMsg });
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid || null,
       email: auth.currentUser?.email || null,
