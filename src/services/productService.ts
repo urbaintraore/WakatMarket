@@ -59,24 +59,40 @@ export const productService = {
   },
 
   async uploadProductImage(file: File): Promise<string | null> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas configuré. Veuillez ajouter VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY dans vos variables d'environnement.");
-    }
-
     const ext = file.name ? file.name.split('.').pop() : 'jpg';
     const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
     
-    const res = await uploadToSupabaseStorage("Bucket 2", filePath, file);
-    if (res?.publicUrl) {
-      return res.publicUrl;
+    // 1. Essai de téléversement prioritaire vers Supabase Storage (Bucket 2)
+    if (supabase) {
+      try {
+        const res = await uploadToSupabaseStorage("Bucket 2", filePath, file);
+        if (res?.publicUrl) {
+          return res.publicUrl;
+        }
+      } catch (supErr) {
+        console.warn("Supabase Storage upload warning (fallback to Firebase Storage):", supErr);
+      }
     }
 
-    throw new Error("L'upload vers le bucket 'Bucket 2' de Supabase a échoué. Assurez-vous d'avoir ce bucket configuré en mode public sur votre projet Supabase.");
+    // 2. Fallback vers Firebase Storage
+    if (storage) {
+      try {
+        const storageRef = ref(storage, filePath);
+        await uploadBytes(storageRef, file, {
+          contentType: file.type || "image/jpeg"
+        });
+        return await getDownloadURL(storageRef);
+      } catch (fbErr) {
+        console.warn("Firebase Storage upload fallback warning:", fbErr);
+      }
+    }
+
+    return null;
   },
 
   async createProduct(product: Product): Promise<void> {
     try {
-      // Intercept Base64 images and upload them to Supabase to keep Firestore fast and documents small
+      // Intercept Base64 images and upload them to Cloud Storage if available
       if (product.image && product.image.startsWith("data:image")) {
         try {
           const file = await base64ToFile(product.image, `product_${product.id}.jpg`);
@@ -85,8 +101,7 @@ export const productService = {
             product.image = url;
           }
         } catch (e) {
-          console.error("Failed to upload base64 product image to Supabase", e);
-          throw new Error("Impossible d'uploader l'image principale sur Supabase. Création de produit refusée.");
+          console.warn("Notice: impossible de convertir l'image base64 principale, conservation de l'originale:", e);
         }
       }
       
@@ -98,15 +113,14 @@ export const productService = {
             product.imageUrl = url;
           }
         } catch (e) {
-          console.error("Failed to upload base64 product imageUrl to Supabase", e);
-          throw new Error("Impossible d'uploader l'image secondaire sur Supabase. Création de produit refusée.");
+          console.warn("Notice: impossible de convertir l'image base64 secondaire, conservation de l'originale:", e);
         }
       }
 
-      // Save to Firestore
+      // Save to Firestore (Source de vérité)
       await setDoc(doc(db, COLLECTION_NAME, product.id), product);
 
-      // Sync to Supabase table
+      // Sync to Supabase table if configured
       if (supabase) {
         try {
           await upsertToSupabaseTable("products", {
