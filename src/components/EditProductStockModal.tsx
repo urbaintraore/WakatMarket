@@ -45,6 +45,7 @@ export function EditProductStockModal({
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
   const [uploadedImage, setUploadedImage] = useState<string>("");
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
@@ -145,8 +146,6 @@ export function EditProductStockModal({
       handleFileProcess(e.target.files[0]);
     }
   };
-
-  const [isUploading, setIsUploading] = useState(false);
 
   const handleFileProcess = async (file: File) => {
     if (!file.type.startsWith("image/")) {

@@ -91,6 +91,25 @@ export function notifyFirestorePermissionError(details: { path?: string | null; 
   }
 }
 
+export function sanitizeFirestoreData<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeFirestoreData(item)) as any;
+  }
+  if (typeof obj === "object" && !(obj instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeFirestoreData(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errMsg = error instanceof Error ? error.message : String(error);
   const isPermissionDenied = errMsg.toLowerCase().includes("permission") || errMsg.toLowerCase().includes("denied") || errMsg.toLowerCase().includes("missing or insufficient");

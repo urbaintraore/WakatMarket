@@ -40,8 +40,6 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
   onInitiateOrder,
   onOpenChat
 }) => {
-  if (!isOpen) return null;
-
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL");
 
@@ -169,6 +167,8 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
       default: return role;
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 animate-fadeIn">

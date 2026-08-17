@@ -1,7 +1,7 @@
-import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from "../firebase/firebase";
 import { doc, setDoc, collection, getDocs, deleteDoc, query, onSnapshot } from "firebase/firestore";
 import { Product } from "../types";
-import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable, deleteFromSupabaseTable } from "../supabase";
+import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable, deleteFromSupabaseTable, formatStorageUrl } from "../supabase";
 
 const COLLECTION_NAME = "products";
 
@@ -9,6 +9,14 @@ export interface ProductUploadResult {
   publicUrl: string;
   storagePath: string;
   bucket: string;
+}
+
+function normalizeProduct(prod: Product): Product {
+  return {
+    ...prod,
+    image: prod.image ? formatStorageUrl(prod.image) : prod.image,
+    imageUrl: prod.imageUrl ? formatStorageUrl(prod.imageUrl) : (prod.image ? formatStorageUrl(prod.image) : prod.imageUrl)
+  };
 }
 
 async function base64ToFile(base64: string, filename: string): Promise<File> {
@@ -25,7 +33,7 @@ export const productService = {
       const list: Product[] = [];
       snap.forEach((docSnap) => {
         if (docSnap.exists()) {
-          list.push(docSnap.data() as Product);
+          list.push(normalizeProduct(docSnap.data() as Product));
         }
       });
       return list;
@@ -43,7 +51,7 @@ export const productService = {
         const list: Product[] = [];
         snapshot.forEach((docSnap) => {
           if (docSnap.exists()) {
-            list.push(docSnap.data() as Product);
+            list.push(normalizeProduct(docSnap.data() as Product));
           }
         });
         callback(list);
@@ -125,7 +133,8 @@ export const productService = {
       }
 
       // 2. Persist to Firestore (Source of truth)
-      await setDoc(doc(db, COLLECTION_NAME, product.id), product);
+      const sanitizedProduct = sanitizeFirestoreData(product);
+      await setDoc(doc(db, COLLECTION_NAME, product.id), sanitizedProduct);
 
       // 3. Mirror metadata to Supabase table if available
       if (supabase) {

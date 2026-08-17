@@ -74,11 +74,27 @@ export async function uploadToSupabaseStorage(
       throw new Error(`[Supabase Storage - ${bucket}] Impossible de récupérer l'URL publique après l'upload.`);
     }
 
-    return { publicUrl: pubData.publicUrl, bucket };
+    const publicUrl = formatStorageUrl(pubData.publicUrl);
+    return { publicUrl, bucket };
   } catch (err: any) {
     console.error(`Error uploading to Supabase Bucket '${bucket}':`, err);
     throw err;
   }
+}
+
+/**
+ * Ensures any Supabase storage URL has the correct '/public/' endpoint to avoid 400 errors.
+ */
+export function formatStorageUrl(url?: string | null): string {
+  if (!url) return '';
+  if (
+    url.includes('.supabase.co/storage/v1/object/') &&
+    !url.includes('.supabase.co/storage/v1/object/public/') &&
+    !url.includes('.supabase.co/storage/v1/object/sign/')
+  ) {
+    return url.replace('.supabase.co/storage/v1/object/', '.supabase.co/storage/v1/object/public/');
+  }
+  return url;
 }
 
 /**

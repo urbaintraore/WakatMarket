@@ -1,4 +1,4 @@
-import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from "../firebase/firebase";
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 import { InventoryItem, Product } from "../types";
 import { filterMockData } from "../data";
@@ -139,12 +139,16 @@ export const inventoryService = {
   async updateInventoryItem(item: InventoryItem): Promise<void> {
     try {
       // 1. Écriture principale dans la collection racine /inventory/{id}
-      await setDoc(doc(db, COLLECTION_NAME, item.id), item);
+      const sanitizedItem = sanitizeFirestoreData({
+        ...item,
+        expirationDate: item.expirationDate || null
+      });
+      await setDoc(doc(db, COLLECTION_NAME, item.id), sanitizedItem);
       
       // 2. Écriture synchronisée dans la sous-collection du propriétaire /stocks/{ownerId}/items/{productId}
       if (item.ownerId && item.productId) {
         try {
-          await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), {
+          const subItem = sanitizeFirestoreData({
             id: item.id,
             produitId: item.productId,
             quantite: item.stock,
@@ -155,7 +159,8 @@ export const inventoryService = {
             quantiteMinimum: item.quantiteMinimum || 1,
             expirationDate: item.expirationDate || null,
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          });
+          await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), subItem, { merge: true });
         } catch (subErr) {
           console.warn("Notice: Could not sync to /stocks/{uid}/items:", subErr);
         }

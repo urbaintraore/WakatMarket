@@ -32,12 +32,12 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
   onClose,
   onOpenGlobalChat
 }) => {
-  if (!isOpen) return null;
-
-  const [messageText, setMessageText] = useState(client.initialMessage || "");
+  const [messageText, setMessageText] = useState(client?.initialMessage || "");
   const [selectedChannel, setSelectedChannel] = useState<"PLATFORM" | "WHATSAPP" | "SMS">("PLATFORM");
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  if (!isOpen || !client) return null;
 
   const cleanPhone = (client.phone || "").replace(/[^0-9+]/g, "");
 

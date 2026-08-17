@@ -1,4 +1,4 @@
-import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
+import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from "../firebase/firebase";
 import { doc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
 import { Order } from "../types";
 import { filterMockData } from "../data";
@@ -25,7 +25,8 @@ export const orderService = {
 
   async createOrder(order: Order): Promise<void> {
     try {
-      await setDoc(doc(db, COLLECTION_NAME, order.id), order);
+      const sanitized = sanitizeFirestoreData(order);
+      await setDoc(doc(db, COLLECTION_NAME, order.id), sanitized);
       
       if (supabase) {
         await upsertToSupabaseTable("orders", {

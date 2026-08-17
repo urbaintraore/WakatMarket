@@ -1,4 +1,4 @@
-import { db } from "../firebase/firebase";
+import { db, sanitizeFirestoreData } from "../firebase/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { Order } from "../types";
 import { supabase, upsertToSupabaseTable } from "../supabase";
@@ -57,7 +57,8 @@ export const venteService = {
     };
 
     // Écriture directe dans Firestore (bénéficie d'IndexedDB offline)
-    await setDoc(venteRef, documentVente);
+    const sanitized = sanitizeFirestoreData(documentVente);
+    await setDoc(venteRef, sanitized);
 
     // Sync to Supabase
     if (supabase) {
