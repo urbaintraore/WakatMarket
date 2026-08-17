@@ -66,12 +66,12 @@ export const productService = {
     const ext = file.name ? file.name.split('.').pop() : 'jpg';
     const filePath = `products/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
     
-    const res = await uploadToSupabaseStorage(filePath, file);
+    const res = await uploadToSupabaseStorage("Bucket 2", filePath, file);
     if (res?.publicUrl) {
       return res.publicUrl;
     }
 
-    throw new Error("L'upload vers Supabase a échoué. Assurez-vous d'avoir un bucket public (ex: 'products', 'public' ou 'images') configuré sur votre projet Supabase.");
+    throw new Error("L'upload vers le bucket 'Bucket 2' de Supabase a échoué. Assurez-vous d'avoir ce bucket configuré en mode public sur votre projet Supabase.");
   },
 
   async createProduct(product: Product): Promise<void> {

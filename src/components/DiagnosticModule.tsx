@@ -188,7 +188,7 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
       if (supabase) {
         try {
           const filePath = `diagnostic/test_${Date.now()}.png`;
-          const res = await uploadToSupabaseStorage(filePath, testBlob, "image/png");
+          const res = await uploadToSupabaseStorage("Bucket 2", filePath, testBlob, "image/png");
           if (res?.publicUrl) {
             publicUrl = res.publicUrl;
             storageProvider = `Supabase Storage (Bucket: ${res.bucket})`;

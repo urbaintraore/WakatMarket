@@ -28,6 +28,7 @@ import { connectionService } from "./services/connectionService";
 import { relationService } from "./services/relationService";
 import { syncService } from "./services/syncService";
 import { formatFirebaseError } from "./utils/firebaseErrors";
+import { supabaseConfigError } from "./supabase";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { ProductDetailModal } from "./components/ProductDetailModal";
@@ -2377,6 +2378,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 flex flex-col transition duration-300">
+      {/* Global Configuration Errors */}
+      {supabaseConfigError && (
+        <div className="bg-rose-600 text-white px-4 py-2.5 text-[11px] font-bold flex items-center justify-center gap-2 shadow-lg z-50 text-center leading-normal">
+          <AlertCircle className="w-4 h-4 shrink-0 animate-pulse text-rose-100" />
+          <span>
+            Attention: Supabase n'est pas configuré correctement. L'envoi et la synchronisation de vos médias (produits, factures, chat) seront impossibles. <span className="underline opacity-90">Détail : {supabaseConfigError}</span>
+          </span>
+        </div>
+      )}
+
       {/* Premium Header App Bar */}
       <header className="bg-white dark:bg-zinc-900 border-b border-zinc-150 dark:border-zinc-800 sticky top-0 z-40 transition-colors relative">
         {/* Real-time Sync Progress Bar */}

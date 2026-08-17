@@ -147,7 +147,7 @@ export const billingService = {
         try {
           if (supabase) {
             const filePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
-            const res = await uploadToSupabaseStorage(filePath, pdfBlob, 'application/pdf');
+            const res = await uploadToSupabaseStorage("Bucket 2", filePath, pdfBlob, 'application/pdf');
             if (res?.publicUrl) {
               urlPDF = res.publicUrl;
             }
