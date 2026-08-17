@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { db, storage } from "../firebase/firebase";
+import { db } from "../firebase/firebase";
 import { doc, setDoc, getDocFromServer } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { supabase, uploadToSupabaseStorage } from "../supabase";
 import { 
   CheckCircle2, 
@@ -184,7 +183,7 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
       let publicUrl = "";
       let storageProvider = "";
 
-      // Try Supabase Storage first
+      // Test Supabase Storage exclusively
       if (supabase) {
         try {
           const filePath = `diagnostic/test_${Date.now()}.png`;
@@ -193,17 +192,11 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
             publicUrl = res.publicUrl;
             storageProvider = `Supabase Storage (Bucket: ${res.bucket})`;
           }
-        } catch (supErr) {
-          console.warn("Supabase diagnostic upload fallback to Firebase Storage:", supErr);
+        } catch (supErr: any) {
+          throw new Error(`Échec de l'upload Supabase Storage : ${supErr?.message || supErr}`);
         }
-      }
-
-      // Fallback to Firebase Storage if Supabase is unconfigured/fails
-      if (!publicUrl && storage) {
-        const storageRef = ref(storage, `_diagnostic/test_${Date.now()}.png`);
-        await uploadBytes(storageRef, testBlob, { contentType: "image/png" });
-        publicUrl = await getDownloadURL(storageRef);
-        storageProvider = "Firebase Storage (Bucket: campusbf.firebasestorage.app)";
+      } else {
+        throw new Error("Le client Supabase n'est pas initialisé.");
       }
 
       if (publicUrl && publicUrl.startsWith("http")) {

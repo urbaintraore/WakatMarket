@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Product, InventoryItem } from "../types";
 import { formatCFA } from "../data";
+import { productService } from "../services/productService";
 
 interface EditProductStockModalProps {
   isOpen: boolean;
@@ -145,16 +146,26 @@ export function EditProductStockModal({
     }
   };
 
-  const handleFileProcess = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target && event.target.result) {
-        const result = event.target.result as string;
-        setUploadedImage(result);
-        setImage(result);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileProcess = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      alert("Veuillez sélectionner un fichier image valide (JPG, PNG, WEBP).");
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const res = await productService.uploadProductImage(file, product.creatorId, product.id);
+      if (res?.publicUrl) {
+        setUploadedImage(res.publicUrl);
+        setImage(res.publicUrl);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error("Erreur lors de l'envoi de la nouvelle image produit sur Supabase:", err);
+      alert(`Erreur d'envoi vers Supabase : ${err.message || err}`);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {

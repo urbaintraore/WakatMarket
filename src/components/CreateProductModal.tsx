@@ -78,13 +78,13 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
     }
     setIsUploading(true);
     try {
-      // Direct upload to Supabase Storage if configured, or Base64 fallback
-      const imageUrl = await productService.uploadProductImage(file);
-      if (imageUrl) {
-        setUploadedImage(imageUrl);
+      // Direct upload to Supabase Storage (Bucket 2)
+      const res = await productService.uploadProductImage(file);
+      if (res?.publicUrl) {
+        setUploadedImage(res.publicUrl);
       }
     } catch (err: any) {
-      console.error("Erreur lors de l'upload d'image :", err);
+      console.error("Erreur lors de l'upload d'image vers Supabase:", err);
       alert(err.message || "Erreur lors de l'envoi de l'image sur Supabase.");
     } finally {
       setIsUploading(false);

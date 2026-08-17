@@ -1,4 +1,4 @@
-import { db, storage, functions } from "../firebase/firebase";
+import { db, functions } from "../firebase/firebase";
 import { 
   doc, 
   setDoc, 
@@ -10,7 +10,6 @@ import {
   query, 
   where 
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import { billingService } from "./billingService";
 import { Order, OrderStatus } from "../types";
@@ -63,42 +62,25 @@ export const paymentProofService = {
     const timestamp = Date.now();
     const extension = file instanceof File && file.name ? file.name.split('.').pop() : 'jpg';
     const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
-    let storageBucket = "Bucket 2";
+    const storageBucket = "Bucket 2";
 
-    // 1. Upload physique prioritaire vers Supabase Storage
-    if (supabase) {
-      try {
-        const res = await uploadToSupabaseStorage("Bucket 2", storagePath, file, file.type || "image/jpeg");
-        if (res?.publicUrl) {
-          downloadUrl = res.publicUrl;
-        }
-      } catch (supErr) {
-        console.warn("Supabase Storage upload warning for payment proof:", supErr);
-      }
+    // 1. Upload physique exclusif vers Supabase Storage
+    if (!supabase) {
+      throw new Error("Supabase Storage n'est pas initialisé pour téléverser la preuve de paiement.");
     }
 
-    // Fallback Firebase Storage
-    if (!downloadUrl && storage) {
-      try {
-        const storageRef = ref(storage, storagePath);
-        await uploadBytes(storageRef, file, {
-          contentType: file.type || "image/jpeg",
-          customMetadata: {
-            venteId,
-            acheteurId,
-            vendeurId,
-            total: String(totalAmount)
-          }
-        });
-        downloadUrl = await getDownloadURL(storageRef);
-        storageBucket = "firebase";
-      } catch (storageError) {
-        console.warn("Firebase Storage fallback upload notice:", storageError);
+    try {
+      const res = await uploadToSupabaseStorage(storageBucket, storagePath, file, file.type || "image/jpeg");
+      if (res?.publicUrl) {
+        downloadUrl = res.publicUrl;
       }
+    } catch (supErr: any) {
+      console.error("Échec upload preuve de paiement vers Supabase Storage:", supErr);
+      throw new Error(`Échec de l'envoi de la preuve vers Supabase Storage : ${supErr.message || supErr}`);
     }
 
     if (!downloadUrl) {
-      throw new Error("Échec du téléversement de la preuve de paiement sur le Cloud.");
+      throw new Error("Échec de la récupération du lien public Supabase pour la preuve de paiement.");
     }
 
     const now = serverTimestamp();

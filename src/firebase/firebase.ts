@@ -7,7 +7,6 @@ import {
   memoryLocalCache,
   setLogLevel
 } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
 // 1. Expose Firestore errors in console instead of hiding them
@@ -17,7 +16,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyBrfPqaxbmIlC0vdfAQZxvT6XLZ-RnQd10",
   authDomain: "campusbf.firebaseapp.com",
   projectId: "campusbf",
-  storageBucket: "campusbf.firebasestorage.app",
   messagingSenderId: "582288092675",
   appId: "1:582288092675:web:156b3c720951296fc12836"
 };
@@ -25,15 +23,6 @@ const firebaseConfig = {
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-
-// Initialize Firebase Storage safely
-let storageInstance: any = null;
-try {
-  storageInstance = getStorage(app);
-} catch (storageErr) {
-  console.warn("[Firebase] Storage service not initialized or unavailable:", storageErr);
-}
-export const storage = storageInstance;
 
 // Initialize Firebase Functions safely
 let functionsInstance: any = null;
