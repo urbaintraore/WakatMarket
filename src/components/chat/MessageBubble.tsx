@@ -24,10 +24,22 @@ export function MessageBubble({ message, isOwn, showAvatar, avatarUrl, senderNam
     if (audioRef.current) {
       if (isPlaying) {
         audioRef.current.pause();
+        setIsPlaying(false);
       } else {
-        audioRef.current.play();
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((err) => {
+              console.warn("Message audio playback prevented or failed:", err);
+              setIsPlaying(false);
+            });
+        } else {
+          setIsPlaying(true);
+        }
       }
-      setIsPlaying(!isPlaying);
     }
   };
 

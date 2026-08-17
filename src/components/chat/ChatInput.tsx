@@ -185,10 +185,22 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
     if (draftAudioRef.current) {
       if (isDraftPlaying) {
         draftAudioRef.current.pause();
+        setIsDraftPlaying(false);
       } else {
-        draftAudioRef.current.play();
+        const playPromise = draftAudioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsDraftPlaying(true);
+            })
+            .catch((err) => {
+              console.warn("Draft audio playback prevented or failed:", err);
+              setIsDraftPlaying(false);
+            });
+        } else {
+          setIsDraftPlaying(true);
+        }
       }
-      setIsDraftPlaying(!isDraftPlaying);
     }
   };
 
