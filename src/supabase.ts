@@ -1,8 +1,11 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rawUrl = import.meta.env.VITE_SUPABASE_URL;
+const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabaseUrl = typeof rawUrl === 'string' ? rawUrl.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '') : undefined;
+const supabaseAnonKey = typeof rawAnonKey === 'string' ? rawAnonKey.trim().replace(/^["']|["']$/g, '') : undefined;
 
 export type BucketName = "Bucket 2" | "chat";
 
@@ -14,6 +17,16 @@ const isValidUrl = (url: string | undefined) => {
   } catch {
     return false;
   }
+};
+
+const isValidApiKey = (key: string | undefined) => {
+  if (!key) return false;
+  // Supabase supports both new publishable keys (sb_publishable_...) and legacy JWT anon keys (eyJ...)
+  if (key.startsWith('sb_publishable_') || key.startsWith('sb_secret_')) {
+    return true;
+  }
+  const parts = key.split('.');
+  return parts.length === 3 && key.startsWith('eyJ');
 };
 
 let errorMsg: string | null = null;
@@ -29,6 +42,8 @@ if (!supabaseUrl) {
   }
 } else if (!supabaseAnonKey) {
   errorMsg = "La variable d'environnement VITE_SUPABASE_ANON_KEY est manquante.";
+} else if (!isValidApiKey(supabaseAnonKey)) {
+  errorMsg = "La variable d'environnement VITE_SUPABASE_ANON_KEY est invalide. Renseignez votre clé publique Supabase ('sb_publishable_...' ou 'eyJ...').";
 }
 
 export const supabaseConfigError = errorMsg;
@@ -66,6 +81,11 @@ export async function uploadToSupabaseStorage(
       });
 
     if (uploadErr) {
+      if (uploadErr.message?.includes('Invalid Compact JWS') || (uploadErr as any)?.error === 'Invalid Compact JWS') {
+        throw new Error(
+          `[Supabase Storage - Clé API invalide] La clé 'VITE_SUPABASE_ANON_KEY' renseignée n'est pas valide (erreur: Invalid Compact JWS). Veuillez copier la clé publique 'anon' (commençant par eyJ...) dans votre tableau de bord Supabase (Settings > API > Project API Keys > anon public).`
+        );
+      }
       throw new Error(`[Supabase Storage - ${bucket}] Échec de l'upload: ${uploadErr.message}`);
     }
 
