@@ -123,16 +123,16 @@ export const userService = {
       console.error("Error updating erp_users in localStorage:", e);
     }
 
-    try {
-      const sanitized = sanitizeForFirestore(userToSave);
-      // Write to both users and utilisateurs documents to ensure cross-system compatibility
-      await Promise.allSettled([
-        setDoc(doc(db, "users", userToSave.uid), sanitized),
-        setDoc(doc(db, "utilisateurs", userToSave.uid), sanitized)
-      ]);
+    const sanitized = sanitizeForFirestore(userToSave);
+    // Write to both users and utilisateurs documents to ensure cross-system compatibility
+    await Promise.all([
+      setDoc(doc(db, "users", userToSave.uid), sanitized),
+      setDoc(doc(db, "utilisateurs", userToSave.uid), sanitized)
+    ]);
 
-      // Sync to Supabase
-      if (supabase) {
+    // Sync to Supabase table
+    if (supabase) {
+      try {
         await upsertToSupabaseTable("users", {
           id: userToSave.uid,
           uid: userToSave.uid,
@@ -146,9 +146,9 @@ export const userService = {
           city: userToSave.ville || null,
           created_at: new Date().toISOString()
         });
+      } catch (supErr) {
+        console.warn("Supabase background sync notice on users table:", supErr);
       }
-    } catch (error: any) {
-      console.warn("Firestore setDoc failed during createUser (relying on offline fallback):", error.message || error);
     }
   },
 

@@ -25,6 +25,8 @@ import {
 } from "recharts";
 import { Order } from "../types";
 import { formatCFA } from "../data";
+import { db } from "../firebase/firebase";
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query } from "firebase/firestore";
 
 interface AccountingDashboardProps {
   currentUserId: string;
@@ -41,14 +43,7 @@ interface Expense {
 
 export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ currentUserId, orders }) => {
   const [period, setPeriod] = useState<"jour" | "semaine" | "mois" | "annee">("mois");
-  const [expenses, setExpenses] = useState<Expense[]>(() => {
-    try {
-      const saved = localStorage.getItem(`wakat_erp_expenses_${currentUserId}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [newCat, setNewCat] = useState("Loyer");
@@ -56,14 +51,30 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
   const [newDesc, setNewDesc] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // Écoute en temps réel de Firestore pour les dépenses de l'utilisateur
   useEffect(() => {
-    localStorage.setItem(`wakat_erp_expenses_${currentUserId}`, JSON.stringify(expenses));
-  }, [expenses, currentUserId]);
+    if (!currentUserId) return;
+    const q = query(collection(db, "comptabilite", currentUserId, "depenses"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list: Expense[] = [];
+      snapshot.forEach((docSnap) => {
+        if (docSnap.exists()) {
+          list.push(docSnap.data() as Expense);
+        }
+      });
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setExpenses(list);
+    }, (err) => {
+      console.warn("Notice: Firestore comptabilite listener:", err);
+    });
 
-  const handleAddExpense = (e: React.FormEvent) => {
+    return () => unsub();
+  }, [currentUserId]);
+
+  const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     const amountNum = parseFloat(newAmount);
-    if (!amountNum || amountNum <= 0) return;
+    if (!amountNum || amountNum <= 0 || !currentUserId) return;
 
     const newExp: Expense = {
       id: `exp-${Date.now()}`,
@@ -73,11 +84,15 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
       date: newDate
     };
 
-    setExpenses([newExp, ...expenses]);
-    setIsExpenseModalOpen(false);
-    setNewAmount("");
-    setNewDesc("");
-    setNewDate(new Date().toISOString().slice(0, 10));
+    try {
+      await setDoc(doc(db, "comptabilite", currentUserId, "depenses", newExp.id), newExp);
+      setIsExpenseModalOpen(false);
+      setNewAmount("");
+      setNewDesc("");
+      setNewDate(new Date().toISOString().slice(0, 10));
+    } catch (err) {
+      console.error("Erreur enregistrement dépense Firestore:", err);
+    }
   };
 
   // Filter sales/orders based on period & user

@@ -1332,7 +1332,7 @@ export default function App() {
   };
 
   // Manufacturer catalogs creation
-  const handleCreateProduct = (
+  const handleCreateProduct = async (
     p: Omit<Product, "id" | "creatorId">, 
     initialStock: number, 
     price: number,
@@ -1362,11 +1362,16 @@ export default function App() {
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
     };
 
-    productService.createProduct(newProd);
-    syncProducts([...products, newProd]);
-    inventoryService.updateInventoryItem(newInvItem);
-    syncInventory([...inventory, newInvItem]);
-    addNotification(`Nouveau produit créé : ${p.name}`);
+    try {
+      await productService.createProduct(newProd);
+      await inventoryService.updateInventoryItem(newInvItem);
+      setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
+      setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
+      addNotification(`Nouveau produit créé et synchronisé sur le Cloud : ${p.name}`);
+    } catch (err) {
+      console.error("Erreur création produit Firestore:", err);
+      addNotification("Erreur : Impossible d'enregistrer le produit sur le Cloud Firestore.");
+    }
   };
 
   const isRoleAllowed = (creatorRole: UserRole, targetRole: UserRole): boolean => {
@@ -1443,7 +1448,7 @@ export default function App() {
     syncStockMovements(updated);
   };
 
-  const handleUpdateInventory = (
+  const handleUpdateInventory = async (
     itemId: string, 
     stock: number, 
     price: number, 
@@ -1488,10 +1493,15 @@ export default function App() {
         return item;
       });
       if (changedItem) {
-        inventoryService.updateInventoryItem(changedItem);
+        try {
+          await inventoryService.updateInventoryItem(changedItem);
+          setInventory(updated);
+          addNotification("Stock mis à jour et synchronisé sur le Cloud.");
+        } catch (err) {
+          console.error("Erreur Firestore lors de la mise à jour du stock:", err);
+          addNotification("Erreur : Impossible de mettre à jour le stock sur Firestore.");
+        }
       }
-      syncInventory(updated);
-      addNotification("Stock mis à jour avec succès.");
     } else {
       const newItem: InventoryItem = {
         id: itemId || `i-${Date.now()}`,
@@ -1505,13 +1515,18 @@ export default function App() {
         quantiteMinimum: quantiteMinimum || 1,
         expirationDate: expirationDate
       };
-      inventoryService.updateInventoryItem(newItem);
-      syncInventory([...inventory, newItem]);
-      addNotification(`Nouveau produit ajouté à votre stock.`);
+      try {
+        await inventoryService.updateInventoryItem(newItem);
+        setInventory([...inventory, newItem]);
+        addNotification(`Nouveau produit ajouté et synchronisé sur le Cloud.`);
+      } catch (err) {
+        console.error("Erreur Firestore lors de l'ajout du stock:", err);
+        addNotification("Erreur : Impossible d'ajouter le stock sur Firestore.");
+      }
     }
   };
 
-  const handleUpdateProductFull = (
+  const handleUpdateProductFull = async (
     productId: string,
     productData: Partial<Product>,
     inventoryItemId?: string,
@@ -1519,47 +1534,48 @@ export default function App() {
   ) => {
     if (!currentUser) return;
 
-    if (productData && Object.keys(productData).length > 0) {
-      const updatedProducts = products.map((p) => {
-        if (p.id === productId) {
-          return { ...p, ...productData };
-        }
-        return p;
-      });
-      syncProducts(updatedProducts);
-      {
-        productService.createOrUpdateProduct({ id: productId, ...productData } as any);
-      }
-    }
-
-    if (inventoryItemId && inventoryData) {
-      const targetItem = inventory.find((i) => i.id === inventoryItemId);
-      if (targetItem) {
-        const oldStock = targetItem.stock;
-        const newStock = inventoryData.stock !== undefined ? inventoryData.stock : oldStock;
-        const delta = newStock - oldStock;
-        if (delta !== 0) {
-          recordStockMovement(
-            targetItem.productId,
-            delta > 0 ? "IN" : "OUT",
-            Math.abs(delta),
-            "Modification via page d'édition de stock"
-          );
-        }
-        const updatedInventory = inventory.map((i) => {
-          if (i.id === inventoryItemId) {
-            return { ...i, ...inventoryData };
+    try {
+      if (productData && Object.keys(productData).length > 0) {
+        await productService.createOrUpdateProduct({ id: productId, ...productData } as any);
+        const updatedProducts = products.map((p) => {
+          if (p.id === productId) {
+            return { ...p, ...productData };
           }
-          return i;
+          return p;
         });
-        syncInventory(updatedInventory);
-        {
-          inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
+        setProducts(updatedProducts);
+      }
+
+      if (inventoryItemId && inventoryData) {
+        const targetItem = inventory.find((i) => i.id === inventoryItemId);
+        if (targetItem) {
+          const oldStock = targetItem.stock;
+          const newStock = inventoryData.stock !== undefined ? inventoryData.stock : oldStock;
+          const delta = newStock - oldStock;
+          if (delta !== 0) {
+            recordStockMovement(
+              targetItem.productId,
+              delta > 0 ? "IN" : "OUT",
+              Math.abs(delta),
+              "Modification via page d'édition de stock"
+            );
+          }
+          await inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
+          const updatedInventory = inventory.map((i) => {
+            if (i.id === inventoryItemId) {
+              return { ...i, ...inventoryData };
+            }
+            return i;
+          });
+          setInventory(updatedInventory);
         }
       }
-    }
 
-    addNotification("Produit et stock mis à jour avec succès !");
+      addNotification("Produit et stock mis à jour et synchronisés sur le Cloud !");
+    } catch (err) {
+      console.error("Erreur Firestore lors de la mise à jour produit/stock:", err);
+      addNotification("Erreur : Échec de la mise à jour sur Firestore.");
+    }
   };
 
 

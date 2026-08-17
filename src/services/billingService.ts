@@ -130,60 +130,66 @@ export const billingService = {
       doc.setFont("helvetica", "italic");
       doc.text("Facture certifiée • Générée automatiquement via WakatMarket", 105, y, { align: "center" });
 
-      // 2. Génération immédiate du Blob et URL local
+      // 2. Génération du Blob PDF
       const pdfBlob = doc.output("blob");
-      const localUrl = URL.createObjectURL(pdfBlob);
 
-      // 3. Auto-téléchargement immédiat
+      // 3. Auto-téléchargement immédiat pour l'utilisateur
       try {
         doc.save(`Facture_${numeroFacture}.pdf`);
       } catch (saveError) {
-        console.warn("Auto save PDF browser error:", saveError);
+        console.warn("Auto save PDF browser notice:", saveError);
       }
 
-      // 4. Exécution asynchrone non-bloquante du stockage réseau
-      (async () => {
-        let urlPDF = localUrl;
+      // 4. Upload Supabase Storage (Bucket 2) & Persistance Firestore AWAITÉE
+      let urlPDF: string | null = null;
+      const storagePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
+      const storageBucket = "Bucket 2";
+
+      if (supabase) {
         try {
-          if (supabase) {
-            const filePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
-            const res = await uploadToSupabaseStorage("Bucket 2", filePath, pdfBlob, 'application/pdf');
-            if (res?.publicUrl) {
-              urlPDF = res.publicUrl;
-            }
+          const res = await uploadToSupabaseStorage(storageBucket, storagePath, pdfBlob, 'application/pdf');
+          if (res?.publicUrl) {
+            urlPDF = res.publicUrl;
           }
         } catch (stErr) {
-          console.warn("Supabase upload warn:", stErr);
+          console.warn("Erreur upload facture Supabase Storage:", stErr);
         }
+      }
 
-        // Fallback to Firebase Storage if urlPDF is still local
-        if (urlPDF === localUrl && storage) {
-          try {
-            const storageRef = ref(storage, `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`);
-            await uploadBytes(storageRef, pdfBlob, { contentType: 'application/pdf' });
-            urlPDF = await getDownloadURL(storageRef);
-          } catch (fbErr) {
-            console.warn("Firebase Storage upload warn for PDF:", fbErr);
-          }
-        }
-
+      // Fallback Firebase Storage si nécessaire
+      if (!urlPDF && storage) {
         try {
-          const db = getFirestore();
-          await addDoc(collection(db, "factures"), {
-            venteId: data.venteId,
-            numeroFacture,
-            urlPDF,
-            vendeurId: data.vendeurId,
-            acheteurId: data.acheteurId || null,
-            total: data.total,
-            dateEmission: serverTimestamp()
-          });
-        } catch (dbErr) {
-          console.warn("Firestore save warn (app running in local mode):", dbErr);
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, pdfBlob, { contentType: 'application/pdf' });
+          urlPDF = await getDownloadURL(storageRef);
+        } catch (fbErr) {
+          console.warn("Firebase Storage upload fallback notice:", fbErr);
         }
-      })();
+      }
 
-      return localUrl;
+      // Écriture du document de facture dans Firestore
+      try {
+        const firestoreDb = getFirestore();
+        await addDoc(collection(firestoreDb, "factures"), {
+          venteId: data.venteId,
+          numeroFacture,
+          urlPDF: urlPDF || null,
+          storageBucket: urlPDF ? storageBucket : null,
+          storagePath: urlPDF ? storagePath : null,
+          vendeurId: data.vendeurId,
+          vendeurNom: data.vendeurNom,
+          vendeurRole: data.vendeurRole,
+          acheteurId: data.acheteurId || null,
+          acheteurNom: data.acheteurNom || null,
+          total: data.total,
+          typeVente: data.typeVente || "DETAIL",
+          dateEmission: serverTimestamp()
+        });
+      } catch (dbErr) {
+        console.error("Erreur critique Firestore lors de l'enregistrement de la facture:", dbErr);
+      }
+
+      return urlPDF || URL.createObjectURL(pdfBlob);
     } catch (error) {
       console.error("Erreur lors de la génération de la facture:", error);
       throw new Error("Impossible de générer la facture.");

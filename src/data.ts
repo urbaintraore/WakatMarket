@@ -408,39 +408,39 @@ class ERPStorage {
   }
 
   saveUsers(users: UserProfile[]): void {
-    this.set("wakat_erp_v2_users", users);
+    // Ne pas persister dans localStorage, Firestore est la source de vérité
   }
 
   getProducts(): Product[] {
-    return filterMockData(this.get("wakat_erp_v2_products", USE_DEMO_DATA ? INITIAL_PRODUCTS : []));
+    return [];
   }
 
   saveProducts(products: Product[]): void {
-    this.set("wakat_erp_v2_products", products);
+    // Ne pas persister dans localStorage, Firestore est la source de vérité
   }
 
   getInventory(): InventoryItem[] {
-    return filterMockData(this.get("wakat_erp_v2_inventory", USE_DEMO_DATA ? INITIAL_INVENTORY : []));
+    return [];
   }
 
   saveInventory(inventory: InventoryItem[]): void {
-    this.set("wakat_erp_v2_inventory", inventory);
+    // Ne pas persister dans localStorage, Firestore est la source de vérité
   }
 
   getOrders(): Order[] {
-    return filterMockData(this.get("wakat_erp_v2_orders", USE_DEMO_DATA ? INITIAL_ORDERS : []));
+    return [];
   }
 
   saveOrders(orders: Order[]): void {
-    this.set("wakat_erp_v2_orders", orders);
+    // Ne pas persister dans localStorage, Firestore est la source de vérité
   }
 
   getMessages(): ChatMessage[] {
-    return filterMockData(this.get("wakat_erp_v2_messages", USE_DEMO_DATA ? INITIAL_MESSAGES : []));
+    return [];
   }
 
   saveMessages(messages: ChatMessage[]): void {
-    this.set("wakat_erp_v2_messages", messages);
+    // Ne pas persister dans localStorage, Firestore est la source de vérité
   }
 
   getRecommendations(): AIRecommendation[] {

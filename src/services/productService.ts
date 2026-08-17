@@ -106,24 +106,30 @@ export const productService = {
       // Save to Firestore
       await setDoc(doc(db, COLLECTION_NAME, product.id), product);
 
-      // Sync to Supabase
+      // Sync to Supabase table
       if (supabase) {
-        await upsertToSupabaseTable("products", {
-          id: product.id,
-          name: product.name,
-          description: product.description || "",
-          category: product.category || "",
-          brand: product.brand || "",
-          unit: product.unit || "",
-          creator_id: product.creatorId || null,
-          prix_gros: product.prixGros || null,
-          prix_detail: product.prixDetail || null,
-          image: product.image || product.imageUrl || null,
-          created_at: new Date().toISOString()
-        });
+        try {
+          await upsertToSupabaseTable("products", {
+            id: product.id,
+            name: product.name,
+            description: product.description || "",
+            category: product.category || "",
+            brand: product.brand || "",
+            unit: product.unit || "",
+            creator_id: product.creatorId || null,
+            prix_gros: product.prixGros || null,
+            prix_detail: product.prixDetail || null,
+            image: product.image || product.imageUrl || null,
+            created_at: new Date().toISOString()
+          });
+        } catch (supErr) {
+          console.warn("Supabase background sync warning on products table:", supErr);
+        }
       }
     } catch (error: any) {
-      console.warn("Firestore/Supabase error during createProduct:", error);
+      console.error("Erreur critique Firestore lors de la création du produit:", error);
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_NAME}/${product.id}`);
+      throw error;
     }
   },
 
@@ -135,10 +141,16 @@ export const productService = {
     try {
       await deleteDoc(doc(db, COLLECTION_NAME, id));
       if (supabase) {
-        await deleteFromSupabaseTable("products", id);
+        try {
+          await deleteFromSupabaseTable("products", id);
+        } catch (supErr) {
+          console.warn("Supabase background delete warning on products table:", supErr);
+        }
       }
     } catch (error: any) {
-      console.warn("Firestore error during deleteProduct:", error);
+      console.error("Erreur critique Firestore lors de la suppression du produit:", error);
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTION_NAME}/${id}`);
+      throw error;
     }
   }
 };

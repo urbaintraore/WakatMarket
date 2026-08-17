@@ -138,7 +138,10 @@ export const inventoryService = {
 
   async updateInventoryItem(item: InventoryItem): Promise<void> {
     try {
+      // 1. Écriture principale dans la collection racine /inventory/{id}
       await setDoc(doc(db, COLLECTION_NAME, item.id), item);
+      
+      // 2. Écriture synchronisée dans la sous-collection du propriétaire /stocks/{ownerId}/items/{productId}
       if (item.ownerId && item.productId) {
         try {
           await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), {
@@ -158,10 +161,10 @@ export const inventoryService = {
         }
       }
 
-      // Sync to Supabase
+      // 3. Synchronisation secondaire Supabase si configuré
       if (supabase) {
         try {
-          const { error } = await supabase
+          await supabase
             .from("inventory")
             .upsert({
               id: item.id,
@@ -176,15 +179,14 @@ export const inventoryService = {
               quantite_minimum: item.quantiteMinimum || null,
               updated_at: new Date().toISOString()
             });
-          if (error) {
-            console.warn("Supabase upsert error on inventory table:", error.message);
-          }
         } catch (supErr) {
-          console.warn("Supabase is not accessible or table inventory does not exist:", supErr);
+          console.warn("Supabase background sync notice:", supErr);
         }
       }
     } catch (error: any) {
-      console.warn("Firestore error during updateInventoryItem:", error);
+      console.error("Erreur critique Firestore lors de la mise à jour du stock:", error);
+      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_NAME}/${item.id}`);
+      throw error;
     }
   },
 
@@ -192,22 +194,17 @@ export const inventoryService = {
     try {
       await deleteDoc(doc(db, COLLECTION_NAME, id));
 
-      // Delete from Supabase
       if (supabase) {
         try {
-          const { error } = await supabase
-            .from("inventory")
-            .delete()
-            .eq("id", id);
-          if (error) {
-            console.warn("Supabase delete error on inventory table:", error.message);
-          }
+          await supabase.from("inventory").delete().eq("id", id);
         } catch (supErr) {
-          console.warn("Supabase delete error:", supErr);
+          console.warn("Supabase delete notice:", supErr);
         }
       }
     } catch (error: any) {
-      console.warn("Firestore error during deleteInventoryItem:", error);
+      console.error("Erreur critique Firestore lors de la suppression du stock:", error);
+      handleFirestoreError(error, OperationType.DELETE, `${COLLECTION_NAME}/${id}`);
+      throw error;
     }
   },
 
