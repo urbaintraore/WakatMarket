@@ -14,6 +14,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import { billingService } from "./billingService";
 import { Order, OrderStatus } from "../types";
+import { supabase, uploadToSupabaseStorage } from "../supabase";
 
 export interface PreuvePaiementParams {
   venteId: string;
@@ -47,8 +48,8 @@ export interface RejetPaiementParams {
 
 export const paymentProofService = {
   /**
-   * 1. Téléverse la capture d'écran vers Firebase Storage (ou fallback)
-   * et met à jour le statut du paiement à 'preuve_soumise'
+   * 1. Téléverse la capture d'écran vers Supabase Storage (Bucket 2)
+   * et met à jour le statut du paiement à 'preuve_soumise' dans Firestore
    */
   async uploadPreuvePaiement({
     venteId,
@@ -59,14 +60,27 @@ export const paymentProofService = {
     acheteurNom
   }: PreuvePaiementParams): Promise<string> {
     let downloadUrl = "";
+    const timestamp = Date.now();
+    const extension = file instanceof File && file.name ? file.name.split('.').pop() : 'jpg';
+    const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
+    let storageBucket = "Bucket 2";
 
-    // 1. Essai de téléversement vers Firebase Storage
-    try {
-      if (storage) {
-        const timestamp = Date.now();
-        const extension = file instanceof File && file.name ? file.name.split('.').pop() : 'jpg';
-        const storageRef = ref(storage, `preuves-paiement/${venteId}/${timestamp}.${extension}`);
-        
+    // 1. Upload physique prioritaire vers Supabase Storage
+    if (supabase) {
+      try {
+        const res = await uploadToSupabaseStorage("Bucket 2", storagePath, file, file.type || "image/jpeg");
+        if (res?.publicUrl) {
+          downloadUrl = res.publicUrl;
+        }
+      } catch (supErr) {
+        console.warn("Supabase Storage upload warning for payment proof:", supErr);
+      }
+    }
+
+    // Fallback Firebase Storage
+    if (!downloadUrl && storage) {
+      try {
+        const storageRef = ref(storage, storagePath);
         await uploadBytes(storageRef, file, {
           contentType: file.type || "image/jpeg",
           customMetadata: {
@@ -76,32 +90,25 @@ export const paymentProofService = {
             total: String(totalAmount)
           }
         });
-
         downloadUrl = await getDownloadURL(storageRef);
+        storageBucket = "firebase";
+      } catch (storageError) {
+        console.warn("Firebase Storage fallback upload notice:", storageError);
       }
-    } catch (storageError) {
-      console.warn("Storage direct upload error, using local fallback URL / base64:", storageError);
     }
 
-    // Fallback URL si le storage échoue ou sandbox hors-ligne
     if (!downloadUrl) {
-      if (file instanceof File || file instanceof Blob) {
-        downloadUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-      } else {
-        downloadUrl = URL.createObjectURL(file);
-      }
+      throw new Error("Échec du téléversement de la preuve de paiement sur le Cloud.");
     }
 
     const now = serverTimestamp();
 
-    // 2. Mettre à jour /ventes/{venteId} et /orders/{venteId}
+    // 2. Mettre à jour /ventes/{venteId} et /orders/{venteId} dans Firestore
     const updateData = {
       statutPaiement: "preuve_soumise",
       preuvePaiementUrl: downloadUrl,
+      preuvePaiementStoragePath: storagePath,
+      preuvePaiementBucket: storageBucket,
       dateSoumissionPreuve: now,
       commentaireRejet: null,
       updatedAt: new Date().toISOString()
