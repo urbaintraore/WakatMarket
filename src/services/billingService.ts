@@ -138,10 +138,10 @@ export const billingService = {
         console.warn("Auto save PDF browser notice:", saveError);
       }
 
-      // 4. Upload Supabase Storage (Bucket 2) & Persistance Firestore AWAITÉE
+      // 4. Upload Supabase Storage (MonBucket) & Persistance Firestore AWAITÉE
       let urlPDF: string | null = null;
       const storagePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
-      const storageBucket = "Bucket 2";
+      const storageBucket = "MonBucket";
 
       if (supabase) {
         try {

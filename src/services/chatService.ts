@@ -378,7 +378,7 @@ export const chatService = {
         const filePath = `${folder}/${filename}`;
         console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
         
-        const res = await uploadToSupabaseStorage("chat", filePath, file);
+        const res = await uploadToSupabaseStorage("Chat", filePath, file);
         if (res?.publicUrl) {
           console.log(`[chatService.uploadMedia] Public URL generated via bucket '${res.bucket}': ${res.publicUrl.substring(0, 50)}...`);
           return res.publicUrl;

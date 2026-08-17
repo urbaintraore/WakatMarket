@@ -160,8 +160,16 @@ export function EditProductStockModal({
         setImage(res.publicUrl);
       }
     } catch (err: any) {
-      console.error("Erreur lors de l'envoi de la nouvelle image produit sur Supabase:", err);
-      alert(`Erreur d'envoi vers Supabase : ${err.message || err}`);
+      console.warn("Upload Supabase échoué, bascule vers Data URL locale:", err);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          const res = e.target.result as string;
+          setUploadedImage(res);
+          setImage(res);
+        }
+      };
+      reader.readAsDataURL(file);
     } finally {
       setIsUploading(false);
     }

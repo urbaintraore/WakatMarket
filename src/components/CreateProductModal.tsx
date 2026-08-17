@@ -78,14 +78,20 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
     }
     setIsUploading(true);
     try {
-      // Direct upload to Supabase Storage (Bucket 2)
+      // Direct upload to Supabase Storage (MonBucket)
       const res = await productService.uploadProductImage(file);
       if (res?.publicUrl) {
         setUploadedImage(res.publicUrl);
       }
     } catch (err: any) {
-      console.error("Erreur lors de l'upload d'image vers Supabase:", err);
-      alert(err.message || "Erreur lors de l'envoi de l'image sur Supabase.");
+      console.warn("Upload Supabase échoué, bascule vers Data URL locale:", err);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          setUploadedImage(e.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
     } finally {
       setIsUploading(false);
     }

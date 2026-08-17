@@ -47,7 +47,7 @@ export interface RejetPaiementParams {
 
 export const paymentProofService = {
   /**
-   * 1. Téléverse la capture d'écran vers Supabase Storage (Bucket 2)
+   * 1. Téléverse la capture d'écran vers Supabase Storage (MonBucket)
    * et met à jour le statut du paiement à 'preuve_soumise' dans Firestore
    */
   async uploadPreuvePaiement({
@@ -62,7 +62,7 @@ export const paymentProofService = {
     const timestamp = Date.now();
     const extension = file instanceof File && file.name ? file.name.split('.').pop() : 'jpg';
     const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
-    const storageBucket = "Bucket 2";
+    const storageBucket = "MonBucket";
 
     // 1. Upload physique exclusif vers Supabase Storage
     if (!supabase) {

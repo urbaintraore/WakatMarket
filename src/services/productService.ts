@@ -71,7 +71,7 @@ export const productService = {
   },
 
   /**
-   * Upload product image exclusively to Supabase Storage (Bucket 2)
+   * Upload product image exclusively to Supabase Storage (MonBucket)
    */
   async uploadProductImage(file: File, creatorId?: string, productId?: string): Promise<ProductUploadResult> {
     if (!supabase) {
@@ -84,52 +84,44 @@ export const productService = {
     const userFolder = creatorId || 'common';
     const prodFolder = productId || 'new';
     const filePath = `products/${userFolder}/${prodFolder}_${timestamp}_${randomSuffix}.${ext}`;
-    const bucket = "Bucket 2";
+    const targetBucket = "MonBucket";
 
-    const res = await uploadToSupabaseStorage(bucket, filePath, file, file.type || 'image/jpeg');
+    const res = await uploadToSupabaseStorage(targetBucket, filePath, file, file.type || 'image/jpeg');
     if (!res || !res.publicUrl) {
-      throw new Error("Échec du téléversement du fichier sur Supabase Storage (Bucket 2).");
+      throw new Error("Échec du téléversement du fichier sur Supabase Storage (MonBucket).");
     }
 
     return {
       publicUrl: res.publicUrl,
       storagePath: filePath,
-      bucket: bucket
+      bucket: res.bucket
     };
   },
 
   async createProduct(product: Product): Promise<void> {
     let uploadedPath: string | null = null;
-    const bucket = "Bucket 2";
+    let uploadedBucket = "MonBucket";
 
     try {
       // 1. Intercept base64 images and upload them exclusively to Supabase Storage
       if (product.image && product.image.startsWith("data:image")) {
-        try {
-          const file = await base64ToFile(product.image, `product_${product.id}.jpg`);
-          const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
-          product.image = uploadRes.publicUrl;
-          product.imageUrl = uploadRes.publicUrl;
-          (product as any).imagePath = uploadRes.storagePath;
-          (product as any).imageBucket = uploadRes.bucket;
-          uploadedPath = uploadRes.storagePath;
-        } catch (uploadErr: any) {
-          console.error("Échec upload Supabase pour image produit:", uploadErr);
-          throw new Error(`Le fichier a échoué à l'envoi vers Supabase Storage : ${uploadErr.message || uploadErr}`);
-        }
+        const file = await base64ToFile(product.image, `product_${product.id}.jpg`);
+        const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
+        product.image = uploadRes.publicUrl;
+        product.imageUrl = uploadRes.publicUrl;
+        (product as any).imagePath = uploadRes.storagePath;
+        (product as any).imageBucket = uploadRes.bucket;
+        uploadedPath = uploadRes.storagePath;
+        uploadedBucket = uploadRes.bucket;
       } else if (product.imageUrl && product.imageUrl.startsWith("data:image")) {
-        try {
-          const file = await base64ToFile(product.imageUrl, `product_${product.id}_url.jpg`);
-          const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
-          product.imageUrl = uploadRes.publicUrl;
-          product.image = uploadRes.publicUrl;
-          (product as any).imagePath = uploadRes.storagePath;
-          (product as any).imageBucket = uploadRes.bucket;
-          uploadedPath = uploadRes.storagePath;
-        } catch (uploadErr: any) {
-          console.error("Échec upload Supabase pour image secondaire:", uploadErr);
-          throw new Error(`Le fichier secondaire a échoué à l'envoi vers Supabase Storage : ${uploadErr.message || uploadErr}`);
-        }
+        const file = await base64ToFile(product.imageUrl, `product_${product.id}_url.jpg`);
+        const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
+        product.imageUrl = uploadRes.publicUrl;
+        product.image = uploadRes.publicUrl;
+        (product as any).imagePath = uploadRes.storagePath;
+        (product as any).imageBucket = uploadRes.bucket;
+        uploadedPath = uploadRes.storagePath;
+        uploadedBucket = uploadRes.bucket;
       }
 
       // 2. Persist to Firestore (Source of truth)
@@ -163,8 +155,8 @@ export const productService = {
       // Clean up orphaned uploaded file if Firestore write failed
       if (uploadedPath && supabase) {
         try {
-          await supabase.storage.from(bucket).remove([uploadedPath]);
-          console.log(`Cleaned up orphaned file ${uploadedPath} from Supabase Storage.`);
+          await supabase.storage.from(uploadedBucket as any).remove([uploadedPath]);
+          console.log(`Cleaned up orphaned file ${uploadedPath} from Supabase Storage (${uploadedBucket}).`);
         } catch (cleanErr) {
           console.warn("Could not remove orphaned file from Supabase Storage:", cleanErr);
         }

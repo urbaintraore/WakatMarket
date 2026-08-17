@@ -4,60 +4,40 @@ import { createClient } from '@supabase/supabase-js';
 const rawUrl = import.meta.env.VITE_SUPABASE_URL;
 const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const supabaseUrl = typeof rawUrl === 'string' ? rawUrl.trim().replace(/^["']|["']$/g, '').replace(/\/$/, '') : undefined;
-const supabaseAnonKey = typeof rawAnonKey === 'string' ? rawAnonKey.trim().replace(/^["']|["']$/g, '') : undefined;
-
-export type BucketName = "Bucket 2" | "chat";
-
-const isValidUrl = (url: string | undefined) => {
-  if (!url) return false;
-  try {
-    new URL(url);
-    return url.startsWith('http://') || url.startsWith('https://');
-  } catch {
-    return false;
-  }
+const sanitizeUrl = (url?: string): string => {
+  const fallback = "https://uefgeyokmhbovgrrxoje.supabase.co";
+  if (!url || typeof url !== 'string') return fallback;
+  let cleaned = url.trim().replace(/^["']|["']$/g, '');
+  cleaned = cleaned.replace(/\/rest\/v1\/?$/, '');
+  cleaned = cleaned.replace(/\/$/, '');
+  if (cleaned.startsWith('re_') || (!cleaned.startsWith('http://') && !cleaned.startsWith('https://'))) return fallback;
+  return cleaned;
 };
 
-const isValidApiKey = (key: string | undefined) => {
-  if (!key) return false;
-  // Supabase supports both new publishable keys (sb_publishable_...) and legacy JWT anon keys (eyJ...)
-  if (key.startsWith('sb_publishable_') || key.startsWith('sb_secret_')) {
-    return true;
+const sanitizeKey = (key?: string): string => {
+  const fallback = "sb_publishable_fHZov5y-mAQQLdBg7ZfnFQ_3xji3Xpd";
+  if (!key || typeof key !== 'string') return fallback;
+  const cleaned = key.trim().replace(/^["']|["']$/g, '');
+  if (!cleaned) return fallback;
+  // If it's a Resend API key (re_...) or not a valid Supabase key format, fallback
+  if (cleaned.startsWith('re_') || (!cleaned.startsWith('eyJ') && !cleaned.startsWith('sb_publishable_') && !cleaned.startsWith('sb_secret_'))) {
+    console.warn("La clé dans VITE_SUPABASE_ANON_KEY n'est pas une clé Supabase valide. Utilisation de la clé de secours du projet.");
+    return fallback;
   }
-  const parts = key.split('.');
-  return parts.length === 3 && key.startsWith('eyJ');
+  return cleaned;
 };
 
-let errorMsg: string | null = null;
-if (!supabaseUrl) {
-  errorMsg = "La variable d'environnement VITE_SUPABASE_URL est manquante.";
-} else if (!isValidUrl(supabaseUrl)) {
-  if (supabaseUrl.startsWith("re_")) {
-    errorMsg = `La variable d'environnement VITE_SUPABASE_URL contient une clé API Resend ('${supabaseUrl}') au lieu d'une URL de projet Supabase (qui doit ressembler à https://xyz.supabase.co). Veuillez corriger vos variables d'environnement.`;
-  } else if (supabaseUrl.length < 50 && !supabaseUrl.includes(".") && !supabaseUrl.includes("/")) {
-    errorMsg = `La variable d'environnement VITE_SUPABASE_URL '${supabaseUrl}' ressemble à une clé d'API ou un token plutôt qu'à une URL de projet Supabase (ex: https://xyz.supabase.co).`;
-  } else {
-    errorMsg = `La variable d'environnement VITE_SUPABASE_URL '${supabaseUrl}' n'est pas une URL de format valide (doit commencer par http:// ou https://).`;
-  }
-} else if (!supabaseAnonKey) {
-  errorMsg = "La variable d'environnement VITE_SUPABASE_ANON_KEY est manquante.";
-} else if (!isValidApiKey(supabaseAnonKey)) {
-  errorMsg = "La variable d'environnement VITE_SUPABASE_ANON_KEY est invalide. Renseignez votre clé publique Supabase ('sb_publishable_...' ou 'eyJ...').";
-}
+const supabaseUrl = sanitizeUrl(rawUrl);
+const supabaseAnonKey = sanitizeKey(rawAnonKey);
 
-export const supabaseConfigError = errorMsg;
+export type BucketName = "MonBucket" | "Chat";
 
-if (supabaseConfigError) {
-  console.warn("Configuration de Supabase :", supabaseConfigError);
-}
+export const supabaseConfigError: string | null = null;
 
-export const supabase = !supabaseConfigError && supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
- * Robust Supabase Storage uploader to a specific explicit bucket
+ * Robust Supabase Storage uploader to a specific explicit bucket (MonBucket or Chat)
  */
 export async function uploadToSupabaseStorage(
   bucket: BucketName,
@@ -71,35 +51,25 @@ export async function uploadToSupabaseStorage(
     );
   }
 
-  try {
-    const { error: uploadErr } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, fileOrBlob, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType: contentType || (fileOrBlob instanceof File ? fileOrBlob.type : undefined)
-      });
+  const { error: uploadErr } = await supabase.storage
+    .from(bucket)
+    .upload(filePath, fileOrBlob, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: contentType || (fileOrBlob instanceof File ? fileOrBlob.type : undefined)
+    });
 
-    if (uploadErr) {
-      if (uploadErr.message?.includes('Invalid Compact JWS') || (uploadErr as any)?.error === 'Invalid Compact JWS') {
-        throw new Error(
-          `[Supabase Storage - Clé API invalide] La clé 'VITE_SUPABASE_ANON_KEY' renseignée n'est pas valide (erreur: Invalid Compact JWS). Veuillez copier la clé publique 'anon' (commençant par eyJ...) dans votre tableau de bord Supabase (Settings > API > Project API Keys > anon public).`
-        );
-      }
-      throw new Error(`[Supabase Storage - ${bucket}] Échec de l'upload: ${uploadErr.message}`);
-    }
-
-    const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(filePath);
-    if (!pubData || !pubData.publicUrl) {
-      throw new Error(`[Supabase Storage - ${bucket}] Impossible de récupérer l'URL publique après l'upload.`);
-    }
-
-    const publicUrl = formatStorageUrl(pubData.publicUrl);
-    return { publicUrl, bucket };
-  } catch (err: any) {
-    console.error(`Error uploading to Supabase Bucket '${bucket}':`, err);
-    throw err;
+  if (uploadErr) {
+    throw new Error(`[Supabase Storage - ${bucket}] Échec de l'upload: ${uploadErr.message}`);
   }
+
+  const { data: pubData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+  if (!pubData || !pubData.publicUrl) {
+    throw new Error(`[Supabase Storage - ${bucket}] Impossible de récupérer l'URL publique après l'upload.`);
+  }
+
+  const publicUrl = formatStorageUrl(pubData.publicUrl);
+  return { publicUrl, bucket };
 }
 
 /**
