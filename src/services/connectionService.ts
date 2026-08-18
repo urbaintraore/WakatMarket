@@ -42,7 +42,7 @@ export const connectionService = {
       updated_at: nowIso
     });
 
-    if (relError) {
+    if (relError && relError.code === 'PGRST205') { console.warn("Table business_relationships missing"); return; } else if (relError) {
       console.error("Erreur enregistrement connexion Supabase:", relError);
       throw relError;
     }
@@ -146,6 +146,7 @@ export const connectionService = {
         .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
 
       if (error) {
+        if (error.code === 'PGRST205') { return; }
         console.error("Erreur fetch connections Supabase:", error);
         return;
       }
@@ -200,6 +201,7 @@ export const connectionService = {
         .order("created_at", { ascending: false });
 
       if (error) {
+        if (error.code === 'PGRST205') { return; }
         console.error("Erreur fetch notifications Supabase:", error);
         return;
       }

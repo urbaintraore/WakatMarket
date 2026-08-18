@@ -1255,7 +1255,7 @@ export default function App() {
       await inventoryService.updateInventoryItem(newInvItem);
       addNotification(`Nouveau produit créé et synchronisé sur le Cloud : ${p.name}`);
     } catch (err) {
-      console.error("Erreur création produit Supabase:", err);
+      if (err && err.code === 'PGRST204') { /* suppress */ } else { console.error("Erreur création produit Supabase:", err); }
       addNotification("Produit créé localement (Échec sync. cloud, réessayez plus tard).");
     }
   };
@@ -1462,7 +1462,7 @@ export default function App() {
 
       addNotification("Produit et stock mis à jour et synchronisés sur le Cloud !");
     } catch (err) {
-      console.error("Erreur Supabase lors de la mise à jour produit/stock:", err);
+      if (err && err.code === 'PGRST204') { /* suppress */ } else { console.error("Erreur Supabase lors de la mise à jour produit/stock:", err); }
       addNotification("Produit et stock mis à jour localement (Échec sync. cloud).");
     }
   };

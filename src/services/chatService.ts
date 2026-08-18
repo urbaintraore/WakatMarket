@@ -112,7 +112,7 @@ export const chatService = {
   },
 
   /**
-   * Téléverser un fichier média pour le chat vers Supabase Storage (MonBucket)
+   * Téléverser un fichier média pour le chat vers Supabase Storage (Chat)
    */
   async uploadChatMedia(conversationId: string, file: File | Blob, mimeType?: string): Promise<string> {
     if (!supabase) {
@@ -122,7 +122,7 @@ export const chatService = {
     const timestamp = Date.now();
     const ext = file instanceof File && file.name ? file.name.split(".").pop() : "bin";
     const storagePath = `chat-media/${conversationId}/${timestamp}.${ext}`;
-    const storageBucket = "MonBucket";
+    const storageBucket = "Chat";
 
     const res = await uploadToSupabaseStorage(
       storageBucket,

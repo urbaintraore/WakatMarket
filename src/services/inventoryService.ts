@@ -39,7 +39,7 @@ export const inventoryService = {
       const { data, error } = await supabase
         .from("inventory")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("updated_at", { ascending: false });
 
       if (error) {
         console.error("Erreur getAllInventory Supabase:", error);
@@ -142,10 +142,10 @@ export const inventoryService = {
       reserved_quantity: 0,
       low_stock_threshold: Number(item.threshold || 5),
       price: Number(item.price || 0),
-      prix_gros: item.prixGros ? Number(item.prixGros) : null,
-      prix_detail: item.prixDetail ? Number(item.prixDetail) : null,
-      quantite_minimum: item.quantiteMinimum ? Number(item.quantiteMinimum) : 1,
-      expiration_date: item.expirationDate || null,
+      // prix_gros: item.prixGros ? Number(item.prixGros) : null,
+      // prix_detail: item.prixDetail ? Number(item.prixDetail) : null,
+      // quantite_minimum: item.quantiteMinimum ? Number(item.quantiteMinimum) : 1,
+      // expiration_date: item.expirationDate || null,
       updated_at: new Date().toISOString()
     };
 
