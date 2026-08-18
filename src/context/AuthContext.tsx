@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { authService, formatSupabaseAuthError } from "../services/authService";
-import { userService, FirebaseUser } from "../services/userService";
+import { userService, SupabaseUser } from "../services/userService";
 import { UserRole, normalizeUserRole, isBonkoungou } from "../types";
 
 export interface AuthUserObject {
@@ -14,8 +14,8 @@ export interface AuthUserObject {
 
 interface AuthContextType {
   user: User | null;
-  firebaseUser: AuthUserObject | null; // For backward compatibility with existing views
-  dbUser: FirebaseUser | null;
+  supabaseUser: AuthUserObject | null; // For backward compatibility with existing views
+  dbUser: SupabaseUser | null;
   loading: boolean;
   error: string | null;
   confirmationResult: any;
@@ -45,14 +45,14 @@ interface AuthContextType {
   ) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (fields: Partial<FirebaseUser>) => Promise<void>;
+  updateProfile: (fields: Partial<SupabaseUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
-  const [dbUser, setDbUser] = useState<FirebaseUser | null>(null);
+  const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (user) {
-        const newUser: FirebaseUser = {
+        const newUser: SupabaseUser = {
           uid: user.id,
           id: user.id,
           nom: nom.trim(),
@@ -277,13 +277,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateProfile = async (fields: Partial<FirebaseUser>) => {
+  const updateProfile = async (fields: Partial<SupabaseUser>) => {
     const targetUid = supabaseUser?.id || dbUser?.uid;
     if (!targetUid) throw new Error("Aucun utilisateur connecté.");
     setError(null);
     try {
       await userService.updateUser(targetUid, fields);
-      setDbUser((prev) => (prev ? { ...prev, ...fields } : ({ uid: targetUid, ...fields } as FirebaseUser)));
+      setDbUser((prev) => (prev ? { ...prev, ...fields } : ({ uid: targetUid, ...fields } as SupabaseUser)));
     } catch (err: any) {
       setError(err.message || "Erreur de mise à jour du profil.");
       throw err;
@@ -304,7 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user: supabaseUser,
-        firebaseUser: authUserObject,
+        supabaseUser: authUserObject,
         dbUser,
         loading,
         error,

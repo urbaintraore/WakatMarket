@@ -391,7 +391,7 @@ export function CaisseModule({
 
       const paymentMethod = amountPaid < totalAmount ? "DEFERRED" : "CASH";
 
-      // 1. Écriture directe Firestore (Offline-First dans /ventes/{venteId}) avec statut "en_attente_synchronisation"
+      // 1. Écriture directe Supabase (Offline-First dans /ventes/{venteId}) avec statut "en_attente_synchronisation"
       const generatedVenteId = await venteService.enregistrerVenteHorsLigneDirecte({
         vendeurId: currentUser.id,
         vendeurNom: currentUser.companyName || currentUser.name,

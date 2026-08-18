@@ -130,10 +130,15 @@ export const productService = {
 
     // 1. Si l'image est en base64, l'uploader sur Supabase Storage (MonBucket)
     if (finalImageUrl.startsWith("data:image")) {
-      const file = await base64ToFile(finalImageUrl, `prod_${product.id}.jpg`);
-      const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
-      finalImageUrl = uploadRes.publicUrl;
-      storagePath = uploadRes.storagePath;
+      try {
+        const file = await base64ToFile(finalImageUrl, `prod_${product.id}.jpg`);
+        const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
+        finalImageUrl = uploadRes.publicUrl;
+        storagePath = uploadRes.storagePath;
+      } catch (uploadError) {
+        console.warn("Échec de l'upload de l'image sur Supabase Storage, utilisation du Base64 en fallback:", uploadError);
+        // On conserve finalImageUrl comme base64
+      }
     }
 
     // 2. Persister directement dans la table PostgreSQL 'products'

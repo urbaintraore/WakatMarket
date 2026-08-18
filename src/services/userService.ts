@@ -30,7 +30,7 @@ export interface UserProfileData {
 }
 
 // Alias for seamless backward compatibility across views
-export type FirebaseUser = UserProfileData;
+export type SupabaseUser = UserProfileData;
 
 export const userService = {
   /**

@@ -19,7 +19,7 @@ import {
 } from "./data";
 import { useAuth } from "./hooks/useAuth";
 import { authService, formatSupabaseAuthError } from "./services/authService";
-import { userService, FirebaseUser } from "./services/userService";
+import { userService, SupabaseUser } from "./services/userService";
 import { inventoryService } from "./services/inventoryService";
 import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
@@ -99,14 +99,14 @@ export default function App() {
   }, [autoSystemTheme]);
 
   const {
-    firebaseUser,
+    supabaseUser,
     dbUser,
     loginWithEmail,
     registerWithEmail,
     sendPasswordReset,
     requestPhoneOTP,
     verifyPhoneOTP,
-    logout: firebaseLogout,
+    logout: supabaseLogout,
     loading: authLoading,
     confirmationResult,
     error: authError,
@@ -115,16 +115,16 @@ export default function App() {
 
   const [isRealUserAuthenticated, setIsRealUserAuthenticated] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
-  const [firestorePermissionError, setFirestorePermissionError] = useState<{ message: string; path?: string; rawError?: string } | null>(null);
+  const [supabasePermissionError, setSupabasePermissionError] = useState<{ message: string; path?: string; rawError?: string } | null>(null);
 
   useEffect(() => {
     const handlePermissionError = (e: any) => {
       if (e.detail) {
-        setFirestorePermissionError(e.detail);
+        setSupabasePermissionError(e.detail);
       }
     };
-    window.addEventListener("wakat_firestore_permission_error", handlePermissionError);
-    return () => window.removeEventListener("wakat_firestore_permission_error", handlePermissionError);
+    window.addEventListener("wakat_supabase_permission_error", handlePermissionError);
+    return () => window.removeEventListener("wakat_supabase_permission_error", handlePermissionError);
   }, []);
 
   useEffect(() => {
@@ -157,10 +157,10 @@ export default function App() {
   });
 
   useEffect(() => {
-    setIsRealUserAuthenticated(!!firebaseUser && !!dbUser);
-  }, [firebaseUser, dbUser]);
+    setIsRealUserAuthenticated(!!supabaseUser && !!dbUser);
+  }, [supabaseUser, dbUser]);
 
-  // Firestore Sync for users
+  // Supabase Sync for users
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -186,7 +186,7 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Firestore Sync for products
+  // Supabase Sync for products
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -200,7 +200,7 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Firestore Sync for inventory
+  // Supabase Sync for inventory
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -278,7 +278,7 @@ export default function App() {
     }
   }, [currentUser?.id]);
 
-  // Firestore Sync for orders
+  // Supabase Sync for orders
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -302,7 +302,7 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Sync currentUser with real Firebase user
+  // Sync currentUser with real Supabase user
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
       const normEmail = dbUser.email ? dbUser.email.toLowerCase().trim() : "";
@@ -424,17 +424,17 @@ export default function App() {
 
   // Synchronize Supabase User profile to Active ERP Session
   useEffect(() => {
-    if (firebaseUser) {
+    if (supabaseUser) {
       const profileSource = dbUser || {
-        uid: firebaseUser.uid,
-        id: firebaseUser.uid,
-        nom: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Utilisateur",
+        uid: supabaseUser.uid,
+        id: supabaseUser.uid,
+        nom: supabaseUser.displayName || supabaseUser.email?.split("@")[0] || "Utilisateur",
         prénom: "",
-        email: firebaseUser.email || "",
-        téléphone: firebaseUser.phoneNumber || "",
-        phone: firebaseUser.phoneNumber || "",
-        rôle: (firebaseUser.email === "urbain.traore@yahoo.fr" || firebaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
-        role: (firebaseUser.email === "urbain.traore@yahoo.fr" || firebaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
+        email: supabaseUser.email || "",
+        téléphone: supabaseUser.phoneNumber || "",
+        phone: supabaseUser.phoneNumber || "",
+        rôle: (supabaseUser.email === "urbain.traore@yahoo.fr" || supabaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
+        role: (supabaseUser.email === "urbain.traore@yahoo.fr" || supabaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
         statut: "ACTIF"
       };
 
@@ -454,7 +454,7 @@ export default function App() {
         sector: profileSource.quartier,
         latitude: profileSource.latitude,
         longitude: profileSource.longitude,
-        avatar: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+        avatar: supabaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         balance: existingUser?.balance || 0,
         companyName: profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`,
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
@@ -476,9 +476,9 @@ export default function App() {
       setCurrentUser(null);
       setIsAuthScreen(true);
     }
-  }, [firebaseUser, dbUser]);
+  }, [supabaseUser, dbUser]);
 
-  // Synchroniser tous les autres utilisateurs réels depuis Firestore et le stockage local
+  // Synchroniser tous les autres utilisateurs réels depuis Supabase et le stockage local
   useEffect(() => {
     let active = true;
     const fetchRealUsers = async () => {
@@ -582,7 +582,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [firebaseUser, dbUser]);
+  }, [supabaseUser, dbUser]);
 
   // Display auth error messages in helper state
   useEffect(() => {
@@ -733,8 +733,8 @@ export default function App() {
     setUsers(list);
     db.saveUsers(list);
     
-    // If authenticated, also update Firestore users list or handle individual deletions
-    // Note: handleDeleteUser will handle specific Firestore deletions
+    // If authenticated, also update Supabase users list or handle individual deletions
+    // Note: handleDeleteUser will handle specific Supabase deletions
   };
 
   const syncProducts = (list: Product[]) => {
@@ -1031,7 +1031,7 @@ export default function App() {
     e.preventDefault();
     setFbMsg(null);
     try {
-      await verifyPhoneOTP(fbOtpCode, fbNom || "Utilisateur", fbPrénom || "Firebase", fbEmail, fbRôle);
+      await verifyPhoneOTP(fbOtpCode, fbNom || "Utilisateur", fbPrénom || "Supabase", fbEmail, fbRôle);
       setFbMsg({ type: "success", text: "Vérification OTP réussie !" });
       setIsAuthScreen(false);
     } catch (err: any) {
@@ -1081,7 +1081,7 @@ export default function App() {
       
       await userService.updateUser(userId, fbUpdate);
     } catch (err) {
-      console.error("Erreur mise à jour Firestore par admin:", err);
+      console.error("Erreur mise à jour Supabase par admin:", err);
     }
   };
 
@@ -1096,14 +1096,14 @@ export default function App() {
     });
     syncUsers(updated);
 
-    // Firestore Update
+    // Supabase Update
     try {
       const fbProfile = await userService.getUser(userId);
       if (fbProfile) {
         await userService.updateUser(userId, { rôle: newRole });
       }
     } catch (err) {
-      console.error("Erreur mise à jour Firestore du rôle:", err);
+      console.error("Erreur mise à jour Supabase du rôle:", err);
     }
   };
 
@@ -1189,14 +1189,14 @@ export default function App() {
           const filteredLocal = currentLocalUsers.filter(u => !idsToDelete.includes(u.id));
           db.saveUsers(filteredLocal);
  
-          // 3. Update Firestore if authenticated
+          // 3. Update Supabase if authenticated
           {
             for (const u of usersToDelete) {
               try {
                 await userService.deleteUser(u.id);
-                console.log(`[Cleanup] Deleted from Firestore: ${u.id}`);
+                console.log(`[Cleanup] Deleted from Supabase: ${u.id}`);
               } catch (e) {
-                console.error(`[Cleanup] Error deleting user ${u.id} from Firestore:`, e);
+                console.error(`[Cleanup] Error deleting user ${u.id} from Supabase:`, e);
               }
             }
           }
@@ -1247,15 +1247,16 @@ export default function App() {
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
     };
 
+    setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
+    setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
+
     try {
       await productService.createProduct(newProd);
       await inventoryService.updateInventoryItem(newInvItem);
-      setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
-      setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
       addNotification(`Nouveau produit créé et synchronisé sur le Cloud : ${p.name}`);
     } catch (err) {
-      console.error("Erreur création produit Firestore:", err);
-      addNotification("Erreur : Impossible d'enregistrer le produit sur le Cloud Firestore.");
+      console.error("Erreur création produit Supabase:", err);
+      addNotification("Produit créé localement (Échec sync. cloud, réessayez plus tard).");
     }
   };
 
@@ -1378,13 +1379,13 @@ export default function App() {
         return item;
       });
       if (changedItem) {
+        setInventory(updated);
         try {
           await inventoryService.updateInventoryItem(changedItem);
-          setInventory(updated);
           addNotification("Stock mis à jour et synchronisé sur le Cloud.");
         } catch (err) {
-          console.error("Erreur Firestore lors de la mise à jour du stock:", err);
-          addNotification("Erreur : Impossible de mettre à jour le stock sur Firestore.");
+          console.error("Erreur Supabase lors de la mise à jour du stock:", err);
+          addNotification("Stock mis à jour localement (Échec sync. cloud).");
         }
       }
     } else {
@@ -1400,13 +1401,13 @@ export default function App() {
         quantiteMinimum: quantiteMinimum || 1,
         expirationDate: expirationDate
       };
+      setInventory([...inventory, newItem]);
       try {
         await inventoryService.updateInventoryItem(newItem);
-        setInventory([...inventory, newItem]);
         addNotification(`Nouveau produit ajouté et synchronisé sur le Cloud.`);
       } catch (err) {
-        console.error("Erreur Firestore lors de l'ajout du stock:", err);
-        addNotification("Erreur : Impossible d'ajouter le stock sur Firestore.");
+        console.error("Erreur Supabase lors de l'ajout du stock:", err);
+        addNotification("Produit ajouté localement (Échec sync. cloud).");
       }
     }
   };
@@ -1419,9 +1420,7 @@ export default function App() {
   ) => {
     if (!currentUser) return;
 
-    try {
       if (productData && Object.keys(productData).length > 0) {
-        await productService.createOrUpdateProduct({ id: productId, ...productData } as any);
         const updatedProducts = products.map((p) => {
           if (p.id === productId) {
             return { ...p, ...productData };
@@ -1429,6 +1428,11 @@ export default function App() {
           return p;
         });
         setProducts(updatedProducts);
+      }
+      
+    try {
+      if (productData && Object.keys(productData).length > 0) {
+        await productService.createOrUpdateProduct({ id: productId, ...productData } as any);
       }
 
       if (inventoryItemId && inventoryData) {
@@ -1445,7 +1449,6 @@ export default function App() {
               "Modification via page d'édition de stock"
             );
           }
-          await inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
           const updatedInventory = inventory.map((i) => {
             if (i.id === inventoryItemId) {
               return { ...i, ...inventoryData };
@@ -1453,13 +1456,14 @@ export default function App() {
             return i;
           });
           setInventory(updatedInventory);
+          await inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
         }
       }
 
       addNotification("Produit et stock mis à jour et synchronisés sur le Cloud !");
     } catch (err) {
-      console.error("Erreur Firestore lors de la mise à jour produit/stock:", err);
-      addNotification("Erreur : Échec de la mise à jour sur Firestore.");
+      console.error("Erreur Supabase lors de la mise à jour produit/stock:", err);
+      addNotification("Produit et stock mis à jour localement (Échec sync. cloud).");
     }
   };
 
@@ -2153,7 +2157,7 @@ export default function App() {
     }
   }, [authLoading]);
 
-  // Filter data - filter out demo mock data when Firebase active session is detected
+  // Filter data - filter out demo mock data when Supabase active session is detected
   const displayUsers = useMemo(() => deduplicateUsers(isRealUserAuthenticated
     ? users.filter(u => {
         if (!currentUser) return false;
@@ -2300,20 +2304,20 @@ export default function App() {
         </div>
       )}
 
-      {/* Global Firestore Permission Error Banner */}
-      {firestorePermissionError && (
+      {/* Global Supabase Permission Error Banner */}
+      {supabasePermissionError && (
         <div className="bg-amber-600 text-white px-4 py-2.5 text-[11px] font-bold flex items-center justify-between gap-2 shadow-lg z-50 leading-normal">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 animate-pulse text-amber-100" />
             <span>
-              <strong>Accès Firestore refusé :</strong> {firestorePermissionError.message}
-              {firestorePermissionError.path && (
-                <span className="opacity-90 ml-1">(Collection / Document : <code>{firestorePermissionError.path}</code>)</span>
+              <strong>Accès Supabase refusé :</strong> {supabasePermissionError.message}
+              {supabasePermissionError.path && (
+                <span className="opacity-90 ml-1">(Collection / Document : <code>{supabasePermissionError.path}</code>)</span>
               )}
             </span>
           </div>
           <button 
-            onClick={() => setFirestorePermissionError(null)} 
+            onClick={() => setSupabasePermissionError(null)} 
             className="px-2 py-0.5 bg-black/20 hover:bg-black/30 rounded text-[10px] text-white shrink-0 ml-2"
           >
             Fermer
@@ -2745,7 +2749,7 @@ export default function App() {
             <button
               onClick={async () => {
                 if (isRealUserAuthenticated) {
-                  await firebaseLogout();
+                  await supabaseLogout();
                   setFbMsg({ type: "success", text: "Déconnecté de la session." });
                   setCurrentUser(null);
                   setIsAuthScreen(true);
@@ -3119,12 +3123,12 @@ export default function App() {
             )}
 
             {/* Option to Disconnect User if signed in */}
-            {firebaseUser && (
+            {supabaseUser && (
               <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px]">
-                <span className="text-zinc-500 font-medium">Connecté: <strong className="text-emerald-600">{firebaseUser.email || firebaseUser.phoneNumber}</strong></span>
+                <span className="text-zinc-500 font-medium">Connecté: <strong className="text-emerald-600">{supabaseUser.email || supabaseUser.phoneNumber}</strong></span>
                 <button
                   onClick={async () => {
-                    await firebaseLogout();
+                    await supabaseLogout();
                     setFbMsg({ type: "success", text: "Session fermée avec succès." });
                   }}
                   className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 cursor-pointer"

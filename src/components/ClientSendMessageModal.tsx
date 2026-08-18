@@ -92,7 +92,7 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
             const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, client.id);
             await chatService.sendMessage(convId, currentUser.id, MessageType.TEXT, messageText);
           } catch (e) {
-            console.warn("Firestore chat error, using local fallback:", e);
+            console.warn("Supabase chat error, using local fallback:", e);
           }
         }
         setSuccessMsg(`Message envoyé à ${client.name} sur la plateforme WakatMarket !`);

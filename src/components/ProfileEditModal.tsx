@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { UserCog, X, User, Mail, Shield, MapPin, RefreshCw, CheckCircle2, AlertCircle, Plus, Trash2, Smartphone, CreditCard } from "lucide-react";
 import { UserProfile, UserRole, NumeroPaiement } from "../types";
-import { FirebaseUser } from "../services/userService";
+import { SupabaseUser } from "../services/userService";
 
 export function ProfileEditModal({
   currentUser,
@@ -13,8 +13,8 @@ export function ProfileEditModal({
   addNotification
 }: {
   currentUser: UserProfile;
-  dbUser: FirebaseUser | null;
-  updateProfile: (fields: Partial<FirebaseUser>) => Promise<void>;
+  dbUser: SupabaseUser | null;
+  updateProfile: (fields: Partial<SupabaseUser>) => Promise<void>;
   onClose: () => void;
   onSuccess: (updatedProfile: UserProfile) => void;
   addNotification: (msg: string) => void;
@@ -103,7 +103,7 @@ export function ProfileEditModal({
       // Filtrer les numéros vides
       const cleanedNumeros = numerosPaiement.filter(n => n.numero && n.numero.trim().length > 0);
 
-      const updatedFields: Partial<FirebaseUser> = {
+      const updatedFields: Partial<SupabaseUser> = {
         nom: editNom,
         prénom: editPrenom,
         téléphone: editPhone,

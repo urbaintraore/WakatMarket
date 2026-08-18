@@ -157,7 +157,7 @@ export default function DeleteUserConfirmationModal({
                       <div>
                         <h4 className="font-bold text-sm text-amber-800 dark:text-amber-400">Action irréversible</h4>
                         <p className="text-xs text-amber-700 dark:text-amber-500/90 mt-1 leading-relaxed">
-                          La suppression détruira définitivement l'accès de l'utilisateur à l'application et supprimera sa fiche d'identité Firestore. Ses commandes et données de transactions antérieures ne seront plus associées à un utilisateur actif.
+                          La suppression détruira définitivement l'accès de l'utilisateur à l'application et supprimera sa fiche d'identité Supabase. Ses commandes et données de transactions antérieures ne seront plus associées à un utilisateur actif.
                         </p>
                       </div>
                     </div>

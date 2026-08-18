@@ -1608,7 +1608,7 @@ export function WholesalerDashboard({
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
     } catch (e: any) {
-      console.warn("Erreur sauvegarde Vente POS Firestore:", e);
+      console.warn("Erreur sauvegarde Vente POS Supabase:", e);
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
       setPosCart({});
