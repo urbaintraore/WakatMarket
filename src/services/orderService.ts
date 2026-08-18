@@ -150,8 +150,9 @@ export const orderService = {
 
     this.getAllOrders().then(callback);
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel("public:orders")
+      .channel(`public:orders:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders" },

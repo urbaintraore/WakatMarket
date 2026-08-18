@@ -169,8 +169,9 @@ export const connectionService = {
 
     fetchConnections();
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:connections:${userId}`)
+      .channel(`public:connections:${userId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "business_relationships" },
@@ -223,8 +224,9 @@ export const connectionService = {
 
     fetchNotifs();
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:notifications:${userId}`)
+      .channel(`public:notifications:${userId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
-import { authService } from "../services/authService";
+import { authService, formatSupabaseAuthError } from "../services/authService";
 import { userService, FirebaseUser } from "../services/userService";
 import { UserRole, normalizeUserRole, isBonkoungou } from "../types";
 
@@ -169,9 +169,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSupabaseUser(user);
       }
     } catch (err: any) {
-      const msg = err?.message || "Identifiants invalides ou erreur de connexion.";
+      const msg = formatSupabaseAuthError(err?.message || "Identifiants invalides ou erreur de connexion.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setLoading(false);
     }
@@ -235,9 +235,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSupabaseUser(user);
       }
     } catch (err: any) {
-      const msg = err?.message || "Erreur lors de l'inscription.";
+      const msg = formatSupabaseAuthError(err?.message || "Erreur lors de l'inscription.");
       setError(msg);
-      throw err;
+      throw new Error(msg);
     } finally {
       setLoading(false);
     }

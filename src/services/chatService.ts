@@ -178,8 +178,9 @@ export const chatService = {
 
     fetchMessages();
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:messages:${conversationId}`)
+      .channel(`public:messages:${conversationId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
@@ -231,8 +232,9 @@ export const chatService = {
 
     fetchConvs();
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:conversations:${userId}`)
+      .channel(`public:conversations:${userId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },

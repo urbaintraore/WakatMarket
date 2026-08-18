@@ -18,7 +18,7 @@ import {
   db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice, DEFAULT_PRODUCTS
 } from "./data";
 import { useAuth } from "./hooks/useAuth";
-import { authService } from "./services/authService";
+import { authService, formatSupabaseAuthError } from "./services/authService";
 import { userService, FirebaseUser } from "./services/userService";
 import { inventoryService } from "./services/inventoryService";
 import { productService } from "./services/productService";
@@ -422,22 +422,29 @@ export default function App() {
     return Array.from(map.values()).filter(u => (u.status as any) !== "DELETED");
   };
 
-  // Synchronize Firestore user profile or Firebase User to Active ERP Session
+  // Synchronize Supabase User profile to Active ERP Session
   useEffect(() => {
     if (firebaseUser) {
-      if (!dbUser) {
-        // Wait for dbUser to load before syncing to avoid overwriting roles with fallbacks
-        return;
-      }
-      
-      const profileSource = dbUser;
+      const profileSource = dbUser || {
+        uid: firebaseUser.uid,
+        id: firebaseUser.uid,
+        nom: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Utilisateur",
+        prénom: "",
+        email: firebaseUser.email || "",
+        téléphone: firebaseUser.phoneNumber || "",
+        phone: firebaseUser.phoneNumber || "",
+        rôle: (firebaseUser.email === "urbain.traore@yahoo.fr" || firebaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
+        role: (firebaseUser.email === "urbain.traore@yahoo.fr" || firebaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
+        statut: "ACTIF"
+      };
+
       const existingUser = users.find(u => u.id === profileSource.uid);
 
       const activeProfile: UserProfile = {
         id: profileSource.uid,
-        name: `${profileSource.prénom || ""} ${profileSource.nom || ""}`.trim() || "Utilisateur",
+        name: `${profileSource.prénom || ""} ${profileSource.nom || ""}`.trim() || profileSource.email?.split("@")[0] || "Utilisateur",
         email: profileSource.email,
-        phone: profileSource.téléphone,
+        phone: profileSource.téléphone || profileSource.phone,
         role: (profileSource.email === "urbain.traore@yahoo.fr" || profileSource.email === "urbain.traoreurb@gmail.com") 
           ? UserRole.ADMIN 
           : normalizeUserRole(profileSource.rôle || profileSource.role || UserRole.CLIENT),
@@ -936,7 +943,7 @@ export default function App() {
     }
   };
 
-  // Production Firebase Auth Handlers
+  // Production Supabase Auth Handlers
   const handleFbLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setFbMsg(null);
@@ -945,7 +952,7 @@ export default function App() {
       setFbMsg({ type: "success", text: "Connexion réussie !" });
       setIsAuthScreen(false);
     } catch (err: any) {
-      setFbMsg({ type: "error", text: err.message || "Erreur lors de la connexion." });
+      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur lors de la connexion.") });
     }
   };
 
@@ -987,10 +994,10 @@ export default function App() {
         requiresGeo ? fbLatitude : undefined,
         requiresGeo ? fbLongitude : undefined
       );
-      setFbMsg({ type: "success", text: "Inscription et création de profil réussies !" });
+      setFbMsg({ type: "success", text: "Inscription réussie ! Votre compte est opérationnel." });
       setIsAuthScreen(false);
     } catch (err: any) {
-      setFbMsg({ type: "error", text: err.message || "Erreur lors de l'inscription." });
+      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur lors de l'inscription.") });
     }
   };
 
@@ -1001,7 +1008,7 @@ export default function App() {
       await sendPasswordReset(fbEmail);
       setFbMsg({ type: "success", text: "E-mail de réinitialisation envoyé avec succès !" });
     } catch (err: any) {
-      setFbMsg({ type: "error", text: err.message || "Erreur d'envoi de l'e-mail." });
+      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur d'envoi de l'e-mail.") });
     }
   };
 

@@ -268,8 +268,9 @@ export const userService = {
     // Initial fetch
     this.getAllUsers().then(callback);
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel("public:profiles")
+      .channel(`public:profiles:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "profiles" },

@@ -3,6 +3,31 @@ import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 
 export interface SupabaseAuthUser extends User {}
 
+export function formatSupabaseAuthError(errorMessage: string): string {
+  const msg = (errorMessage || "").toLowerCase();
+  
+  if (msg.includes("email not confirmed")) {
+    return "E-mail non confirmé : Veuillez cliquer sur le lien de confirmation envoyé à votre adresse e-mail (ou désactiver 'Confirm email' dans Supabase > Authentication > Providers > Email pour permettre la connexion immédiate).";
+  }
+  if (msg.includes("invalid login credentials") || msg.includes("invalid_credentials")) {
+    return "Identifiants invalides : L'adresse e-mail ou le mot de passe est incorrect.";
+  }
+  if (msg.includes("user already registered") || msg.includes("already exists")) {
+    return "Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter.";
+  }
+  if (msg.includes("password should be at least")) {
+    return "Le mot de passe doit comporter au moins 6 caractères.";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many requests")) {
+    return "Trop de tentatives. Veuillez patienter quelques instants avant de réessayer.";
+  }
+  if (msg.includes("network") || msg.includes("failed to fetch")) {
+    return "Problème de connexion réseau. Veuillez vérifier votre connexion Internet.";
+  }
+  
+  return errorMessage || "Une erreur est survenue lors de l'authentification.";
+}
+
 export const authService = {
   /**
    * Inscription d'un utilisateur par e-mail et mot de passe via Supabase Auth

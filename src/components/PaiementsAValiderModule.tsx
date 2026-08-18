@@ -105,8 +105,9 @@ export function PaiementsAValiderModule({
 
     fetchSales();
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:orders:seller:${currentId}`)
+      .channel(`public:orders:seller:${currentId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "orders", filter: `seller_id=eq.${currentId}` },

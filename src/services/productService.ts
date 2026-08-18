@@ -72,8 +72,9 @@ export const productService = {
     // Chargement initial
     this.getAllProducts().then(callback);
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel("public:products")
+      .channel(`public:products:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "products" },

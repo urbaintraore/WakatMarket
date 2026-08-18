@@ -88,8 +88,9 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
     // Supabase Realtime Subscription
     let channel: any = null;
     if (supabase) {
+      const uniqueId = Math.random().toString(36).substring(7);
       channel = supabase
-        .channel(`comptabilite_${currentUserId}`)
+        .channel(`comptabilite_${currentUserId}_${uniqueId}`)
         .on(
           "postgres_changes",
           {

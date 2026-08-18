@@ -84,8 +84,9 @@ export const inventoryService = {
 
     this.getAllInventory().then(callback);
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel("public:inventory")
+      .channel(`public:inventory:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "inventory" },
@@ -108,8 +109,9 @@ export const inventoryService = {
 
     this.getUserStock(uid).then(callback);
 
+    const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:inventory:user:${uid}`)
+      .channel(`public:inventory:user:${uid}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "inventory", filter: `owner_id=eq.${uid}` },
