@@ -2956,12 +2956,12 @@ export default function App() {
               )}
             </div>
 
-            {/* Config Info Banner as requested in requirement #5 */}
+            {/* Config Info Banner */}
             <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/10 p-3.5 rounded-xl text-[10px] text-zinc-600 dark:text-zinc-300 space-y-1">
-              <p className="font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider mb-1">🔥 Firebase utilisé (Production)</p>
-              <div><span className="font-semibold text-zinc-400">Project ID :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">campusbf</span></div>
-              <div><span className="font-semibold text-zinc-400">Auth Domain :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">campusbf.firebaseapp.com</span></div>
-              <div><span className="font-semibold text-zinc-400">Storage :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">Supabase</span></div>
+              <p className="font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider mb-1">⚡ Supabase & Authentification Sécurisée</p>
+              <div><span className="font-semibold text-zinc-400">Base de données & Auth :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">Supabase / Auth Service</span></div>
+              <div><span className="font-semibold text-zinc-400">Stockage de fichiers (Buckets) :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">MonBucket & Chat</span></div>
+              <div><span className="font-semibold text-zinc-400">Statut :</span> <span className="font-medium text-emerald-600 dark:text-emerald-400">Opérationnel</span></div>
             </div>
 
             {/* Error/Success Feedbacks */}

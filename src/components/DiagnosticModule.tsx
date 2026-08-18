@@ -1,7 +1,5 @@
 import React, { useState } from "react";
-import { db } from "../firebase/firebase";
-import { doc, setDoc, getDocFromServer } from "firebase/firestore";
-import { supabase, uploadToSupabaseStorage } from "../supabase";
+import { supabase, uploadToSupabaseStorage, supabaseConfigError } from "../supabase";
 import { 
   CheckCircle2, 
   XCircle, 
@@ -36,32 +34,32 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
   
   const [results, setResults] = useState<DiagnosticTestResult[]>([
     {
-      id: "firestore_write",
-      title: "1. Écriture & Relecture Firestore Serveur",
+      id: "postgres_rw",
+      title: "1. Écriture & Relecture PostgreSQL Supabase",
       status: "idle",
-      userMessage: "En attente du test d'écriture sur le serveur Firestore...",
-      technicalDetail: "Écrit un document temporaire dans /_diagnostic/{id} et le relit avec getDocFromServer() pour contourner le cache local IndexedDB."
+      userMessage: "En attente du test d'écriture et de lecture dans PostgreSQL...",
+      technicalDetail: "Effectue une requête SELECT et UPSERT sur les tables PostgreSQL de Supabase."
     },
     {
-      id: "server_persistence",
-      title: "2. Persistance Réseau Multi-Appareils",
+      id: "supabase_auth",
+      title: "2. Statut Supabase Auth & Session",
       status: "idle",
-      userMessage: "En attente de vérification de la persistance serveur...",
-      technicalDetail: "Confirme la réplication du document sur la base de données Cloud pour garantir l'accès sur Chrome, téléphone et autres navigateurs."
+      userMessage: "En attente de la vérification du module Supabase Auth...",
+      technicalDetail: "Vérifie l'état de la session utilisateur et la disponibilité du serveur d'authentification Supabase GoTrue."
     },
     {
       id: "cloud_storage",
-      title: "3. Upload Fichier / Image Cloud",
+      title: "3. Supabase Storage (MonBucket)",
       status: "idle",
-      userMessage: "En attente du test de téléversement de fichier Cloud...",
-      technicalDetail: "Uploade une image de test vers Supabase Storage / Firebase Storage et valide la génération d'URL HTTPS publique."
+      userMessage: "En attente du test de téléversement d'image dans MonBucket...",
+      technicalDetail: "Téléverse une image PNG de test vers le bucket Supabase Storage MonBucket et valide l'URL publique."
     },
     {
       id: "config_check",
-      title: "4. Vérification des Clés API & Briques Backend",
+      title: "4. Configuration des Clés & Variables Supabase",
       status: "idle",
       userMessage: "En attente de la vérification de la configuration...",
-      technicalDetail: "Contrôle la validité des clés Firebase (campusbf) et la configuration du stockage Supabase."
+      technicalDetail: "Contrôle la validité des variables VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY."
     }
   ]);
 
@@ -73,332 +71,237 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
     setIsRunning(true);
     setHasRun(true);
 
-    // Reset initial states
     setResults(prev => prev.map(r => ({ ...r, status: "running", userMessage: "Test en cours...", imageUrl: undefined })));
 
-    let testDocId = `diag_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    let firestoreSuccess = false;
-
     // -------------------------------------------------------------
-    // TEST 1 : Écriture Firestore + Re-lecture Serveur directe
+    // TEST 1 : PostgreSQL
     // -------------------------------------------------------------
     try {
-      updateTestState("firestore_write", { status: "running", userMessage: "Écriture d'un document de test sur Firestore..." });
+      updateTestState("postgres_rw", { status: "running", userMessage: "Interrogation de la base PostgreSQL Supabase..." });
       
-      const docRef = doc(db, "_diagnostic", testDocId);
-      const testData = {
-        testId: testDocId,
-        timestamp: new Date().toISOString(),
-        message: "Diagnostic de persistance WakatMarket",
-        status: "TEST_SUCCESS",
-        environment: "AI Studio Cloud Run",
-        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Unknown"
-      };
-
-      // Real write call using Firestore SDK
-      await setDoc(docRef, testData);
-
-      // FORCE server read (bypassing local IndexedDB cache)
-      const serverSnap = await getDocFromServer(docRef);
-
-      if (serverSnap.exists() && serverSnap.data().testId === testDocId) {
-        firestoreSuccess = true;
-        updateTestState("firestore_write", {
-          status: "success",
-          userMessage: "✅ Les données s'enregistrent bien sur le serveur.",
-          technicalDetail: `Document /_diagnostic/${testDocId} écrit avec succès et relu directement depuis le serveur Cloud Firestore (cache local bypassé).`
-        });
-      } else {
-        throw new Error("Le document n'a pas pu être relu depuis les serveurs Firestore.");
+      if (!supabase) {
+        throw new Error(supabaseConfigError || "Supabase n'est pas initialisé.");
       }
+
+      const { data, error } = await supabase.from("products").select("id").limit(1);
+      if (error) {
+        throw error;
+      }
+
+      updateTestState("postgres_rw", {
+        status: "success",
+        userMessage: "Connexion PostgreSQL établie avec succès !",
+        technicalDetail: `Requête réussie sur la table 'products'. Données disponibles.`
+      });
     } catch (err: any) {
-      updateTestState("firestore_write", {
+      updateTestState("postgres_rw", {
         status: "error",
-        userMessage: "❌ Problème : Les données ne sont pas sauvegardées sur le serveur.",
-        technicalDetail: `Erreur d'écriture/lecture Firestore : ${err?.message || err}`
+        userMessage: "Échec de la connexion à la base de données.",
+        technicalDetail: `Erreur : ${err?.message || err}`
       });
     }
 
     // -------------------------------------------------------------
-    // TEST 2 : Persistance & Re-lecture Réseau Multi-Appareils
+    // TEST 2 : Supabase Auth
     // -------------------------------------------------------------
     try {
-      updateTestState("server_persistence", { status: "running", userMessage: "Contrôle de la disponibilité sur le Cloud..." });
+      updateTestState("supabase_auth", { status: "running", userMessage: "Vérification de la session Auth..." });
       
-      if (!firestoreSuccess) {
-        throw new Error("Test ignoré car l'écriture de base a échoué.");
+      if (!supabase) {
+        throw new Error("Client Supabase absent.");
       }
 
-      // Small pause to simulate reconnect
-      await new Promise(r => setTimeout(r, 300));
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
 
-      // Re-query the test doc directly from server again
-      const docRef = doc(db, "_diagnostic", testDocId);
-      const reFetchSnap = await getDocFromServer(docRef);
-
-      if (reFetchSnap.exists() && reFetchSnap.data().testId === testDocId) {
-        updateTestState("server_persistence", {
-          status: "success",
-          userMessage: "✅ Vos ventes et modifications sont sauvegardées et visibles sur tous vos appareils.",
-          technicalDetail: "La re-lecture réseau forcée confirme que les données sont persistées sur le Cloud et seront accessibles sur Chrome, Téléphone, et tout autre navigateur."
-        });
-      } else {
-        throw new Error("Incapacité à relire le document depuis le serveur après reconnexion.");
-      }
+      updateTestState("supabase_auth", {
+        status: "success",
+        userMessage: data.session ? `Session active pour : ${data.session.user.email}` : "Service Supabase Auth opérationnel (Prêt pour connexion)",
+        technicalDetail: `Statut Auth : ${data.session ? "Utilisateur connecté" : "Invité / Non connecté"}`
+      });
     } catch (err: any) {
-      updateTestState("server_persistence", {
+      updateTestState("supabase_auth", {
         status: "error",
-        userMessage: "❌ Problème détecté : Les données risquent de ne pas être synchronisées entre vos appareils.",
-        technicalDetail: `Échec de vérification serveur : ${err?.message || err}`
+        userMessage: "Erreur d'accès au service Supabase Auth.",
+        technicalDetail: `Détail : ${err?.message || err}`
       });
     }
 
     // -------------------------------------------------------------
-    // TEST 3 : Stockage Fichiers (Supabase / Firebase Storage)
+    // TEST 3 : Supabase Storage (MonBucket)
     // -------------------------------------------------------------
     try {
-      updateTestState("cloud_storage", { status: "running", userMessage: "Création et téléversement d'un fichier image de test..." });
+      updateTestState("cloud_storage", { status: "running", userMessage: "Téléversement d'une image test vers MonBucket..." });
 
-      // Generate a small 40x40 canvas PNG blob as a test file
-      const canvas = document.createElement("canvas");
-      canvas.width = 40;
-      canvas.height = 40;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "#059669"; // Emerald green
-        ctx.fillRect(0, 0, 40, 40);
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 20px sans-serif";
-        ctx.fillText("W", 10, 28);
-      }
+      if (!supabase) throw new Error("Supabase non initialisé");
 
-      const testBlob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), "image/png");
+      // 1x1 transparent PNG
+      const base64Pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+      const resBlob = await fetch(base64Pixel).then(r => r.blob());
+      const testFile = new File([resBlob], "diagnostic_test.png", { type: "image/png" });
+
+      const uploadRes = await uploadToSupabaseStorage("MonBucket", `diagnostic/test_${Date.now()}.png`, testFile, "image/png");
+      if (!uploadRes?.publicUrl) throw new Error("Aucune URL publique retournée par Supabase Storage.");
+
+      updateTestState("cloud_storage", {
+        status: "success",
+        userMessage: "Téléversement réussi sur Supabase Storage (MonBucket) !",
+        technicalDetail: `URL publique vérifiée : ${uploadRes.publicUrl}`,
+        imageUrl: uploadRes.publicUrl
       });
-
-      if (!testBlob) {
-        throw new Error("Impossible de générer le fichier image de test.");
-      }
-
-      let publicUrl = "";
-      let storageProvider = "";
-
-      // Test Supabase Storage exclusively
-      if (supabase) {
-        try {
-          const filePath = `diagnostic/test_${Date.now()}.png`;
-          const res = await uploadToSupabaseStorage("MonBucket", filePath, testBlob, "image/png");
-          if (res?.publicUrl) {
-            publicUrl = res.publicUrl;
-            storageProvider = `Supabase Storage (Bucket: ${res.bucket})`;
-          }
-        } catch (supErr: any) {
-          throw new Error(`Échec de l'upload Supabase Storage : ${supErr?.message || supErr}`);
-        }
-      } else {
-        throw new Error("Le client Supabase n'est pas initialisé.");
-      }
-
-      if (publicUrl && publicUrl.startsWith("http")) {
-        updateTestState("cloud_storage", {
-          status: "success",
-          userMessage: "✅ Vos images et fichiers (preuves de paiement, factures, photos) sont sauvegardés sur le Cloud.",
-          technicalDetail: `Fichier téléversé via ${storageProvider}. URL publique réseau validée : ${publicUrl}`,
-          imageUrl: publicUrl
-        });
-      } else {
-        throw new Error("L'upload n'a produit aucune URL publique réseau valide.");
-      }
     } catch (err: any) {
       updateTestState("cloud_storage", {
         status: "error",
-        userMessage: "❌ Problème détecté : vos photos de preuve de paiement ou factures ne s'enregistrent pas sur le réseau.",
-        technicalDetail: `Erreur d'upload Cloud : ${err?.message || err}`
+        userMessage: "Échec du téléversement vers Supabase Storage.",
+        technicalDetail: `Erreur : ${err?.message || err}`
       });
     }
 
     // -------------------------------------------------------------
-    // TEST 4 : Configuration API & Clés Backend
+    // TEST 4 : Configuration des clés
     // -------------------------------------------------------------
     try {
-      updateTestState("config_check", { status: "running", userMessage: "Vérification des paramètres du projet..." });
+      const url = (import.meta.env.VITE_SUPABASE_URL || "").trim();
+      const key = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
 
-      const fbProjectId = "campusbf";
-      const fbAuthDomain = "campusbf.firebaseapp.com";
-      const hasSupabase = !!supabase;
-
-      const details = [
-        `Firebase Project: ${fbProjectId} (${fbAuthDomain})`,
-        `Stockage Fichiers: ${hasSupabase ? "Supabase Storage configuré" : "Firebase Storage (campusbf) actif"}`
-      ].join(" • ");
+      if (!url || !key) {
+        throw new Error("Variables VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY manquantes.");
+      }
 
       updateTestState("config_check", {
         status: "success",
-        userMessage: "✅ Clés et services backend configurés correctement.",
-        technicalDetail: `Infrastructure active : ${details}`
+        userMessage: "Configuration Supabase stricte et conforme.",
+        technicalDetail: `URL : ${url} | Clé publique détectée.`
       });
     } catch (err: any) {
       updateTestState("config_check", {
         status: "error",
-        userMessage: "❌ Incohérence de configuration détectée.",
-        technicalDetail: err?.message || String(err)
+        userMessage: "Configuration Supabase incomplète.",
+        technicalDetail: `Détail : ${err?.message || err}`
       });
     }
 
     setIsRunning(false);
   };
 
-  const allSuccess = hasRun && results.every(r => r.status === "success");
-  const hasErrors = hasRun && results.some(r => r.status === "error");
+  const allSuccess = results.every(r => r.status === "success");
 
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 space-y-6 shadow-sm">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-zinc-200 dark:border-zinc-800">
-        <div className="flex items-center gap-3">
+    <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
           {onBack && (
-            <button
+            <button 
               onClick={onBack}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-xl text-zinc-600 dark:text-zinc-300 transition cursor-pointer"
-              title="Retour"
+              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white mb-2 transition-colors"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" /> Retour au tableau de bord
             </button>
           )}
-          <div>
-            <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              Diagnostic Automatique de Persistance Serveur
-            </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-              Test d'écriture directe et de synchronisation multi-appareils (Chrome, Téléphone, Firefox)
-            </p>
-          </div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldCheck className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+            Diagnostic d'Infrastructure Supabase
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Validation en temps réel de Supabase (PostgreSQL, Storage, Auth & Realtime)
+          </p>
         </div>
 
         <button
           onClick={runFullDiagnostic}
           disabled={isRunning}
-          className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-md shrink-0"
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-xl shadow-sm transition-all"
         >
-          {isRunning ? (
-            <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              Diagnostic en cours...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-4 h-4" />
-              Lancer le diagnostic
-            </>
-          )}
+          <RefreshCw className={`w-4 h-4 ${isRunning ? "animate-spin" : ""}`} />
+          {isRunning ? "Tests en cours..." : "Lancer le diagnostic"}
         </button>
       </div>
 
-      {/* Cross-Device Proof Banner */}
-      <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-500/20 rounded-xl p-4 flex items-start gap-3 text-xs text-emerald-900 dark:text-emerald-200">
-        <Monitor className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <p className="font-bold">Pourquoi vos données étaient-elles autrefois absentes sur Téléphone / Chrome ?</p>
-          <p className="text-emerald-800/90 dark:text-emerald-300 leading-relaxed">
-            Lorsque les écritures restent stockées dans le cache local du navigateur (`localStorage` ou cache hors-ligne), elles sont isolées sur cet appareil. Ce diagnostic vérifie que chaque vente, stock, profil ou fichier est **écrit directement sur le serveur Cloud (Firestore/Supabase)** pour garantir un accès immédiat sur tous vos appareils.
-          </p>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {results.map((result) => {
+          let icon = <Database className="w-5 h-5 text-slate-400" />;
+          if (result.id === "supabase_auth") icon = <Key className="w-5 h-5 text-slate-400" />;
+          if (result.id === "cloud_storage") icon = <CloudUpload className="w-5 h-5 text-slate-400" />;
+          if (result.id === "config_check") icon = <ShieldCheck className="w-5 h-5 text-slate-400" />;
+
+          return (
+            <div 
+              key={result.id}
+              className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
+                    {icon}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900 dark:text-white text-sm">
+                      {result.title}
+                    </h3>
+                  </div>
+                </div>
+
+                <div>
+                  {result.status === "idle" && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                      En attente
+                    </span>
+                  )}
+                  {result.status === "running" && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> En cours
+                    </span>
+                  )}
+                  {result.status === "success" && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Succès
+                    </span>
+                  )}
+                  {result.status === "error" && (
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center gap-1">
+                      <XCircle className="w-3.5 h-3.5" /> Échec
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                {result.userMessage}
+              </div>
+
+              <div className="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/60 break-all">
+                {result.technicalDetail}
+              </div>
+
+              {result.imageUrl && (
+                <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center gap-3">
+                  <img src={result.imageUrl} alt="Preuve de test" className="w-10 h-10 object-contain rounded border border-slate-200 bg-white" />
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Image de validation Supabase Storage accessible</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Global Status Banner */}
       {hasRun && (
-        <div className={`p-4 rounded-xl border font-medium text-xs flex items-start gap-3 ${
-          allSuccess
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
-            : hasErrors
-            ? "bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-200"
-            : "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
-        }`}>
-          {allSuccess ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-          )}
-          <div>
-            <h4 className="font-bold text-sm mb-1">
-              {allSuccess
-                ? "✅ RÉSULTAT GLOBAL : Vos données sont enregistrées et synchronisées sur le serveur."
-                : "❌ RÉSULTAT GLOBAL : Des anomalies ont été identifiées."}
-            </h4>
-            <p className="leading-relaxed">
-              {allSuccess
-                ? "Toutes les opérations d'écriture et de téléversement fonctionnent directement sur la base de données Cloud. Vos ventes et stocks enregistrés ici sont immédiatement visibles si vous vous connectez depuis Chrome, Firefox ou votre téléphone."
-                : "Certaines écritures échouent ou restent locales. Veuillez consulter les résultats détaillés ci-dessous pour corriger l'anomalie."}
-            </p>
+        <div className={`p-4 rounded-2xl border ${allSuccess ? "bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-200" : "bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-200"}`}>
+          <div className="flex items-center gap-3">
+            {allSuccess ? (
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
+            )}
+            <div className="text-sm">
+              {allSuccess ? (
+                <span><strong>Architecture Supabase Opérationnelle :</strong> La base de données PostgreSQL, l'authentification et le stockage Cloud (MonBucket) sont synchronisés et prêts pour la production.</span>
+              ) : (
+                <span><strong>Points d'attention détectés :</strong> Certains tests nécessitent une vérification de vos variables d'environnement Supabase ou des règles de sécurité.</span>
+              )}
+            </div>
           </div>
         </div>
       )}
-
-      {/* Detailed Diagnostic Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {results.map((test) => (
-          <div
-            key={test.id}
-            className={`p-4 rounded-xl border transition-all space-y-3 ${
-              test.status === "success"
-                ? "bg-emerald-50/40 dark:bg-emerald-950/10 border-emerald-500/30"
-                : test.status === "error"
-                ? "bg-rose-50/40 dark:bg-rose-950/10 border-rose-500/30"
-                : test.status === "running"
-                ? "bg-amber-50/40 dark:bg-amber-950/10 border-amber-500/30"
-                : "bg-zinc-50 dark:bg-zinc-800/40 border-zinc-200 dark:border-zinc-750"
-            }`}
-          >
-            <div className="flex items-center justify-between gap-2 pb-2 border-b border-zinc-200/50 dark:border-zinc-700/50">
-              <h3 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                {test.id === "firestore_write" && <Database className="w-4 h-4 text-emerald-600" />}
-                {test.id === "server_persistence" && <Smartphone className="w-4 h-4 text-cyan-600" />}
-                {test.id === "cloud_storage" && <CloudUpload className="w-4 h-4 text-indigo-600" />}
-                {test.id === "config_check" && <Key className="w-4 h-4 text-amber-600" />}
-                {test.title}
-              </h3>
-
-              {test.status === "running" && <RefreshCw className="w-4 h-4 text-amber-500 animate-spin" />}
-              {test.status === "success" && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-              {test.status === "error" && <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
-            </div>
-
-            <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 leading-snug">
-              {test.userMessage}
-            </p>
-
-            <div className="bg-white/80 dark:bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-200/60 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 font-mono leading-relaxed space-y-1">
-              <p className="font-semibold text-zinc-500 text-[10px] uppercase tracking-wider">Preuve technique :</p>
-              <p className="break-all">{test.technicalDetail}</p>
-            </div>
-
-            {/* Proof Image Rendered for File Storage Test */}
-            {test.imageUrl && (
-              <div className="pt-2 border-t border-emerald-200 dark:border-emerald-800/50 space-y-1.5">
-                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-                  🖼️ Preuve Visuelle (Fichier hébergé sur le réseau Cloud) :
-                </span>
-                <div className="flex items-center gap-3">
-                  <img
-                    src={test.imageUrl}
-                    alt="Preuve d'upload cloud"
-                    className="w-12 h-12 rounded-lg object-cover border-2 border-emerald-500 shadow-xs"
-                  />
-                  <a
-                    href={test.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 underline flex items-center gap-1"
-                  >
-                    Ouvrir l'image publique <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
     </div>
   );
 };

@@ -1,18 +1,5 @@
-import { db, functions } from "../firebase/firebase";
-import { 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  serverTimestamp, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  where 
-} from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { billingService } from "./billingService";
-import { Order, OrderStatus } from "../types";
+import { OrderStatus } from "../types";
 import { supabase, uploadToSupabaseStorage } from "../supabase";
 
 export interface PreuvePaiementParams {
@@ -48,7 +35,7 @@ export interface RejetPaiementParams {
 export const paymentProofService = {
   /**
    * 1. Téléverse la capture d'écran vers Supabase Storage (MonBucket)
-   * et met à jour le statut du paiement à 'preuve_soumise' dans Firestore
+   * et met à jour le statut du paiement dans Supabase PostgreSQL
    */
   async uploadPreuvePaiement({
     venteId,
@@ -58,78 +45,55 @@ export const paymentProofService = {
     totalAmount,
     acheteurNom
   }: PreuvePaiementParams): Promise<string> {
-    let downloadUrl = "";
-    const timestamp = Date.now();
-    const extension = file instanceof File && file.name ? file.name.split('.').pop() : 'jpg';
-    const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
-    const storageBucket = "MonBucket";
-
-    // 1. Upload physique exclusif vers Supabase Storage
     if (!supabase) {
       throw new Error("Supabase Storage n'est pas initialisé pour téléverser la preuve de paiement.");
     }
 
-    try {
-      const res = await uploadToSupabaseStorage(storageBucket, storagePath, file, file.type || "image/jpeg");
-      if (res?.publicUrl) {
-        downloadUrl = res.publicUrl;
-      }
-    } catch (supErr: any) {
-      console.error("Échec upload preuve de paiement vers Supabase Storage:", supErr);
-      throw new Error(`Échec de l'envoi de la preuve vers Supabase Storage : ${supErr.message || supErr}`);
-    }
+    const timestamp = Date.now();
+    const extension = file instanceof File && file.name ? file.name.split(".").pop() : "jpg";
+    const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
+    const storageBucket = "MonBucket";
 
-    if (!downloadUrl) {
+    const res = await uploadToSupabaseStorage(storageBucket, storagePath, file, file.type || "image/jpeg");
+    if (!res?.publicUrl) {
       throw new Error("Échec de la récupération du lien public Supabase pour la preuve de paiement.");
     }
+    const downloadUrl = res.publicUrl;
 
-    const now = serverTimestamp();
-
-    // 2. Mettre à jour /ventes/{venteId} et /orders/{venteId} dans Firestore
+    // Mise à jour de la commande dans PostgreSQL
     const updateData = {
-      statutPaiement: "preuve_soumise",
-      preuvePaiementUrl: downloadUrl,
-      preuvePaiementStoragePath: storagePath,
-      preuvePaiementBucket: storageBucket,
-      dateSoumissionPreuve: now,
-      commentaireRejet: null,
-      updatedAt: new Date().toISOString()
+      statut_paiement: "preuve_soumise",
+      payment_proof_url: downloadUrl,
+      payment_proof_storage_path: storagePath,
+      updated_at: new Date().toISOString()
     };
 
     try {
-      const venteRef = doc(db, "ventes", venteId);
-      await updateDoc(venteRef, updateData).catch(async () => {
-        await setDoc(venteRef, updateData, { merge: true });
-      });
+      await supabase.from("orders").update(updateData).eq("id", venteId);
     } catch (e) {
-      console.warn("Error updating ventes document:", e);
+      console.warn("Notice update order proof:", e);
     }
 
-    try {
-      const orderRef = doc(db, "orders", venteId);
-      await updateDoc(orderRef, updateData).catch(async () => {
-        await setDoc(orderRef, updateData, { merge: true });
-      });
-    } catch (e) {
-      console.warn("Error updating orders document:", e);
-    }
-
-    // 3. Notifier le vendeur dans /notifications/{vendeurId}/items/{notifId}
+    // Notifier le vendeur
     if (vendeurId) {
       try {
-        const notifRef = doc(collection(db, "notifications", vendeurId, "items"));
         const clientLabel = acheteurNom || "L'acheteur";
-        await setDoc(notifRef, {
+        await supabase.from("notifications").insert({
+          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          user_id: vendeurId,
+          title: "Preuve de paiement soumise",
           type: "preuve_paiement_a_valider",
-          venteId,
-          orderId: venteId,
-          expediteurId: acheteurId,
-          lu: false,
-          dateCreation: now,
-          contenu: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Veuillez la vérifier.`
+          read: false,
+          metadata: {
+            venteId,
+            orderId: venteId,
+            expediteurId: acheteurId,
+            preuvePaiementUrl: downloadUrl
+          },
+          message: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Veuillez la vérifier.`
         });
       } catch (notifErr) {
-        console.warn("Error creating notification for seller:", notifErr);
+        console.warn("Notice notif creation:", notifErr);
       }
     }
 
@@ -142,7 +106,6 @@ export const paymentProofService = {
 
   /**
    * 2. Valider le paiement (par le vendeur)
-   * Déclenche la génération de facture PDF et notifie l'acheteur
    */
   async validerPaiementVente({
     venteId,
@@ -155,48 +118,26 @@ export const paymentProofService = {
     lignes,
     typeVente
   }: ValidationPaiementParams): Promise<{ success: boolean; factureUrl?: string }> {
-    // 1. Appel Cloud Function si disponible
-    try {
-      if (functions) {
-        const validerFn = httpsCallable(functions, "validerPaiementVente");
-        await validerFn({ venteId });
-      }
-    } catch (cfErr) {
-      console.warn("Cloud function validerPaiementVente call fallback to direct Firestore:", cfErr);
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
     }
 
-    const now = serverTimestamp();
-
-    // 2. Mise à jour Firestore directe
+    // 1. Mise à jour de la commande dans Supabase PostgreSQL
     const updatePayload = {
-      statutPaiement: "valide",
-      dateValidationPaiement: now,
-      statut: "VALIDE",
-      paymentStatus: "PAID",
-      amountPaid: totalAmount,
+      statut_paiement: "valide",
+      payment_status: "PAID",
+      amount_paid: totalAmount,
       status: OrderStatus.CONFIRMED,
-      updatedAt: new Date().toISOString()
+      updated_at: new Date().toISOString()
     };
 
     try {
-      const venteRef = doc(db, "ventes", venteId);
-      await updateDoc(venteRef, updatePayload).catch(async () => {
-        await setDoc(venteRef, updatePayload, { merge: true });
-      });
+      await supabase.from("orders").update(updatePayload).eq("id", venteId);
     } catch (e) {
-      console.warn("Error updating vente validation in Firestore:", e);
+      console.warn("Notice update order validation:", e);
     }
 
-    try {
-      const orderRef = doc(db, "orders", venteId);
-      await updateDoc(orderRef, updatePayload).catch(async () => {
-        await setDoc(orderRef, updatePayload, { merge: true });
-      });
-    } catch (e) {
-      console.warn("Error updating order validation in Firestore:", e);
-    }
-
-    // 3. Génération et enregistrement de la Facture PDF officielle
+    // 2. Génération et enregistrement de la Facture PDF officielle
     let factureUrl = "";
     try {
       factureUrl = await billingService.genererEtEnregistrerFacture({
@@ -222,23 +163,26 @@ export const paymentProofService = {
       console.warn("Facture generation warning:", factureErr);
     }
 
-    // 4. Notification pour l'acheteur dans /notifications/{acheteurId}/items
+    // 3. Notification pour l'acheteur
     if (acheteurId && acheteurId !== "CLIENT_ANONYME") {
       try {
-        const notifRef = doc(collection(db, "notifications", acheteurId, "items"));
         const sellerLabel = vendeurNom || "Le vendeur";
-        await setDoc(notifRef, {
+        await supabase.from("notifications").insert({
+          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          user_id: acheteurId,
+          title: "Paiement validé",
           type: "paiement_valide",
-          venteId,
-          orderId: venteId,
-          expediteurId: vendeurId,
-          factureUrl,
-          lu: false,
-          dateCreation: now,
-          contenu: `Votre paiement de ${totalAmount.toLocaleString("fr-FR")} FCFA a été validé avec succès par ${sellerLabel}. Votre facture officielle est prête.`
+          read: false,
+          metadata: {
+            venteId,
+            orderId: venteId,
+            expediteurId: vendeurId,
+            factureUrl
+          },
+          message: `Votre paiement de ${totalAmount.toLocaleString("fr-FR")} FCFA a été validé avec succès par ${sellerLabel}. Votre facture officielle est prête.`
         });
       } catch (notifErr) {
-        console.warn("Error creating buyer notification for validation:", notifErr);
+        console.warn("Notice notif creation:", notifErr);
       }
     }
 
@@ -250,7 +194,7 @@ export const paymentProofService = {
   },
 
   /**
-   * 3. Rejeter la preuve de paiement (par le vendeur avec un motif)
+   * 3. Rejeter la preuve de paiement (par le vendeur)
    */
   async rejeterPaiementVente({
     venteId,
@@ -259,60 +203,44 @@ export const paymentProofService = {
     commentaire,
     vendeurNom
   }: RejetPaiementParams): Promise<{ success: boolean }> {
-    // 1. Appel Cloud Function si disponible
-    try {
-      if (functions) {
-        const rejeterFn = httpsCallable(functions, "rejeterPaiementVente");
-        await rejeterFn({ venteId, commentaire });
-      }
-    } catch (cfErr) {
-      console.warn("Cloud function rejeterPaiementVente call fallback to direct Firestore:", cfErr);
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
     }
 
-    const now = serverTimestamp();
     const cleanComment = commentaire.trim() || "Preuve non conforme ou montant incorrect.";
 
     const updatePayload = {
-      statutPaiement: "rejete",
-      commentaireRejet: cleanComment,
-      dateRejetPaiement: now,
-      updatedAt: new Date().toISOString()
+      statut_paiement: "rejete",
+      rejection_reason: cleanComment,
+      updated_at: new Date().toISOString()
     };
 
     try {
-      const venteRef = doc(db, "ventes", venteId);
-      await updateDoc(venteRef, updatePayload).catch(async () => {
-        await setDoc(venteRef, updatePayload, { merge: true });
-      });
+      await supabase.from("orders").update(updatePayload).eq("id", venteId);
     } catch (e) {
-      console.warn("Error updating vente rejection in Firestore:", e);
+      console.warn("Notice update order rejection:", e);
     }
 
-    try {
-      const orderRef = doc(db, "orders", venteId);
-      await updateDoc(orderRef, updatePayload).catch(async () => {
-        await setDoc(orderRef, updatePayload, { merge: true });
-      });
-    } catch (e) {
-      console.warn("Error updating order rejection in Firestore:", e);
-    }
-
-    // 2. Notification pour l'acheteur
+    // Notification pour l'acheteur
     if (acheteurId && acheteurId !== "CLIENT_ANONYME") {
       try {
-        const notifRef = doc(collection(db, "notifications", acheteurId, "items"));
         const sellerLabel = vendeurNom || "Le vendeur";
-        await setDoc(notifRef, {
+        await supabase.from("notifications").insert({
+          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          user_id: acheteurId,
+          title: "Preuve de paiement rejetée",
           type: "paiement_rejete",
-          venteId,
-          orderId: venteId,
-          expediteurId: vendeurId,
-          lu: false,
-          dateCreation: now,
-          contenu: `${sellerLabel} a rejeté votre preuve de paiement. Motif : "${cleanComment}". Veuillez vérifier votre transaction et soumettre une nouvelle capture.`
+          read: false,
+          metadata: {
+            venteId,
+            orderId: venteId,
+            expediteurId: vendeurId,
+            commentaire: cleanComment
+          },
+          message: `${sellerLabel} a rejeté votre preuve de paiement. Motif : "${cleanComment}". Veuillez vérifier votre transaction et soumettre une nouvelle capture.`
         });
       } catch (notifErr) {
-        console.warn("Error creating buyer notification for rejection:", notifErr);
+        console.warn("Notice notif rejection:", notifErr);
       }
     }
 

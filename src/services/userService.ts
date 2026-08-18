@@ -1,18 +1,17 @@
-import { db, handleFirestoreError, OperationType, auth } from "../firebase/firebase";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot } from "firebase/firestore";
-import { db as mockDb, filterMockData } from "../data";
+import { supabase } from "../supabase";
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou } from "../types";
-import { supabase, upsertToSupabaseTable } from "../supabase";
 
-export interface FirebaseUser {
+export interface UserProfileData {
   uid: string;
+  id?: string;
   nom: string;
   prénom: string;
   email: string;
   téléphone: string;
+  phone?: string;
   rôle: string;
   role?: string;
-  dateCréation: string;
+  dateCréation?: string;
   statut: string;
   pays?: string;
   ville?: string;
@@ -20,640 +19,272 @@ export interface FirebaseUser {
   latitude?: number;
   longitude?: number;
   companyName?: string;
+  nomDEntreprise?: string;
   numerosPaiement?: NumeroPaiement[];
+  balance?: number;
+  creditLimit?: number;
+  logoUrl?: string;
+  address?: string;
+  rccm?: string;
+  ifu?: string;
 }
 
-const LOCAL_STORAGE_PREFIX = "wakat_fb_users_v2_";
+// Alias for seamless backward compatibility across views
+export type FirebaseUser = UserProfileData;
 
-export function getLocalUser(uid: string): FirebaseUser | null {
-  try {
-    const data = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}${uid}`);
-    if (data) {
-      const parsed = JSON.parse(data);
-      if (parsed) {
-        let normRole = normalizeUserRole(parsed.rôle || parsed.role);
-        if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
-          normRole = UserRole.ADMIN;
-        } else if (isBonkoungou(parsed.email, parsed.companyName || (parsed as any).nomDEntreprise, parsed.nom || parsed.prénom)) {
-          normRole = UserRole.SEMI_WHOLESALER;
-        }
-        parsed.rôle = normRole;
-        parsed.role = normRole;
-        return parsed as FirebaseUser;
-      }
+export const userService = {
+  /**
+   * Créer ou mettre à jour un profil dans PostgreSQL (table profiles)
+   */
+  async createUser(user: UserProfileData): Promise<void> {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
     }
-  } catch (e) {
-    console.error("Error reading from localStorage:", e);
-  }
-  return null;
-}
 
-export function saveLocalUser(uid: string, user: FirebaseUser): void {
-  try {
     let normRole = normalizeUserRole(user.rôle || user.role);
     if (user.email === "urbain.traore@yahoo.fr" || user.email === "urbain.traoreurb@gmail.com") {
       normRole = UserRole.ADMIN;
-    } else if (isBonkoungou(user.email, user.companyName || (user as any).nomDEntreprise, user.nom || user.prénom)) {
+    } else if (isBonkoungou(user.email, user.companyName || user.nomDEntreprise, user.nom || user.prénom)) {
       normRole = UserRole.SEMI_WHOLESALER;
     }
-    const completeUser = {
-      ...user,
-      rôle: normRole,
-      role: normRole
-    };
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${uid}`, JSON.stringify(completeUser));
-  } catch (e) {
-    console.error("Error writing to localStorage:", e);
-  }
-}
 
-function sanitizeForFirestore<T extends object>(obj: T): T {
-  const result = { ...obj } as any;
-  Object.keys(result).forEach((key) => {
-    if (result[key] === undefined) {
-      delete result[key];
-    } else if (result[key] !== null && typeof result[key] === "object") {
-      result[key] = sanitizeForFirestore(result[key]);
-    }
-  });
-  return result;
-}
+    const fullName = `${user.prénom || ""} ${user.nom || ""}`.trim() || user.email.split("@")[0];
 
-export const userService = {
-  getLocalUser,
-  saveLocalUser,
-
-  async createUser(user: FirebaseUser): Promise<void> {
-    const normRole = normalizeUserRole(user.rôle || user.role);
-    const userToSave: FirebaseUser = {
-      ...user,
-      rôle: normRole,
-      role: normRole
+    const profileRecord = {
+      id: user.uid,
+      email: user.email.trim().toLowerCase(),
+      name: fullName,
+      phone: user.téléphone || user.phone || "",
+      role: normRole,
+      company_name: user.companyName || user.nomDEntreprise || "",
+      address: [user.quartier, user.ville, user.pays].filter(Boolean).join(", ") || user.address || "",
+      rccm: user.rccm || "",
+      ifu: user.ifu || "",
+      logo_url: user.logoUrl || "",
+      balance: user.balance || 0,
+      credit_limit: user.creditLimit || 0,
+      updated_at: new Date().toISOString()
     };
 
-    saveLocalUser(userToSave.uid, userToSave);
-    try {
-      const existingUsersRaw = localStorage.getItem("wakat_erp_v2_users");
-      let usersList: any[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
-      const profile = {
-        id: userToSave.uid,
-        name: `${userToSave.prénom || "Utilisateur"} ${userToSave.nom}`.trim(),
-        email: userToSave.email,
-        phone: userToSave.téléphone,
-        role: normRole,
-        status: userToSave.statut as any,
-        country: userToSave.pays || "Burkina Faso",
-        region: userToSave.ville || "Ouagadougou",
-        sector: userToSave.quartier,
-        latitude: userToSave.latitude,
-        longitude: userToSave.longitude,
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-        balance: 0,
-        companyName: userToSave.companyName || `${userToSave.nom} Entreprise`,
-        address: userToSave.ville && userToSave.quartier ? `${userToSave.quartier}, ${userToSave.ville}` : "Non spécifié"
-      };
-      const idx = usersList.findIndex((u: any) => u.id === profile.id);
-      if (idx !== -1) {
-        usersList[idx] = { ...usersList[idx], ...profile };
-      } else {
-        usersList.push(profile);
-      }
-      localStorage.setItem("wakat_erp_v2_users", JSON.stringify(usersList));
-    } catch (e) {
-      console.error("Error updating erp_users in localStorage:", e);
+    const { error } = await supabase.from("profiles").upsert(profileRecord);
+    if (error) {
+      console.error("Erreur lors de l'enregistrement du profil Supabase (profiles):", error);
+      throw error;
     }
-
-    const sanitized = sanitizeForFirestore(userToSave);
-    // Write to both users and utilisateurs documents to ensure cross-system compatibility
-    await Promise.all([
-      setDoc(doc(db, "users", userToSave.uid), sanitized),
-      setDoc(doc(db, "utilisateurs", userToSave.uid), sanitized)
-    ]);
-
-    // Sync to Supabase table
-    if (supabase) {
-      try {
-        await upsertToSupabaseTable("users", {
-          id: userToSave.uid,
-          uid: userToSave.uid,
-          nom: userToSave.nom,
-          prenom: userToSave.prénom,
-          email: userToSave.email,
-          telephone: userToSave.téléphone,
-          role: normRole,
-          company_name: userToSave.companyName || null,
-          country: userToSave.pays || null,
-          city: userToSave.ville || null,
-          created_at: new Date().toISOString()
-        });
-      } catch (supErr) {
-        console.warn("Supabase background sync notice on users table:", supErr);
-      }
-    }
-  },
-
-  async getUser(uid: string): Promise<FirebaseUser | null> {
-    const currentUser = auth.currentUser;
-    const currentEmail = currentUser?.email || "";
-
-    try {
-      // Check 'users' collection first, fallback to 'utilisateurs' collection
-      let snap = await getDoc(doc(db, "users", uid));
-      if (!snap.exists()) {
-        snap = await getDoc(doc(db, "utilisateurs", uid));
-      }
-
-      if (snap.exists()) {
-        const raw = snap.data();
-        let normRole = normalizeUserRole(raw.rôle || raw.role || raw.userRole);
-
-        // Check custom claims if current user
-        if (currentUser && currentUser.uid === uid) {
-          try {
-            const tokenResult = await currentUser.getIdTokenResult();
-            const claimRole = (tokenResult.claims.rôle as string) || (tokenResult.claims.role as string) || (tokenResult.claims.admin ? "ADMIN" : undefined);
-            if (claimRole && claimRole !== "CLIENT" && normRole === "CLIENT") {
-              normRole = normalizeUserRole(claimRole);
-            }
-          } catch (e) {}
-        }
-
-        const data = { 
-          uid: snap.id, 
-          ...raw,
-          rôle: normRole,
-          role: normRole
-        } as FirebaseUser;
-
-        if ((data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") && data.rôle !== "ADMIN") {
-          data.rôle = "ADMIN";
-          data.role = "ADMIN";
-          try { 
-            await Promise.allSettled([
-              setDoc(doc(db, "users", uid), { rôle: "ADMIN", role: "ADMIN" }, { merge: true }),
-              setDoc(doc(db, "utilisateurs", uid), { rôle: "ADMIN", role: "ADMIN" }, { merge: true })
-            ]);
-          } catch (e) {}
-        }
-
-        saveLocalUser(uid, data);
-        return data;
-      }
-    } catch (error: any) {
-      console.warn("Firestore error/timeout during getUser (using local fallback):", error.message || error);
-    }
-
-    const local = getLocalUser(uid);
-    if (local) {
-      if ((local.email === "urbain.traore@yahoo.fr" || local.email === "urbain.traoreurb@gmail.com") && local.rôle !== "ADMIN") {
-        local.rôle = "ADMIN";
-        local.role = "ADMIN";
-        saveLocalUser(uid, local);
-      }
-
-      return local;
-    }
-
-    if (currentUser && currentUser.uid === uid) {
-      const email = currentEmail;
-      const emailPrefix = email.split("@")[0] || "utilisateur";
-      let cleanName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
-      let companyName: string | undefined = undefined;
-      let firstName = "Utilisateur";
-      let chosenRole: string | undefined = undefined;
-      let userPays: string | undefined = undefined;
-      let userVille: string | undefined = undefined;
-      let userQuartier: string | undefined = undefined;
-      let userLat: number | undefined = undefined;
-      let userLng: number | undefined = undefined;
-
-      // Check if there was a pending registration payload
-      try {
-        const pendingRaw = localStorage.getItem(`wakat_pending_signup_${email.toLowerCase().trim()}`);
-        if (pendingRaw) {
-          const p = JSON.parse(pendingRaw);
-          if (p) {
-            cleanName = p.nom || cleanName;
-            firstName = p.prénom || firstName;
-            chosenRole = p.rôle || p.role;
-            companyName = p.companyName || (cleanName ? `${cleanName} Entreprise` : undefined);
-            userPays = p.pays;
-            userVille = p.ville;
-            userQuartier = p.quartier;
-            userLat = p.latitude;
-            userLng = p.longitude;
-          }
-        }
-        if (!chosenRole) {
-          const sessRole = sessionStorage.getItem("wakat_last_signup_role");
-          if (sessRole) chosenRole = sessRole;
-        }
-      } catch (e) {}
-      
-      let determinedRole = normalizeUserRole(chosenRole || "CLIENT");
-      if (email.includes("detaillant")) {
-        determinedRole = UserRole.RETAILER;
-        firstName = "Détaillant";
-      } else if (email.includes("demi-grossiste") || email.includes("demigros") || email.includes("semi")) {
-        determinedRole = UserRole.SEMI_WHOLESALER;
-      } else if (email.includes("grossiste") || email.includes("wholesaler")) {
-        determinedRole = UserRole.WHOLESALER;
-      } else if (email.includes("fabricant") || email.includes("manufacturer")) {
-        determinedRole = UserRole.MANUFACTURER;
-      } else if (email.includes("admin") || email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com") {
-        determinedRole = UserRole.ADMIN;
-      }
-
-      const fallbackUser: FirebaseUser = {
-        uid: uid,
-        nom: cleanName,
-        prénom: firstName,
-        email: email,
-        téléphone: currentUser.phoneNumber || "",
-        rôle: determinedRole,
-        role: determinedRole,
-        dateCréation: new Date().toISOString(),
-        statut: "ACTIVE",
-        companyName: companyName,
-        pays: userPays,
-        ville: userVille,
-        quartier: userQuartier,
-        latitude: userLat,
-        longitude: userLng
-      };
-      saveLocalUser(uid, fallbackUser);
-      return fallbackUser;
-    }
-
-    return null;
-  },
-
-  async updateUser(uid: string, fields: Partial<FirebaseUser>): Promise<void> {
-    const updatedFields = { ...fields };
-    if (updatedFields.rôle || (updatedFields as any).role) {
-      const normRole = normalizeUserRole(updatedFields.rôle || (updatedFields as any).role);
-      updatedFields.rôle = normRole;
-      (updatedFields as any).role = normRole;
-    }
-
-    const local = getLocalUser(uid);
-    if (local) {
-      if ((local.email === "urbain.traore@yahoo.fr" || local.email === "urbain.traoreurb@gmail.com") && local.rôle !== "ADMIN") {
-        local.rôle = "ADMIN";
-        local.role = "ADMIN";
-      }
-      saveLocalUser(uid, { ...local, ...updatedFields });
-    }
-
-    try {
-      const erpUsersRaw = localStorage.getItem("wakat_erp_v2_users");
-      if (erpUsersRaw) {
-        const erpList: any[] = JSON.parse(erpUsersRaw);
-        const idx = erpList.findIndex((u: any) => u.id === uid);
-        if (idx !== -1) {
-          if (updatedFields.nom !== undefined || updatedFields.prénom !== undefined) {
-            const first = updatedFields.prénom !== undefined ? updatedFields.prénom : (erpList[idx].name?.split(" ")[0] || "");
-            const last = updatedFields.nom !== undefined ? updatedFields.nom : (erpList[idx].name?.split(" ").slice(1).join(" ") || "");
-            erpList[idx].name = `${first} ${last}`.trim();
-          }
-          if (updatedFields.téléphone !== undefined) erpList[idx].phone = updatedFields.téléphone;
-          if (updatedFields.companyName !== undefined) erpList[idx].companyName = updatedFields.companyName;
-          if (updatedFields.pays !== undefined) erpList[idx].country = updatedFields.pays;
-          if (updatedFields.ville !== undefined) erpList[idx].region = updatedFields.ville;
-          if (updatedFields.quartier !== undefined) erpList[idx].sector = updatedFields.quartier;
-          if (updatedFields.latitude !== undefined) erpList[idx].latitude = updatedFields.latitude;
-          if (updatedFields.longitude !== undefined) erpList[idx].longitude = updatedFields.longitude;
-          if (updatedFields.rôle !== undefined) erpList[idx].role = normalizeUserRole(updatedFields.rôle);
-          localStorage.setItem("wakat_erp_v2_users", JSON.stringify(erpList));
-        }
-      }
-    } catch (e) {
-      console.error("Error updating local ERP users in updateUser:", e);
-    }
-
-    try {
-      const sanitized = sanitizeForFirestore(updatedFields);
-      const firestorePromise = Promise.allSettled([
-        setDoc(doc(db, "users", uid), sanitized, { merge: true }),
-        setDoc(doc(db, "utilisateurs", uid), sanitized, { merge: true })
-      ]);
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Firestore timeout - fallback local")), 2500)
-      );
-      await Promise.race([firestorePromise, timeoutPromise]);
-
-      if (supabase) {
-        const payload: Record<string, any> = { id: uid, uid, updated_at: new Date().toISOString() };
-        if (updatedFields.nom !== undefined) payload.nom = updatedFields.nom;
-        if (updatedFields.prénom !== undefined) payload.prenom = updatedFields.prénom;
-        if (updatedFields.email !== undefined) payload.email = updatedFields.email;
-        if (updatedFields.téléphone !== undefined) payload.telephone = updatedFields.téléphone;
-        if (updatedFields.rôle !== undefined) payload.role = updatedFields.rôle;
-        if (updatedFields.companyName !== undefined) payload.company_name = updatedFields.companyName;
-        if (updatedFields.pays !== undefined) payload.country = updatedFields.pays;
-        if (updatedFields.ville !== undefined) payload.city = updatedFields.ville;
-        await upsertToSupabaseTable("users", payload);
-      }
-    } catch (error: any) {
-      console.warn("Firestore setDoc failed during updateUser (relying on offline fallback):", error.message || error);
-    }
-  },
-
-  async deleteUser(uid: string): Promise<void> {
-    // 1. Remove from Firestore ('users' and 'utilisateurs')
-    try {
-      await Promise.allSettled([
-        deleteDoc(doc(db, "users", uid)),
-        deleteDoc(doc(db, "utilisateurs", uid))
-      ]);
-
-      if (supabase) {
-        await supabase.from("users").delete().eq("id", uid);
-      }
-    } catch (e) {
-      console.error("Firestore error during deleteUser:", e);
-      throw e;
-    }
-
-    // 2. Remove from local storage
-    localStorage.removeItem(`${LOCAL_STORAGE_PREFIX}${uid}`);
-    
-    try {
-      const erpUsersRaw = localStorage.getItem("wakat_erp_v2_users");
-      if (erpUsersRaw) {
-        const erpList: any[] = JSON.parse(erpUsersRaw);
-        const filtered = erpList.filter(u => u.id !== uid);
-        localStorage.setItem("wakat_erp_v2_users", JSON.stringify(filtered));
-      }
-    } catch (e) {
-      console.error("Error updating local users during deletion:", e);
-    }
-  },
-
-  async getAllUsers(): Promise<FirebaseUser[]> {
-    const firestoreUsers: FirebaseUser[] = [];
-    try {
-      const snap = await getDocs(collection(db, "users"));
-      snap.forEach((docSnap) => {
-        if (docSnap.exists()) {
-          const raw = docSnap.data();
-          const normRole = normalizeUserRole(raw.rôle || raw.role || raw.userRole);
-          firestoreUsers.push({ 
-            uid: docSnap.id, 
-            ...raw,
-            rôle: normRole,
-            role: normRole
-          } as FirebaseUser);
-        }
-      });
-    } catch (error: any) {
-      console.warn("Firestore error during getAllUsers:", error);
-    }
-
-    const localUsers: FirebaseUser[] = [];
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(LOCAL_STORAGE_PREFIX)) {
-          const data = localStorage.getItem(key);
-          if (data) {
-            const parsed = JSON.parse(data) as FirebaseUser;
-            if (parsed && parsed.uid) {
-              let normRole = normalizeUserRole(parsed.rôle || parsed.role);
-              if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
-                normRole = UserRole.ADMIN;
-              } else if (isBonkoungou(parsed.email, parsed.companyName, parsed.nom || parsed.prénom)) {
-                normRole = UserRole.SEMI_WHOLESALER;
-              }
-              localUsers.push({
-                ...parsed,
-                rôle: normRole,
-                role: normRole
-              });
-            }
-          }
-        }
-      }
-
-      const erpUsersRaw = localStorage.getItem("wakat_erp_v2_users");
-      if (erpUsersRaw) {
-        const erpList: any[] = JSON.parse(erpUsersRaw);
-        erpList.forEach(eu => {
-          if (eu && eu.id) {
-            let normRole = normalizeUserRole(eu.role || eu.rôle);
-            if (eu.email === "urbain.traore@yahoo.fr" || eu.email === "urbain.traoreurb@gmail.com") {
-              normRole = UserRole.ADMIN;
-            } else if (isBonkoungou(eu.email, eu.companyName, eu.name)) {
-              normRole = UserRole.SEMI_WHOLESALER;
-            }
-            localUsers.push({
-              uid: eu.id,
-              nom: eu.name?.split(" ").slice(1).join(" ") || eu.name || "",
-              prénom: eu.name?.split(" ")[0] || "",
-              email: eu.email || "",
-              téléphone: eu.phone || "",
-              rôle: normRole,
-              role: normRole,
-              dateCréation: new Date().toISOString(),
-              statut: eu.status || "ACTIVE",
-              companyName: eu.companyName
-            });
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Error reading local users cache:", e);
-    }
-
-    const map = new Map<string, FirebaseUser>();
-    const emailToUidMap = new Map<string, string>();
-    const companyToUidMap = new Map<string, string>();
-
-    const addOrMergeUser = (u: FirebaseUser) => {
-      if (!u) return;
-      const rawEmail = u.email ? u.email.toLowerCase().trim() : "";
-      const rawCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-      
-      let normRole = normalizeUserRole(u.rôle || u.role);
-      if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
-        normRole = UserRole.ADMIN;
-      } else if (isBonkoungou(u.email, u.companyName, u.nom)) {
-        normRole = UserRole.SEMI_WHOLESALER;
-      }
-      u.rôle = normRole;
-      u.role = normRole;
-
-      const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-
-      let existingUid: string | undefined = undefined;
-      if (normEmail && emailToUidMap.has(normEmail)) {
-        existingUid = emailToUidMap.get(normEmail);
-      } else if (normCompany && normCompany === "bonkoungou entreprise" && companyToUidMap.has(normCompany)) {
-        existingUid = companyToUidMap.get(normCompany);
-      } else if (u.uid && map.has(u.uid)) {
-        existingUid = u.uid;
-      }
-
-      if (existingUid && map.has(existingUid)) {
-        const existing = map.get(existingUid)!;
-        // Never overwrite a non-CLIENT role with a default CLIENT
-        const effectiveRole = (u.rôle && u.rôle !== UserRole.CLIENT) ? u.rôle : (existing.rôle || u.rôle);
-        const merged: FirebaseUser = { 
-          ...existing, 
-          ...u, 
-          uid: existingUid,
-          rôle: effectiveRole,
-          role: effectiveRole
-        };
-        map.set(existingUid, merged);
-        if (normEmail) emailToUidMap.set(normEmail, existingUid);
-        if (normCompany) companyToUidMap.set(normCompany, existingUid);
-      } else {
-        const targetUid = u.uid || `user-${Date.now()}`;
-        u.uid = targetUid;
-        map.set(targetUid, u);
-        if (normEmail) emailToUidMap.set(normEmail, targetUid);
-        if (normCompany) companyToUidMap.set(normCompany, targetUid);
-      }
-    };
-
-    [...localUsers, ...firestoreUsers].forEach(u => addOrMergeUser(u));
-
-    if (auth.currentUser) {
-      const cur = auth.currentUser;
-      const curEmail = cur.email ? cur.email.toLowerCase().trim() : "";
-      if (curEmail && !emailToUidMap.has(curEmail) && !map.has(cur.uid)) {
-        let initialRole: UserRole = UserRole.CLIENT;
-        try {
-          const pendingRaw = localStorage.getItem(`wakat_pending_signup_${curEmail}`);
-          if (pendingRaw) {
-            const p = JSON.parse(pendingRaw);
-            if (p && (p.rôle || p.role)) initialRole = normalizeUserRole(p.rôle || p.role);
-          }
-        } catch (e) {}
-
-        addOrMergeUser({
-          uid: cur.uid,
-          nom: cur.displayName?.split(" ").slice(1).join(" ") || "Utilisateur",
-          prénom: cur.displayName?.split(" ")[0] || "Firebase",
-          email: cur.email || "",
-          téléphone: cur.phoneNumber || "",
-          rôle: initialRole,
-          role: initialRole,
-          dateCréation: new Date().toISOString(),
-          statut: "ACTIVE"
-        });
-      }
-    }
-
-    const finalArray = Array.from(map.values()).filter(u => u.statut !== "DELETED");
-    finalArray.forEach(u => { 
-      const normE = u.email ? u.email.toLowerCase().trim() : "";
-      const normC = u.companyName ? u.companyName.toLowerCase().trim() : "";
-      if ((normE === "urbain.traore@yahoo.fr" || normE === "urbain.traoreurb@gmail.com") && u.rôle !== UserRole.ADMIN) {
-        u.rôle = UserRole.ADMIN;
-        u.role = UserRole.ADMIN;
-      }
-
-    });
-    return finalArray;
   },
 
   /**
-   * Real-time subscription to all users in Firestore
+   * Récupérer un profil utilisateur par son ID depuis PostgreSQL
    */
-  subscribeToAllUsers(callback: (users: FirebaseUser[]) => void) {
-    const firestoreCollection = collection(db, "users");
-    
-    // Initial fetch of local users to be responsive
-    this.getAllUsers().then(callback);
+  async getUser(uid: string): Promise<UserProfileData | null> {
+    if (!supabase || !uid) return null;
 
-    let unsub = () => {};
     try {
-      unsub = onSnapshot(firestoreCollection, (snapshot) => {
-        const users: FirebaseUser[] = [];
-        snapshot.forEach((doc: any) => {
-          const raw = doc.data();
-          let normRole = normalizeUserRole(raw.rôle || raw.role || raw.userRole);
-          if (raw.email === "urbain.traore@yahoo.fr" || raw.email === "urbain.traoreurb@gmail.com") {
-            normRole = UserRole.ADMIN;
-          } else if (isBonkoungou(raw.email, raw.companyName || raw.nomDEntreprise, raw.nom || raw.prénom || raw.name)) {
-            normRole = UserRole.SEMI_WHOLESALER;
-          }
-          users.push({ 
-            uid: doc.id, 
-            ...raw,
-            rôle: normRole,
-            role: normRole
-          } as FirebaseUser);
-        });
-        
-        // Merge with local users for a complete picture
-        this.getAllUsers().then(locals => {
-          const map = new Map<string, FirebaseUser>();
-          const emailMap = new Map<string, string>();
-          const companyMap = new Map<string, string>();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", uid)
+        .maybeSingle();
 
-          [...locals, ...users].forEach(u => {
-            if (!u) return;
-            const rawEmail = u.email ? u.email.toLowerCase().trim() : "";
-            const rawCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-            let normRole = normalizeUserRole(u.rôle || u.role);
-            if (rawEmail === "urbain.traore@yahoo.fr" || rawEmail === "urbain.traoreurb@gmail.com") {
-              normRole = UserRole.ADMIN;
-            } else if (isBonkoungou(u.email, u.companyName, u.nom || (u as any).name)) {
-              normRole = UserRole.SEMI_WHOLESALER;
-            }
-            u.rôle = normRole;
-            u.role = normRole;
+      if (error) {
+        console.error("Erreur lecture profil Supabase:", error);
+        return null;
+      }
 
-            const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-            const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
+      if (!data) return null;
 
-            let targetUid: string | undefined = undefined;
-            if (normEmail && emailMap.has(normEmail)) {
-              targetUid = emailMap.get(normEmail);
-            } else if (normCompany && normCompany === "bonkoungou entreprise" && companyMap.has(normCompany)) {
-              targetUid = companyMap.get(normCompany);
-            } else if (u.uid && map.has(u.uid)) {
-              targetUid = u.uid;
-            }
+      let normRole = normalizeUserRole(data.role);
+      if (data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") {
+        normRole = UserRole.ADMIN;
+      } else if (isBonkoungou(data.email, data.company_name, data.name)) {
+        normRole = UserRole.SEMI_WHOLESALER;
+      }
 
-            if (targetUid && map.has(targetUid)) {
-              const existing = map.get(targetUid)!;
-              const effectiveRole = (u.rôle && u.rôle !== UserRole.CLIENT) ? u.rôle : (existing.rôle || u.rôle);
-              map.set(targetUid, { 
-                ...existing, 
-                ...u, 
-                uid: targetUid,
-                rôle: effectiveRole,
-                role: effectiveRole
-              });
-              if (normEmail) emailMap.set(normEmail, targetUid);
-              if (normCompany) companyMap.set(normCompany, targetUid);
-            } else {
-              const idToUse = u.uid || `u-${Date.now()}`;
-              map.set(idToUse, u);
-              if (normEmail) emailMap.set(normEmail, idToUse);
-              if (normCompany) companyMap.set(normCompany, idToUse);
-            }
-          });
-          callback(Array.from(map.values()).filter(u => u.statut !== "DELETED"));
-        });
-      }, (error) => {
-        console.warn("[userService] subscribeToAllUsers Firestore connection failed, relying on local storage fallback", error);
+      const nameParts = (data.name || "").split(" ");
+      const prénom = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : data.name || "";
+      const nom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
+      const userProfile: UserProfileData = {
+        uid: data.id,
+        id: data.id,
+        nom: nom || data.name || "Utilisateur",
+        prénom: prénom || "",
+        email: data.email,
+        téléphone: data.phone || "",
+        phone: data.phone || "",
+        rôle: normRole,
+        role: normRole,
+        dateCréation: data.created_at || new Date().toISOString(),
+        statut: "ACTIF",
+        companyName: data.company_name || "",
+        nomDEntreprise: data.company_name || "",
+        address: data.address || "",
+        rccm: data.rccm || "",
+        ifu: data.ifu || "",
+        logoUrl: data.logo_url || "",
+        balance: Number(data.balance || 0),
+        creditLimit: Number(data.credit_limit || 0)
+      };
+
+      return userProfile;
+    } catch (e) {
+      console.error("Exception dans getUser:", e);
+      return null;
+    }
+  },
+
+  /**
+   * Récupérer un utilisateur par email
+   */
+  async getUserByEmail(email: string): Promise<UserProfileData | null> {
+    if (!supabase || !email) return null;
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .ilike("email", email.trim())
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return this.getUser(data.id);
+    } catch (e) {
+      console.error("Exception dans getUserByEmail:", e);
+      return null;
+    }
+  },
+
+  /**
+   * Mettre à jour des champs d'un profil
+   */
+  async updateUser(uid: string, fields: Partial<UserProfileData>): Promise<void> {
+    if (!supabase || !uid) return;
+
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (fields.nom || fields.prénom) {
+      updates.name = `${fields.prénom || ""} ${fields.nom || ""}`.trim();
+    }
+    if (fields.téléphone || fields.phone) {
+      updates.phone = fields.téléphone || fields.phone;
+    }
+    if (fields.companyName || fields.nomDEntreprise) {
+      updates.company_name = fields.companyName || fields.nomDEntreprise;
+    }
+    if (fields.rôle || fields.role) {
+      updates.role = normalizeUserRole(fields.rôle || fields.role);
+    }
+    if (fields.address) updates.address = fields.address;
+    if (fields.rccm) updates.rccm = fields.rccm;
+    if (fields.ifu) updates.ifu = fields.ifu;
+    if (fields.logoUrl) updates.logo_url = fields.logoUrl;
+    if (fields.balance !== undefined) updates.balance = fields.balance;
+    if (fields.creditLimit !== undefined) updates.credit_limit = fields.creditLimit;
+
+    const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
+    if (error) {
+      console.error("Erreur update profil Supabase:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Supprimer un profil
+   */
+  async deleteUser(uid: string): Promise<void> {
+    if (!supabase || !uid) return;
+    const { error } = await supabase.from("profiles").delete().eq("id", uid);
+    if (error) {
+      console.error("Erreur suppression profil Supabase:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * Récupérer tous les utilisateurs enregistrés dans PostgreSQL
+   */
+  async getAllUsers(): Promise<UserProfileData[]> {
+    if (!supabase) return [];
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Erreur récupération profiles Supabase:", error);
+        return [];
+      }
+
+      return (data || []).map((row: any) => {
+        let normRole = normalizeUserRole(row.role);
+        if (row.email === "urbain.traore@yahoo.fr" || row.email === "urbain.traoreurb@gmail.com") {
+          normRole = UserRole.ADMIN;
+        } else if (isBonkoungou(row.email, row.company_name, row.name)) {
+          normRole = UserRole.SEMI_WHOLESALER;
+        }
+        const nameParts = (row.name || "").split(" ");
+        const prénom = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : row.name || "";
+        const nom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+
+        return {
+          uid: row.id,
+          id: row.id,
+          nom: nom || row.name || "Utilisateur",
+          prénom: prénom || "",
+          email: row.email,
+          téléphone: row.phone || "",
+          phone: row.phone || "",
+          rôle: normRole,
+          role: normRole,
+          dateCréation: row.created_at,
+          statut: "ACTIF",
+          companyName: row.company_name || "",
+          nomDEntreprise: row.company_name || "",
+          address: row.address || "",
+          rccm: row.rccm || "",
+          ifu: row.ifu || "",
+          logoUrl: row.logo_url || "",
+          balance: Number(row.balance || 0),
+          creditLimit: Number(row.credit_limit || 0)
+        };
       });
     } catch (e) {
-      console.warn("[userService] Failed to set up Firestore onSnapshot for all users:", e);
+      console.error("Exception dans getAllUsers:", e);
+      return [];
     }
+  },
+
+  /**
+   * Abonnement temps réel aux changements de profils
+   */
+  subscribeToUsers(callback: (users: UserProfileData[]) => void): () => void {
+    if (!supabase) return () => {};
+
+    // Initial fetch
+    this.getAllUsers().then(callback);
+
+    const channel = supabase
+      .channel("public:profiles")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => {
+          this.getAllUsers().then(callback);
+        }
+      )
+      .subscribe();
 
     return () => {
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("[userService] Failed to unsubscribe from all users:", e);
-      }
+      supabase.removeChannel(channel);
     };
+  },
+
+  /**
+   * Alias pour subscribeToUsers
+   */
+  subscribeToAllUsers(callback: (users: UserProfileData[]) => void): () => void {
+    return this.subscribeToUsers(callback);
   }
 };

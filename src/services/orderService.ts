@@ -1,84 +1,168 @@
-import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from "../firebase/firebase";
-import { doc, setDoc, collection, getDocs, updateDoc } from "firebase/firestore";
-import { Order } from "../types";
-import { filterMockData } from "../data";
-import { supabase, upsertToSupabaseTable } from "../supabase";
+import { Order, OrderStatus } from "../types";
+import { supabase } from "../supabase";
 
-const COLLECTION_NAME = "orders";
+function mapRowToOrder(row: any): Order {
+  let parsedItems = [];
+  if (Array.isArray(row.items)) {
+    parsedItems = row.items;
+  } else if (typeof row.items === "string") {
+    try {
+      parsedItems = JSON.parse(row.items);
+    } catch (e) {
+      parsedItems = [];
+    }
+  }
+
+  return {
+    id: row.id,
+    orderType: row.order_type || "B2B_W2R",
+    senderId: row.buyer_id || row.sender_id || row.senderId || "",
+    receiverId: row.seller_id || row.receiver_id || row.receiverId || "",
+    items: parsedItems,
+    totalAmount: Number(row.total_amount || 0),
+    amountPaid: Number(row.amount_paid || 0),
+    paymentStatus: row.payment_status || "PENDING",
+    status: (row.status as OrderStatus) || OrderStatus.PENDING,
+    clientId: row.client_id || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || new Date().toISOString(),
+    shippingFee: Number(row.shipping_fee || 0),
+    distanceKm: Number(row.distance_km || 0),
+    estimatedTimeMins: Number(row.estimated_time_mins || 0),
+    paymentMethod: row.payment_method || "CASH",
+    deliveryAddress: row.delivery_address || "",
+    deliveryNotes: row.delivery_notes || "",
+    driverId: row.driver_id || undefined,
+    otpCode: row.otp_code || undefined,
+    preuvePaiementUrl: row.payment_proof_url || undefined,
+    statutPaiement: row.statut_paiement || undefined
+  };
+}
 
 export const orderService = {
+  /**
+   * Récupérer toutes les commandes depuis PostgreSQL
+   */
   async getAllOrders(): Promise<Order[]> {
+    if (!supabase) return [];
     try {
-      const snap = await getDocs(collection(db, COLLECTION_NAME));
-      const list: Order[] = [];
-      snap.forEach((docSnap) => {
-        if (docSnap.exists()) {
-          list.push(docSnap.data() as Order);
-        }
-      });
-      return filterMockData(list);
-    } catch (error: any) {
-      console.warn("Firestore error during getAllOrders:", error);
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Erreur getAllOrders Supabase:", error);
+        return [];
+      }
+
+      return (data || []).map(mapRowToOrder);
+    } catch (err) {
+      console.error("Exception dans getAllOrders:", err);
       return [];
     }
   },
 
+  /**
+   * Créer une commande dans PostgreSQL
+   */
   async createOrder(order: Order): Promise<void> {
-    try {
-      const sanitized = sanitizeFirestoreData(order);
-      await setDoc(doc(db, COLLECTION_NAME, order.id), sanitized);
-      
-      if (supabase) {
-        await upsertToSupabaseTable("orders", {
-          id: order.id,
-          sender_id: order.senderId,
-          receiver_id: order.receiverId,
-          items: order.items || [],
-          status: order.status,
-          total_amount: order.totalAmount || 0,
-          payment_status: order.paymentStatus || "PENDING",
-          amount_paid: order.amountPaid || 0,
-          created_at: order.createdAt || new Date().toISOString()
-        });
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
+    }
+
+    const orderRecord = {
+      id: order.id,
+      buyer_id: order.senderId,
+      seller_id: order.receiverId,
+      sender_id: order.senderId,
+      receiver_id: order.receiverId,
+      order_type: order.orderType || "B2B_W2R",
+      status: order.status || OrderStatus.PENDING,
+      total_amount: order.totalAmount || 0,
+      amount_paid: order.amountPaid || 0,
+      payment_status: order.paymentStatus || "PENDING",
+      payment_method: order.paymentMethod || "CASH",
+      delivery_address: order.deliveryAddress || "",
+      delivery_notes: order.deliveryNotes || "",
+      shipping_fee: order.shippingFee || 0,
+      items: order.items || [],
+      created_at: order.createdAt || new Date().toISOString(),
+      updated_at: order.updatedAt || new Date().toISOString()
+    };
+
+    const { error } = await supabase.from("orders").upsert(orderRecord);
+    if (error) {
+      console.error("Erreur createOrder Supabase:", error);
+      throw error;
+    }
+
+    // Insérer également les lignes de commandes individuelles si disponibles
+    if (order.items && order.items.length > 0) {
+      const itemsToInsert = order.items.map((item, idx) => ({
+        id: `${order.id}-item-${idx}`,
+        order_id: order.id,
+        product_id: item.productId,
+        quantity: item.quantity,
+        unit_price: item.priceAtOrder,
+        subtotal: item.quantity * item.priceAtOrder
+      }));
+
+      try {
+        await supabase.from("order_items").upsert(itemsToInsert);
+      } catch (itemErr) {
+        console.warn("Notice insertion order_items:", itemErr);
       }
-    } catch (error: any) {
-      console.warn("Firestore error during createOrder:", error);
     }
   },
 
+  /**
+   * Mettre à jour une commande
+   */
   async updateOrder(orderId: string, fields: Partial<Order>): Promise<void> {
-    try {
-      await updateDoc(doc(db, COLLECTION_NAME, orderId), fields as any);
+    if (!supabase || !orderId) return;
 
-      if (supabase) {
-        const payload: Record<string, any> = { id: orderId, updated_at: new Date().toISOString() };
-        if (fields.status) payload.status = fields.status;
-        if (fields.paymentStatus) payload.payment_status = fields.paymentStatus;
-        if (fields.amountPaid !== undefined) payload.amount_paid = fields.amountPaid;
-        await upsertToSupabaseTable("orders", payload);
-      }
-    } catch (error: any) {
-      console.warn("Firestore error during updateOrder:", error);
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (fields.status) updates.status = fields.status;
+    if (fields.paymentStatus) updates.payment_status = fields.paymentStatus;
+    if (fields.amountPaid !== undefined) updates.amount_paid = fields.amountPaid;
+    if (fields.driverId) updates.driver_id = fields.driverId;
+    if (fields.deliveryAddress) updates.delivery_address = fields.deliveryAddress;
+    if (fields.deliveryNotes) updates.delivery_notes = fields.deliveryNotes;
+    if (fields.preuvePaiementUrl) updates.payment_proof_url = fields.preuvePaiementUrl;
+    if (fields.statutPaiement) updates.statut_paiement = fields.statutPaiement;
+
+    const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
+    if (error) {
+      console.error("Erreur updateOrder Supabase:", error);
+      throw error;
     }
   },
 
-  subscribeToOrders(callback: (orders: Order[]) => void) {
-    const unsub = import("firebase/firestore").then(({ onSnapshot, collection }) => {
-      return onSnapshot(collection(db, COLLECTION_NAME), (snapshot) => {
-        const list: Order[] = [];
-        snapshot.forEach((docSnap) => {
-          if (docSnap.exists()) {
-            list.push(docSnap.data() as Order);
-          }
-        });
-        callback(filterMockData(list));
-      }, (error) => {
-        console.warn("Firestore error during subscribeToOrders:", error);
-      });
-    });
-    
+  /**
+   * S'abonner aux commandes en temps réel
+   */
+  subscribeToOrders(callback: (orders: Order[]) => void): () => void {
+    if (!supabase) return () => {};
+
+    this.getAllOrders().then(callback);
+
+    const channel = supabase
+      .channel("public:orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          this.getAllOrders().then(callback);
+        }
+      )
+      .subscribe();
+
     return () => {
-      unsub.then(u => u && u());
+      supabase.removeChannel(channel);
     };
   }
 };

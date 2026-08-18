@@ -1,40 +1,36 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = import.meta.env.VITE_SUPABASE_URL;
-const rawAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-const sanitizeUrl = (url?: string): string => {
-  const fallback = "https://uefgeyokmhbovgrrxoje.supabase.co";
-  if (!url || typeof url !== 'string') return fallback;
-  let cleaned = url.trim().replace(/^["']|["']$/g, '');
-  cleaned = cleaned.replace(/\/rest\/v1\/?$/, '');
-  cleaned = cleaned.replace(/\/$/, '');
-  if (cleaned.startsWith('re_') || (!cleaned.startsWith('http://') && !cleaned.startsWith('https://'))) return fallback;
-  return cleaned;
-};
-
-const sanitizeKey = (key?: string): string => {
-  const fallback = "sb_publishable_fHZov5y-mAQQLdBg7ZfnFQ_3xji3Xpd";
-  if (!key || typeof key !== 'string') return fallback;
-  const cleaned = key.trim().replace(/^["']|["']$/g, '');
-  if (!cleaned) return fallback;
-  // If it's a Resend API key (re_...) or not a valid Supabase key format, fallback
-  if (cleaned.startsWith('re_') || (!cleaned.startsWith('eyJ') && !cleaned.startsWith('sb_publishable_') && !cleaned.startsWith('sb_secret_'))) {
-    console.warn("La clé dans VITE_SUPABASE_ANON_KEY n'est pas une clé Supabase valide. Utilisation de la clé de secours du projet.");
-    return fallback;
-  }
-  return cleaned;
-};
-
-const supabaseUrl = sanitizeUrl(rawUrl);
-const supabaseAnonKey = sanitizeKey(rawAnonKey);
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 export type BucketName = "MonBucket" | "Chat";
 
-export const supabaseConfigError: string | null = null;
+export let supabase: any = null;
+export let supabaseConfigError: string | null = null;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+function isValidHttpUrl(stringUrl?: string | null): boolean {
+  if (!stringUrl || typeof stringUrl !== 'string') return false;
+  try {
+    const url = new URL(stringUrl.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+if (!supabaseUrl || !supabasePublishableKey) {
+  supabaseConfigError = "Les variables d'environnement VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY ne sont pas encore renseignées dans le projet.";
+} else if (!isValidHttpUrl(supabaseUrl)) {
+  supabaseConfigError = `L'URL Supabase spécifiée ("${supabaseUrl}") n'est pas une URL HTTP/HTTPS valide. Exemple attendu : https://xyzcompany.supabase.co`;
+} else {
+  try {
+    supabase = createClient(supabaseUrl.trim(), supabasePublishableKey.trim());
+  } catch (err: any) {
+    supabaseConfigError = `Erreur d'initialisation Supabase : ${err.message || err}`;
+    console.error("Supabase initialization failed:", err);
+  }
+}
 
 /**
  * Robust Supabase Storage uploader to a specific explicit bucket (MonBucket or Chat)
@@ -134,5 +130,6 @@ export async function deleteFromSupabaseTable(
     throw err;
   }
 }
+
 
 

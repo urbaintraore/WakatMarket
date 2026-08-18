@@ -1,27 +1,19 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { 
   CheckCircle2, 
   XCircle, 
   Clock, 
-  AlertCircle, 
   Eye, 
-  FileText, 
   Search, 
-  Filter, 
   RefreshCw, 
   Smartphone, 
   Download, 
-  ExternalLink,
-  ShieldCheck,
-  User,
-  Calendar,
-  X,
-  Check,
-  AlertTriangle
+  ShieldCheck, 
+  User, 
+  X, 
+  AlertTriangle 
 } from "lucide-react";
-import { db } from "../firebase/firebase";
-import { collection, query, where, onSnapshot, getDocs, doc, getDoc } from "firebase/firestore";
+import { supabase } from "../supabase";
 import { UserProfile, Order } from "../types";
 import { paymentProofService } from "../services/paymentProofService";
 import { billingService } from "../services/billingService";
@@ -67,69 +59,65 @@ export function PaiementsAValiderModule({
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!currentId) return;
+    if (!currentId || !supabase) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
 
-    // Écoute en temps réel sur /ventes où vendeurId == currentId
-    const qVentes = query(
-      collection(db, "ventes"),
-      where("vendeurId", "==", currentId)
-    );
+    const fetchSales = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("seller_id", currentId)
+          .order("created_at", { ascending: false });
 
-    // Écoute aussi /orders où receiverId == currentId
-    const qOrders = query(
-      collection(db, "orders"),
-      where("receiverId", "==", currentId)
-    );
-
-    let allVentes: any[] = [];
-    let allOrders: any[] = [];
-
-    const mergeAndSort = () => {
-      const combinedMap = new Map();
-      
-      allVentes.forEach(v => combinedMap.set(v.id, v));
-      allOrders.forEach(o => {
-        if (combinedMap.has(o.id)) {
-          combinedMap.set(o.id, { ...combinedMap.get(o.id), ...o });
-        } else {
-          combinedMap.set(o.id, o);
+        if (error) {
+          console.warn("Supabase fetch orders error:", error);
+          setLoading(false);
+          return;
         }
-      });
 
-      const combined = Array.from(combinedMap.values());
-      
-      // Trier par date la plus récente
-      combined.sort((a, b) => {
-        const dateA = new Date(a.dateSoumissionPreuve || a.dateVente || a.createdAt || 0).getTime();
-        const dateB = new Date(b.dateSoumissionPreuve || b.dateVente || b.createdAt || 0).getTime();
-        return dateB - dateA;
-      });
+        const formatted = (data || []).map((row: any) => ({
+          id: row.id,
+          acheteurId: row.buyer_id,
+          acheteurNom: row.buyer_id,
+          total: row.total_amount,
+          totalAmount: row.total_amount,
+          statutPaiement: row.statut_paiement || (row.payment_status === "PAID" ? "valide" : "en_attente_preuve"),
+          paymentStatus: row.payment_status,
+          preuvePaiementUrl: row.payment_proof_url,
+          paymentMethod: row.payment_method || "Mobile Money",
+          commentaireRejet: row.rejection_reason,
+          lignes: row.items || [],
+          createdAt: row.created_at
+        }));
 
-      setSales(combined);
-      setLoading(false);
+        setSales(formatted);
+      } catch (err) {
+        console.error("Error loading sales from Supabase:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    const unsubVentes = onSnapshot(qVentes, (snapshot) => {
-      allVentes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      mergeAndSort();
-    }, (error) => {
-      console.warn("Snapshot error on ventes:", error);
-      setLoading(false);
-    });
+    fetchSales();
 
-    const unsubOrders = onSnapshot(qOrders, (snapshot) => {
-      allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      mergeAndSort();
-    }, (error) => {
-      console.warn("Snapshot error on orders:", error);
-      setLoading(false);
-    });
+    const channel = supabase
+      .channel(`public:orders:seller:${currentId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders", filter: `seller_id=eq.${currentId}` },
+        () => {
+          fetchSales();
+        }
+      )
+      .subscribe();
 
     return () => {
-      unsubVentes();
-      unsubOrders();
+      supabase.removeChannel(channel);
     };
   }, [currentId]);
 
@@ -139,7 +127,7 @@ export function PaiementsAValiderModule({
       const totalAmount = Number(sale.total || sale.totalAmount || 0);
       const acheteurId = sale.acheteurId || sale.receiverId || sale.clientId || "CLIENT";
       
-      const res = await paymentProofService.validerPaiementVente({
+      await paymentProofService.validerPaiementVente({
         venteId: sale.id,
         vendeurId: currentId,
         vendeurNom: currentName,
@@ -210,10 +198,10 @@ export function PaiementsAValiderModule({
         total,
         typeVente: sale.typeVente || "GROS"
       });
-      addNotification("Facture PDF générée et prête au téléchargement.");
+      if (addNotification) addNotification("Facture PDF générée et prête au téléchargement.");
     } catch (e: any) {
       console.error("Invoice error:", e);
-      addNotification("Erreur lors de la génération de facture.");
+      if (addNotification) addNotification("Erreur lors de la génération de facture.");
     }
   };
 
@@ -267,7 +255,7 @@ export function PaiementsAValiderModule({
       {/* Controls: Search & Tabs */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         {/* Filter Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-850 rounded-xl border border-zinc-200 dark:border-zinc-750 overflow-x-auto">
+        <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-x-auto">
           <button
             onClick={() => setSelectedFilter("a_valider")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
@@ -358,7 +346,6 @@ export function PaiementsAValiderModule({
             const total = Number(sale.total || sale.totalAmount || 0);
             const status = sale.statutPaiement || (sale.paymentStatus === "PAID" ? "valide" : "en_attente_preuve");
             const proofUrl = sale.preuvePaiementUrl;
-            const dateStr = sale.dateSoumissionPreuve || sale.dateVente || sale.createdAt;
 
             return (
               <div
@@ -409,7 +396,7 @@ export function PaiementsAValiderModule({
                   </div>
 
                   {/* Financial & Date details */}
-                  <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 dark:bg-zinc-850/50 rounded-xl mb-3 border border-zinc-100 dark:border-zinc-800">
+                  <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl mb-3 border border-zinc-100 dark:border-zinc-700">
                     <div>
                       <span className="text-[10px] text-zinc-400 block font-medium">Montant à percevoir</span>
                       <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">
@@ -433,7 +420,7 @@ export function PaiementsAValiderModule({
 
                   {/* Screenshot Thumbnail Preview */}
                   {proofUrl ? (
-                    <div className="mb-3 p-2.5 bg-zinc-100/70 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between gap-3">
+                    <div className="mb-3 p-2.5 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div
                           onClick={() => setLightboxImage(proofUrl)}
@@ -461,13 +448,13 @@ export function PaiementsAValiderModule({
                       <button
                         type="button"
                         onClick={() => setLightboxImage(proofUrl)}
-                        className="px-2.5 py-1.5 bg-white dark:bg-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-650 border border-zinc-200 dark:border-zinc-600 rounded-lg text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                        className="px-2.5 py-1.5 bg-white dark:bg-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-600 border border-zinc-200 dark:border-zinc-600 rounded-lg text-xs font-bold text-zinc-700 dark:text-zinc-200 flex items-center gap-1 cursor-pointer transition shadow-2xs"
                       >
                         <Eye className="w-3.5 h-3.5 text-amber-500" /> Agrandir
                       </button>
                     </div>
                   ) : (
-                    <div className="mb-3 p-2.5 bg-zinc-50 dark:bg-zinc-850 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-750 text-center text-xs text-zinc-400">
+                    <div className="mb-3 p-2.5 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-700 text-center text-xs text-zinc-400">
                       Aucune capture d'écran téléversée pour l'instant.
                     </div>
                   )}
@@ -514,7 +501,7 @@ export function PaiementsAValiderModule({
                       <button
                         type="button"
                         onClick={() => handleDownloadInvoice(sale)}
-                        className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
+                        className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition"
                       >
                         <Download className="w-3.5 h-3.5 text-emerald-500" />
                         Facture PDF
@@ -532,7 +519,7 @@ export function PaiementsAValiderModule({
         </div>
       )}
 
-      {/* Lightbox Modal (Zoom on payment proof screenshot) */}
+      {/* Lightbox Modal */}
       {lightboxImage && (
         <div
           onClick={() => setLightboxImage(null)}

@@ -1,9 +1,8 @@
 import { jsPDF } from "jspdf";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable } from "../supabase";
+import { supabase, uploadToSupabaseStorage } from "../supabase";
 
 // Définition des types pour la facture
-interface LigneFacture {
+export interface LigneFacture {
   produitId: string;
   nom: string;
   quantite: number;
@@ -11,7 +10,7 @@ interface LigneFacture {
   sousTotal: number;
 }
 
-interface FactureData {
+export interface FactureData {
   venteId: string;
   vendeurId: string;
   vendeurNom: string;
@@ -24,7 +23,7 @@ interface FactureData {
 }
 
 /**
- * Service pour la génération et l'enregistrement des factures
+ * Service pour la génération et l'enregistrement des factures via Supabase
  */
 export const billingService = {
   /**
@@ -38,7 +37,7 @@ export const billingService = {
   },
 
   /**
-   * Génère le PDF de la facture, l'enregistre/télécharge immédiatement et synchronise en arrière-plan
+   * Génère le PDF de la facture, l'enregistre et l'uploade vers Supabase Storage
    */
   async genererEtEnregistrerFacture(data: FactureData): Promise<string> {
     try {
@@ -46,7 +45,6 @@ export const billingService = {
       const doc = new jsPDF();
       const numeroFacture = this.generateFactureNumber(data.vendeurRole || "VENTE");
       
-      // Configuration de base
       let y = 20;
       doc.setFontSize(20);
       doc.setFont("helvetica", "bold");
@@ -60,7 +58,7 @@ export const billingService = {
       y += 15;
       doc.setFontSize(11);
       doc.text(`Facture N°: ${numeroFacture}`, 20, y);
-      doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' })}`, 120, y);
+      doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`, 120, y);
       
       y += 8;
       doc.setDrawColor(200, 200, 200);
@@ -77,16 +75,15 @@ export const billingService = {
       doc.setFont("helvetica", "normal");
       doc.text(`Nom: ${data.vendeurNom}`, 20, y);
       doc.text(`Profil: ${data.vendeurRole}`, 20, y + 6);
-      doc.text(`Type de vente: ${data.typeVente || 'DIRECT'}`, 20, y + 12);
+      doc.text(`Type de vente: ${data.typeVente || "DIRECT"}`, 20, y + 12);
       
-      doc.text(`Nom: ${data.acheteurNom || 'Client Final (Comptoir)'}`, 110, y);
-      doc.text(`ID: ${data.acheteurId || 'N/A'}`, 110, y + 6);
+      doc.text(`Nom: ${data.acheteurNom || "Client Final (Comptoir)"}`, 110, y);
+      doc.text(`ID: ${data.acheteurId || "N/A"}`, 110, y + 6);
       
       y += 28;
       doc.line(20, y, 190, y);
 
       y += 10;
-      // En-têtes du tableau
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.text("Produit", 20, y);
@@ -94,19 +91,17 @@ export const billingService = {
       doc.text("Prix U.", 135, y);
       doc.text("Sous-Total", 165, y);
       
-      // Ligne de séparation
       y += 3;
       doc.line(20, y, 190, y);
       
       y += 8;
       doc.setFont("helvetica", "normal");
       
-      // Lignes de produits
       (data.lignes || []).forEach((ligne) => {
         const name = (ligne.nom || "Produit").substring(0, 42);
         const qty = (ligne.quantite || 0).toString();
-        const pu = `${(ligne.prixUnitaire || 0).toLocaleString('fr-FR')} CFA`;
-        const st = `${(ligne.sousTotal || (ligne.quantite * ligne.prixUnitaire) || 0).toLocaleString('fr-FR')} CFA`;
+        const pu = `${(ligne.prixUnitaire || 0).toLocaleString("fr-FR")} CFA`;
+        const st = `${(ligne.sousTotal || (ligne.quantite * ligne.prixUnitaire) || 0).toLocaleString("fr-FR")} CFA`;
         
         doc.text(name, 20, y);
         doc.text(qty, 110, y);
@@ -121,7 +116,7 @@ export const billingService = {
       y += 12;
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
-      doc.text(`TOTAL NET: ${(data.total || 0).toLocaleString('fr-FR')} FCFA`, 110, y);
+      doc.text(`TOTAL NET: ${(data.total || 0).toLocaleString("fr-FR")} FCFA`, 110, y);
 
       y += 20;
       doc.setFontSize(8);
@@ -131,49 +126,43 @@ export const billingService = {
       // 2. Génération du Blob PDF
       const pdfBlob = doc.output("blob");
 
-      // 3. Auto-téléchargement immédiat pour l'utilisateur
+      // 3. Téléchargement immédiat
       try {
         doc.save(`Facture_${numeroFacture}.pdf`);
       } catch (saveError) {
         console.warn("Auto save PDF browser notice:", saveError);
       }
 
-      // 4. Upload Supabase Storage (MonBucket) & Persistance Firestore AWAITÉE
+      // 4. Upload Supabase Storage (MonBucket)
       let urlPDF: string | null = null;
-      const storagePath = `factures/${data.vendeurId || 'sales'}/${numeroFacture}.pdf`;
+      const storagePath = `factures/${data.vendeurId || "sales"}/${numeroFacture}.pdf`;
       const storageBucket = "MonBucket";
 
       if (supabase) {
         try {
-          const res = await uploadToSupabaseStorage(storageBucket, storagePath, pdfBlob, 'application/pdf');
+          const res = await uploadToSupabaseStorage(storageBucket, storagePath, pdfBlob, "application/pdf");
           if (res?.publicUrl) {
             urlPDF = res.publicUrl;
           }
         } catch (stErr) {
           console.warn("Erreur upload facture Supabase Storage:", stErr);
         }
-      }
 
-      // Écriture du document de facture dans Firestore
-      try {
-        const firestoreDb = getFirestore();
-        await addDoc(collection(firestoreDb, "factures"), {
-          venteId: data.venteId,
-          numeroFacture,
-          urlPDF: urlPDF || null,
-          storageBucket: urlPDF ? storageBucket : null,
-          storagePath: urlPDF ? storagePath : null,
-          vendeurId: data.vendeurId,
-          vendeurNom: data.vendeurNom,
-          vendeurRole: data.vendeurRole,
-          acheteurId: data.acheteurId || null,
-          acheteurNom: data.acheteurNom || null,
-          total: data.total,
-          typeVente: data.typeVente || "DETAIL",
-          dateEmission: serverTimestamp()
-        });
-      } catch (dbErr) {
-        console.error("Erreur critique Firestore lors de l'enregistrement de la facture:", dbErr);
+        // 5. Enregistrement des métadonnées dans PostgreSQL (table invoices / orders)
+        try {
+          await supabase.from("invoices").insert({
+            id: `inv-${Date.now()}`,
+            invoice_number: numeroFacture,
+            order_id: data.venteId,
+            seller_id: data.vendeurId,
+            buyer_id: data.acheteurId || null,
+            total_amount: data.total,
+            pdf_url: urlPDF,
+            created_at: new Date().toISOString()
+          });
+        } catch (dbErr) {
+          console.warn("Notice insertion invoice Supabase:", dbErr);
+        }
       }
 
       return urlPDF || URL.createObjectURL(pdfBlob);

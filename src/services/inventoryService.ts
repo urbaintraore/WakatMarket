@@ -1,10 +1,5 @@
-import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from "../firebase/firebase";
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 import { InventoryItem, Product } from "../types";
-import { filterMockData } from "../data";
 import { supabase } from "../supabase";
-
-const COLLECTION_NAME = "inventory";
 
 export interface ExpirationAlert {
   id: string;
@@ -18,197 +13,155 @@ export interface ExpirationAlert {
   message: string;
 }
 
+function mapRowToInventoryItem(row: any): InventoryItem {
+  return {
+    id: row.id,
+    productId: row.product_id || row.productId,
+    ownerId: row.owner_id || row.ownerId,
+    stock: Number(row.quantity ?? row.stock ?? 0),
+    threshold: Number(row.low_stock_threshold ?? row.threshold ?? 5),
+    price: Number(row.price ?? 0),
+    prixGros: row.prix_gros ? Number(row.prix_gros) : undefined,
+    prixDetail: row.prix_detail ? Number(row.prix_detail) : undefined,
+    quantiteMinimum: row.quantite_minimum ? Number(row.quantite_minimum) : 1,
+    expirationDate: row.expiration_date || undefined,
+    updatedAt: row.updated_at || undefined
+  };
+}
+
 export const inventoryService = {
+  /**
+   * Récupérer tout l'inventaire depuis la table PostgreSQL 'inventory'
+   */
   async getAllInventory(): Promise<InventoryItem[]> {
+    if (!supabase) return [];
     try {
-      const snap = await getDocs(collection(db, COLLECTION_NAME));
-      const list: InventoryItem[] = [];
-      snap.forEach((docSnap) => {
-        if (docSnap.exists()) {
-          list.push(docSnap.data() as InventoryItem);
-        }
-      });
-      return list;
-    } catch (error: any) {
-      console.warn("Firestore error during getAllInventory:", error);
+      const { data, error } = await supabase
+        .from("inventory")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Erreur getAllInventory Supabase:", error);
+        return [];
+      }
+
+      return (data || []).map(mapRowToInventoryItem);
+    } catch (err) {
+      console.error("Exception dans getAllInventory:", err);
       return [];
     }
   },
 
-  subscribeToInventory(callback: (items: InventoryItem[]) => void) {
-    const q = query(collection(db, COLLECTION_NAME));
-    let unsub = () => {};
+  /**
+   * Récupérer le stock d'un acteur spécifique
+   */
+  async getUserStock(uid: string): Promise<InventoryItem[]> {
+    if (!supabase || !uid) return [];
     try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const list: InventoryItem[] = [];
-        snapshot.forEach((docSnap) => {
-          if (docSnap.exists()) {
-            list.push(docSnap.data() as InventoryItem);
-          }
-        });
-        callback(list);
-      }, (error) => {
-        console.warn("Firestore error during subscribeToInventory:", error);
-      });
-    } catch (e) {
-      console.warn("Failed to set up real-time listener for inventory:", e);
-    }
-    return () => {
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("Error unsubscribing from inventory:", e);
+      const { data, error } = await supabase
+        .from("inventory")
+        .select("*")
+        .eq("owner_id", uid);
+
+      if (error) {
+        console.error("Erreur getUserStock Supabase:", error);
+        return [];
       }
+
+      return (data || []).map(mapRowToInventoryItem);
+    } catch (err) {
+      console.error("Exception dans getUserStock:", err);
+      return [];
+    }
+  },
+
+  /**
+   * S'abonner aux changements de tout l'inventaire en temps réel
+   */
+  subscribeToInventory(callback: (items: InventoryItem[]) => void): () => void {
+    if (!supabase) return () => {};
+
+    this.getAllInventory().then(callback);
+
+    const channel = supabase
+      .channel("public:inventory")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory" },
+        () => {
+          this.getAllInventory().then(callback);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   },
 
-  subscribeToUserStock(uid: string, callback: (items: InventoryItem[]) => void) {
-    const startTime = Date.now();
-    const logPrefix = `[DIAGNOSTIC - subscribeToUserStock] [User: ${uid}]`;
-    const connectionStatus = navigator.onLine ? "ONLINE" : "OFFLINE";
-    
-    const logMsg = (msg: string, isError = false) => {
-      const timestamp = new Date().toISOString();
-      const formatted = `${timestamp} - ${logPrefix} - ${msg} (Network: ${connectionStatus})`;
-      if (isError) {
-        console.error(formatted);
-      } else {
-        console.log(formatted);
-      }
-      if (typeof window !== "undefined") {
-        (window as any).__WAKAT_DIAGNOSTICS = (window as any).__WAKAT_DIAGNOSTICS || [];
-        (window as any).__WAKAT_DIAGNOSTICS.push({
-          timestamp,
-          userId: uid,
-          event: "subscribeToUserStock",
-          message: msg,
-          status: isError ? "ERROR" : "SUCCESS",
-          network: connectionStatus,
-          latencyMs: Date.now() - startTime
-        });
-      }
-    };
+  /**
+   * S'abonner aux changements de stock d'un utilisateur en temps réel
+   */
+  subscribeToUserStock(uid: string, callback: (items: InventoryItem[]) => void): () => void {
+    if (!supabase || !uid) return () => {};
 
-    logMsg(`Initiating Firestore subcollection subscription...`);
+    this.getUserStock(uid).then(callback);
 
-    if (!uid) {
-      logMsg(`Subscription aborted: No valid user UID provided.`, true);
-      return () => {};
-    }
+    const channel = supabase
+      .channel(`public:inventory:user:${uid}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "inventory", filter: `owner_id=eq.${uid}` },
+        () => {
+          this.getUserStock(uid).then(callback);
+        }
+      )
+      .subscribe();
 
-    const q = query(collection(db, "stocks", uid, "items"));
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const latency = Date.now() - startTime;
-        logMsg(`Snapshot successfully received! Count: ${snapshot.size} items. Sync duration: ${latency}ms.`);
-        const list: InventoryItem[] = [];
-        snapshot.forEach((docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            list.push({
-              id: data.id || `inv-${uid}-${data.produitId || docSnap.id}`,
-              productId: data.produitId || docSnap.id,
-              ownerId: uid,
-              stock: Number(data.quantite || 0),
-              threshold: Number(data.seuilAlerte || 10),
-              price: Number(data.prixUnitaire || 0),
-              prixGros: Number(data.prixGros ?? data.prixUnitaire ?? 0),
-              prixDetail: Number(data.prixDetail ?? data.prixUnitaire ?? 0),
-              quantiteMinimum: Number(data.quantiteMinimum ?? 1),
-              expirationDate: data.expirationDate || undefined
-            });
-          }
-        });
-        callback(list);
-      }, (error) => {
-        const latency = Date.now() - startTime;
-        logMsg(`Firestore subscription error after ${latency}ms: ${error.message} (Code: ${error.code})`, true);
-      });
-    } catch (e: any) {
-      logMsg(`Exception setting up onSnapshot for subcollection: ${e?.message || e}`, true);
-    }
     return () => {
-      logMsg(`Unsubscribing from user stock subscription.`);
-      try {
-        unsub();
-      } catch (e) {}
+      supabase.removeChannel(channel);
     };
   },
 
+  /**
+   * Enregistrer ou mettre à jour un article en stock dans PostgreSQL
+   */
   async updateInventoryItem(item: InventoryItem): Promise<void> {
-    try {
-      // 1. Écriture principale dans la collection racine /inventory/{id}
-      const sanitizedItem = sanitizeFirestoreData({
-        ...item,
-        expirationDate: item.expirationDate || null
-      });
-      await setDoc(doc(db, COLLECTION_NAME, item.id), sanitizedItem);
-      
-      // 2. Écriture synchronisée dans la sous-collection du propriétaire /stocks/{ownerId}/items/{productId}
-      if (item.ownerId && item.productId) {
-        try {
-          const subItem = sanitizeFirestoreData({
-            id: item.id,
-            produitId: item.productId,
-            quantite: item.stock,
-            seuilAlerte: item.threshold || 10,
-            prixUnitaire: item.price || 1000,
-            prixGros: item.prixGros || item.price || 1000,
-            prixDetail: item.prixDetail || item.price || 1000,
-            quantiteMinimum: item.quantiteMinimum || 1,
-            expirationDate: item.expirationDate || null,
-            updatedAt: new Date().toISOString()
-          });
-          await setDoc(doc(db, "stocks", item.ownerId, "items", item.productId), subItem, { merge: true });
-        } catch (subErr) {
-          console.warn("Notice: Could not sync to /stocks/{uid}/items:", subErr);
-        }
-      }
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
+    }
 
-      // 3. Synchronisation secondaire Supabase si configuré
-      if (supabase) {
-        try {
-          await supabase
-            .from("inventory")
-            .upsert({
-              id: item.id,
-              product_id: item.productId,
-              owner_id: item.ownerId,
-              stock: item.stock,
-              threshold: item.threshold || 10,
-              price: item.price || 0,
-              expiration_date: item.expirationDate || null,
-              prix_gros: item.prixGros || null,
-              prix_detail: item.prixDetail || null,
-              quantite_minimum: item.quantiteMinimum || null,
-              updated_at: new Date().toISOString()
-            });
-        } catch (supErr) {
-          console.warn("Supabase background sync notice:", supErr);
-        }
-      }
-    } catch (error: any) {
-      console.error("Erreur critique Firestore lors de la mise à jour du stock:", error);
-      handleFirestoreError(error, OperationType.WRITE, `${COLLECTION_NAME}/${item.id}`);
+    const record = {
+      id: item.id,
+      product_id: item.productId,
+      owner_id: item.ownerId,
+      quantity: Number(item.stock || 0),
+      reserved_quantity: 0,
+      low_stock_threshold: Number(item.threshold || 5),
+      price: Number(item.price || 0),
+      prix_gros: item.prixGros ? Number(item.prixGros) : null,
+      prix_detail: item.prixDetail ? Number(item.prixDetail) : null,
+      quantite_minimum: item.quantiteMinimum ? Number(item.quantiteMinimum) : 1,
+      expiration_date: item.expirationDate || null,
+      updated_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from("inventory").upsert(record);
+    if (error) {
+      console.error("Erreur updateInventoryItem Supabase (inventory):", error);
       throw error;
     }
   },
 
+  /**
+   * Supprimer un article de l'inventaire
+   */
   async deleteInventoryItem(id: string): Promise<void> {
-    try {
-      await deleteDoc(doc(db, COLLECTION_NAME, id));
-
-      if (supabase) {
-        try {
-          await supabase.from("inventory").delete().eq("id", id);
-        } catch (supErr) {
-          console.warn("Supabase delete notice:", supErr);
-        }
-      }
-    } catch (error: any) {
-      console.error("Erreur critique Firestore lors de la suppression du stock:", error);
-      handleFirestoreError(error, OperationType.DELETE, `${COLLECTION_NAME}/${id}`);
+    if (!supabase) return;
+    const { error } = await supabase.from("inventory").delete().eq("id", id);
+    if (error) {
+      console.error("Erreur suppression inventory Supabase:", error);
       throw error;
     }
   },
@@ -240,8 +193,8 @@ export const inventoryService = {
       if (daysRemaining <= daysThreshold) {
         const isExpired = daysRemaining < 0;
         const message = isExpired
-          ? `Produit Périmé : "${prod?.name || 'Produit'}" a expiré depuis ${Math.abs(daysRemaining)} jour(s) (${expDateStr}).`
-          : `Alerte Expiration (15j) : "${prod?.name || 'Produit'}" expire dans ${daysRemaining} jour(s) (${expDateStr}).`;
+          ? `Produit Périmé : "${prod?.name || "Produit"}" a expiré depuis ${Math.abs(daysRemaining)} jour(s) (${expDateStr}).`
+          : `Alerte Expiration (15j) : "${prod?.name || "Produit"}" expire dans ${daysRemaining} jour(s) (${expDateStr}).`;
 
         alerts.push({
           id: `exp-${item.id}-${expDateStr}`,
@@ -260,4 +213,3 @@ export const inventoryService = {
     return alerts;
   }
 };
-

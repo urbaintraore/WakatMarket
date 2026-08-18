@@ -1,111 +1,113 @@
-import { auth } from "../firebase/firebase";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  signInWithPhoneNumber,
-  signInAnonymously,
-  RecaptchaVerifier,
-  browserLocalPersistence,
-  browserSessionPersistence,
-  setPersistence,
-  User,
-  ConfirmationResult
-} from "firebase/auth";
+import { supabase } from "../supabase";
+import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
+
+export interface SupabaseAuthUser extends User {}
 
 export const authService = {
-  async signUpWithEmail(email: string, password: string): Promise<User> {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
-    } catch (error) {
-      console.error("Erreur lors de l'inscription par e-mail:", error);
-      throw error;
+  /**
+   * Inscription d'un utilisateur par e-mail et mot de passe via Supabase Auth
+   */
+  async signUpWithEmail(email: string, password: string, metadata?: Record<string, any>): Promise<{ user: User | null; session: Session | null }> {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
     }
-  },
-
-  async signInWithEmail(email: string, password: string): Promise<User> {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
-    } catch (error: any) {
-      const isExpectedAuthError = error?.code?.includes("auth/") || error?.message?.includes("auth/");
-      if (isExpectedAuthError) {
-        console.warn("Connexion refusée par Firebase Auth (identifiants invalides) :", error.message || error);
-      } else {
-        console.error("Erreur de connexion par e-mail:", error);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: metadata || {}
       }
+    });
+
+    if (error) {
+      console.error("Erreur lors de l'inscription Supabase Auth:", error);
       throw error;
     }
+
+    return { user: data.user, session: data.session };
   },
 
+  /**
+   * Connexion par e-mail et mot de passe via Supabase Auth
+   */
+  async signInWithEmail(email: string, password: string): Promise<{ user: User | null; session: Session | null }> {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
+    }
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password
+    });
+
+    if (error) {
+      console.error("Erreur de connexion Supabase Auth:", error.message || error);
+      throw error;
+    }
+
+    return { user: data.user, session: data.session };
+  },
+
+  /**
+   * Déconnexion complète via Supabase Auth
+   */
   async logout(): Promise<void> {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Erreur de déconnexion:", error);
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error("Erreur de déconnexion Supabase Auth:", error);
       throw error;
     }
   },
 
+  /**
+   * Réinitialisation de mot de passe par e-mail
+   */
   async sendPasswordReset(email: string): Promise<void> {
-    try {
-      await sendPasswordResetEmail(auth, email);
-    } catch (error) {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
+    if (error) {
       console.error("Erreur réinitialisation mot de passe:", error);
       throw error;
     }
   },
 
-  async configureSessionPersistence(keepLoggedIn: boolean): Promise<void> {
-    try {
-      const persistence = keepLoggedIn ? browserLocalPersistence : browserSessionPersistence;
-      await setPersistence(auth, persistence);
-    } catch (error) {
-      console.error("Erreur lors de la configuration de la persistance:", error);
-      throw error;
-    }
+  /**
+   * Récupérer l'utilisateur courant
+   */
+  async getCurrentUser(): Promise<User | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data?.user) return null;
+    return data.user;
   },
 
-  // Recaptcha verifier for Phone OTP
-  createRecaptchaVerifier(containerId: string, callback?: () => void): RecaptchaVerifier {
-    try {
-      const verifier = new RecaptchaVerifier(auth, containerId, {
-        size: "invisible",
-        callback: () => {
-          if (callback) callback();
-        },
-        "expired-callback": () => {
-          console.warn("Recaptcha expiré");
-        }
-      });
-      return verifier;
-    } catch (error) {
-      console.error("Erreur création RecaptchaVerifier:", error);
-      throw error;
-    }
+  /**
+   * Récupérer la session courante
+   */
+  async getSession(): Promise<Session | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data?.session) return null;
+    return data.session;
   },
 
-  // Initiate SMS verification
-  async requestPhoneOTP(phoneNumber: string, appVerifier: RecaptchaVerifier): Promise<ConfirmationResult> {
-    try {
-      const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-      return confirmationResult;
-    } catch (error) {
-      console.error("Erreur lors de la demande de code OTP par téléphone:", error);
-      throw error;
+  /**
+   * S'abonner aux changements d'état d'authentification
+   */
+  onAuthStateChange(callback: (event: AuthChangeEvent, session: Session | null) => void) {
+    if (!supabase) {
+      return { data: { subscription: { unsubscribe: () => {} } } };
     }
+    return supabase.auth.onAuthStateChange(callback);
   },
 
-  // Confirm SMS verification
-  async confirmPhoneOTP(confirmationResult: ConfirmationResult, code: string): Promise<User> {
-    try {
-      const result = await confirmationResult.confirm(code);
-      return result.user;
-    } catch (error) {
-      console.error("Erreur lors de l'OTP:", error);
-      throw error;
-    }
+  /**
+   * Configuration de la persistance de session (géré nativement par Supabase Client)
+   */
+  async configureSessionPersistence(_enablePersistence?: boolean): Promise<void> {
+    // Supabase JS client handles local storage persistence automatically
+    return;
   }
 };

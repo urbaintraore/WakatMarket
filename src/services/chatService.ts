@@ -1,417 +1,279 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  updateDoc, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  getDocs, 
-  getDoc,
-  serverTimestamp,
-  limit,
-  Timestamp,
-  increment
-} from "firebase/firestore";
-import { db, auth, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { supabase, uploadToSupabaseStorage, upsertToSupabaseTable } from "../supabase";
-import { Conversation, ChatMessage, MessageType, MessageStatus, isConnectionActive } from "../types";
-import { db as localDb } from "../data";
+import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
+import { supabase, uploadToSupabaseStorage } from "../supabase";
 
 export const chatService = {
   /**
-   * Initializes a new conversation or returns an existing private conversation between two users
+   * Récupérer ou créer une conversation privée
    */
-  async getOrCreatePrivateConversation(currentUserId: string, otherUserId: string, context?: any): Promise<string> {
+  async getOrCreatePrivateConversation(currentUserId: string, otherUserId: string, _context?: any): Promise<string> {
+    const convId = [currentUserId, otherUserId].sort().join("_");
+    if (!supabase) return convId;
+
     try {
-      const convId = [currentUserId, otherUserId].sort().join('_');
-      const convRef = doc(db, "conversations", convId);
-      
-      const newConv: Partial<Conversation> = {
+      await supabase.from("conversations").upsert({
         id: convId,
         type: "PRIVATE",
         participants: [currentUserId, otherUserId],
-        participantDetails: {
-          [currentUserId]: { userId: currentUserId, joinedAt: new Date().toISOString(), role: "ADMIN" },
-          [otherUserId]: { userId: otherUserId, joinedAt: new Date().toISOString(), role: "ADMIN" }
-        },
-        unreadCount: {
-          [currentUserId]: 0,
-          [otherUserId]: 0
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        ...context
-      };
-
-      try {
-        const convSnap = await getDoc(convRef);
-        if (!convSnap.exists()) {
-          await setDoc(convRef, newConv);
-        }
-      } catch (e) {
-        console.warn("[chatService] Firestore getOrCreatePrivateConversation failed, utilizing offline/local mode", e);
-        try {
-          await setDoc(convRef, newConv, { merge: true });
-        } catch (innerErr) {
-          console.warn("[chatService] Inner setDoc failed as well, continuing offline-only:", innerErr);
-        }
-      }
-      
-      return convId;
-    } catch (error) {
-      console.error("Error in getOrCreatePrivateConversation:", error);
-      // Return the generated ID anyway so the UI can proceed optimistically
-      return [currentUserId, otherUserId].sort().join('_');
-    }
-  },
-
-  async createGroupConversation(creatorId: string, name: string, participantIds: string[], description?: string, image?: string): Promise<string> {
-    try {
-      const convRef = doc(collection(db, "conversations"));
-      
-      const participantDetails: Record<string, any> = {};
-      participantIds.forEach(id => {
-        participantDetails[id] = {
-          userId: id,
-          joinedAt: new Date().toISOString(),
-          role: id === creatorId ? "ADMIN" : "MEMBER"
-        };
-      });
-
-      const unreadCount: Record<string, number> = {};
-      participantIds.forEach(id => {
-        unreadCount[id] = 0;
-      });
-
-      const newConv: Partial<Conversation> = {
-        id: convRef.id,
-        type: "GROUP",
-        groupName: name,
-        groupDescription: description,
-        groupImage: image,
-        createdBy: creatorId,
-        participants: participantIds,
-        participantDetails,
-        unreadCount,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      await setDoc(convRef, newConv);
-      return convRef.id;
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, "conversations");
-    }
-  },
-
-  /**
-   * Listens to all conversations for a user
-   */
-  subscribeToUserConversations(userId: string, callback: (convs: Conversation[]) => void) {
-    const emitLocal = () => {
-      const activeConns = localDb.getConnections()
-        .filter(c => isConnectionActive(c) && (c.senderId === userId || c.receiverId === userId));
-      
-      const fallbackConvs: Conversation[] = activeConns.map(conn => {
-        const otherId = conn.senderId === userId ? conn.receiverId : conn.senderId;
-        
-        // Find if there is a last message in local messages
-        const msgs = localDb.getMessages()
-          .filter(m => m.conversationId === conn.id)
-          .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
-        const lastMsg = msgs[msgs.length - 1];
-
-        return {
-          id: conn.id,
-          type: "PRIVATE",
-          participants: [conn.senderId, conn.receiverId],
-          participantDetails: {
-            [conn.senderId]: { userId: conn.senderId, joinedAt: conn.createdAt, role: "ADMIN" },
-            [conn.receiverId]: { userId: conn.receiverId, joinedAt: conn.createdAt, role: "ADMIN" }
-          },
-          lastMessage: lastMsg?.content || "Aucun message",
-          lastMessageDate: lastMsg?.createdAt || conn.updatedAt || conn.createdAt,
-          unreadCount: {
-            [userId]: 0,
-            [otherId]: 0
-          },
-          createdAt: conn.createdAt,
-          updatedAt: lastMsg?.createdAt || conn.updatedAt || conn.createdAt
-        };
-      });
-
-      callback(fallbackConvs);
-    };
-
-    emitLocal();
-
-    const handleLocalUpdate = () => {
-      emitLocal();
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("wakat_connections_updated", handleLocalUpdate);
-      window.addEventListener("wakat_messages_updated", handleLocalUpdate);
-      window.addEventListener("storage", handleLocalUpdate);
-    }
-
-    const q = query(
-      collection(db, "conversations"),
-      where("participants", "array-contains", userId),
-      orderBy("updatedAt", "desc")
-    );
-
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const convs = snapshot.docs.map(doc => doc.data() as Conversation);
-        
-        // If we got real data, merge with any local info
-        if (convs.length > 0) {
-          callback(convs);
-        } else {
-          emitLocal();
-        }
-      }, (error) => {
-        console.warn("[chatService] Conversations query failed, relying on dynamic local fallback", error);
-        emitLocal();
+        updated_at: new Date().toISOString()
       });
     } catch (e) {
-      console.warn("[chatService] Failed to establish real-time Firestore listener for conversations:", e);
+      console.warn("Notice conversation creation Supabase:", e);
     }
 
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
-        window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
-        window.removeEventListener("storage", handleLocalUpdate);
-      }
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("[chatService] Error calling unsubscribe for conversations:", e);
-      }
-    };
+    return convId;
   },
 
   /**
-   * Listens to messages in a conversation with reliable local caching & real-time synchronization
+   * Créer une conversation de groupe
    */
-  subscribeToMessages(convId: string, callback: (msgs: ChatMessage[]) => void) {
-    const emitLocal = () => {
-      const localMsgs = localDb.getMessages()
-        .filter(m => m.conversationId === convId)
-        .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
-      callback(localMsgs);
-    };
+  async createGroupConversation(
+    creatorId: string,
+    name: string,
+    participantIds: string[],
+    description?: string,
+    image?: string
+  ): Promise<string> {
+    const convId = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    if (!supabase) return convId;
 
-    // Return cached local messages immediately for instant response
-    emitLocal();
+    const allParticipants = Array.from(new Set([creatorId, ...participantIds]));
+    await supabase.from("conversations").insert({
+      id: convId,
+      type: "GROUP",
+      group_name: name,
+      group_description: description || "",
+      group_image: image || "",
+      created_by: creatorId,
+      participants: allParticipants,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
 
-    const handleLocalUpdate = () => {
-      emitLocal();
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("wakat_messages_updated", handleLocalUpdate);
-      window.addEventListener("storage", handleLocalUpdate);
-    }
-
-    const q = query(
-      collection(db, "conversations", convId, "messages"),
-      orderBy("createdAt", "asc")
-    );
-
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const firestoreMsgs = snapshot.docs.map(doc => doc.data() as ChatMessage);
-        
-        // Merge with existing local messages
-        const existingLocal = localDb.getMessages();
-        
-        // Replace or insert Firestore messages into local array by matching id
-        const map = new Map<string, ChatMessage>();
-        existingLocal.forEach(m => map.set(m.id, m));
-        firestoreMsgs.forEach(m => map.set(m.id, m));
-        
-        const allMsgs = Array.from(map.values());
-        localDb.saveMessages(allMsgs);
-        
-        // Filter current conversation's messages and pass to callback
-        const currentMsgs = allMsgs
-          .filter(m => m.conversationId === convId)
-          .sort((a, b) => new Date(a.createdAt || '').getTime() - new Date(b.createdAt || '').getTime());
-          
-        callback(currentMsgs);
-      }, (error) => {
-        console.warn("[chatService] Real-time message listener failed, using local cache:", error);
-        emitLocal();
-      });
-    } catch (e) {
-      console.warn("[chatService] Failed to establish real-time Firestore listener for messages:", e);
-    }
-
-    return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("wakat_messages_updated", handleLocalUpdate);
-        window.removeEventListener("storage", handleLocalUpdate);
-      }
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("[chatService] Error calling unsubscribe for messages:", e);
-      }
-    };
+    return convId;
   },
 
   /**
-   * Send a message with instant local persistence and Firestore replication
+   * Envoyer un message dans une conversation
    */
   async sendMessage(
-    convId: string, 
-    senderId: string, 
-    type: MessageType, 
-    content: string, 
-    extra?: Partial<ChatMessage>,
-    participantsToNotify?: string[]
-  ): Promise<void> {
-    console.log(`[chatService.sendMessage] Creating message for convId=${convId}, type=${type}`);
-    
-    const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    conversationId: string,
+    senderId: string,
+    typeOrContent: MessageType | string,
+    contentOrType: string | MessageType = "",
+    metadata?: Record<string, any>,
+    _receiverOrParticipants?: string | string[]
+  ): Promise<string> {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas initialisé.");
+    }
+
+    let finalType: MessageType = MessageType.TEXT;
+    let finalContent = "";
+
+    const allTypes = Object.values(MessageType) as string[];
+    if (allTypes.includes(typeOrContent as string)) {
+      finalType = typeOrContent as MessageType;
+      finalContent = typeof contentOrType === "string" ? contentOrType : String(contentOrType || "");
+    } else if (allTypes.includes(contentOrType as string)) {
+      finalContent = String(typeOrContent || "");
+      finalType = contentOrType as MessageType;
+    } else {
+      finalContent = String(typeOrContent || "");
+      finalType = MessageType.TEXT;
+    }
+
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const nowIso = new Date().toISOString();
-    
-    const newMsg: ChatMessage = {
-      id: msgId,
-      conversationId: convId,
-      senderId,
-      type,
-      content,
+
+    const record = {
+      id: messageId,
+      conversation_id: conversationId,
+      sender_id: senderId,
+      content: finalContent,
+      type: finalType || MessageType.TEXT,
       status: MessageStatus.SENT,
-      createdAt: nowIso,
-      readBy: {
-        [senderId]: nowIso
-      },
-      ...extra
+      metadata: metadata || {},
+      created_at: nowIso
     };
 
-    // 1. Immediately save to localDb for instant offline responsiveness
-    const existingLocal = localDb.getMessages();
-    localDb.saveMessages([...existingLocal, newMsg]);
-
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("wakat_messages_updated"));
+    const { error } = await supabase.from("messages").insert(record);
+    if (error) {
+      console.error("Erreur envoi message Supabase:", error);
+      throw error;
     }
 
-    try {
-      const msgRef = doc(db, "conversations", convId, "messages", msgId);
-      console.log(`[chatService.sendMessage] Writing to Firestore messages subcollection... Message ID=${msgId}`);
-      
-      // Save to Firestore
-      await setDoc(msgRef, newMsg);
-      console.log(`[chatService.sendMessage] Message written successfully.`);
+    // Mettre à jour la date de mise à jour de la conversation
+    await supabase
+      .from("conversations")
+      .update({ updated_at: nowIso })
+      .eq("id", conversationId);
 
-      // Update the conversation's last message and unread counts
-      const convRef = doc(db, "conversations", convId);
-      
-      const updates: any = {
-        lastMessage: type === MessageType.TEXT ? content : `[${type}]`,
-        lastMessageDate: nowIso,
-        updatedAt: nowIso
-      };
-
-      if (participantsToNotify) {
-        participantsToNotify.forEach(p => {
-          if (p !== senderId) {
-            updates[`unreadCount.${p}`] = increment(1);
-          }
-        });
-      }
-
-      console.log(`[chatService.sendMessage] Updating conversation document (convId=${convId}) with lastMessage info...`);
-      await setDoc(convRef, updates, { merge: true });
-      console.log(`[chatService.sendMessage] Conversation document updated successfully.`);
-
-      // Sync message to Supabase
-      if (supabase) {
-        await upsertToSupabaseTable("messages", {
-          id: msgId,
-          conversation_id: convId,
-          sender_id: senderId,
-          type,
-          content,
-          status: MessageStatus.SENT,
-          created_at: nowIso
-        });
-      }
-    } catch (error: any) {
-      console.warn("[chatService.sendMessage] Failed to send message to Firestore (using offline mode):", error);
-      // Don't throw so that offline user experience remains uninterrupted
-    }
-  },
-
-  async markConversationAsRead(convId: string, userId: string): Promise<void> {
-    try {
-      const convRef = doc(db, "conversations", convId);
-      await setDoc(convRef, {
-        [`unreadCount.${userId}`]: 0
-      }, { merge: true });
-
-      // Optionally, we could find all unread messages and mark them as read by this user.
-      // But for performance, unreadCount is usually sufficient for the UI.
-    } catch (error) {
-      console.warn("[chatService] markConversationAsRead failed in Firestore, ignoring for offline resilience", error);
-    }
+    return messageId;
   },
 
   /**
-   * Upload media file (Image, Video, Document, Voice note)
+   * Téléverser un fichier média pour le chat vers Supabase Storage (MonBucket)
    */
-  async uploadMedia(file: File | Blob, folder: string, filename: string): Promise<string> {
-    console.log(`[chatService.uploadMedia] Start upload to folder=${folder}, filename=${filename}, type=${file.type}, size=${file.size}`);
-    
-    if (supabase) {
-      try {
-        const filePath = `${folder}/${filename}`;
-        console.log(`[chatService.uploadMedia] Uploading to Supabase Storage: ${filePath}`);
-        
-        const res = await uploadToSupabaseStorage("Chat", filePath, file);
-        if (res?.publicUrl) {
-          console.log(`[chatService.uploadMedia] Public URL generated via bucket '${res.bucket}': ${res.publicUrl.substring(0, 50)}...`);
-          return res.publicUrl;
-        }
-      } catch (err) {
-        console.warn("[chatService.uploadMedia] Supabase storage upload exception, proceeding with local Data URL fallback:", err);
-      }
-    } else {
-      console.info("[chatService.uploadMedia] Supabase is not configured (VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing). Using local Data URL fallback.");
+  async uploadChatMedia(conversationId: string, file: File | Blob, mimeType?: string): Promise<string> {
+    if (!supabase) {
+      throw new Error("Supabase Storage n'est pas initialisé.");
     }
 
-    // Graceful fallback to Data URL for offline/standalone mode
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = (e) => reject(e);
-        reader.readAsDataURL(file);
-      });
-      console.log(`[chatService.uploadMedia] Successfully generated local Data URL fallback (length=${dataUrl.length}).`);
-      return dataUrl;
-    } catch (fallbackError) {
-      console.warn("[chatService.uploadMedia] Failed to convert file to Data URL, returning object URL fallback:", fallbackError);
-      return URL.createObjectURL(file);
+    const timestamp = Date.now();
+    const ext = file instanceof File && file.name ? file.name.split(".").pop() : "bin";
+    const storagePath = `chat-media/${conversationId}/${timestamp}.${ext}`;
+    const storageBucket = "MonBucket";
+
+    const res = await uploadToSupabaseStorage(
+      storageBucket,
+      storagePath,
+      file,
+      mimeType || (file as any).type || "application/octet-stream"
+    );
+    if (!res?.publicUrl) {
+      throw new Error("Échec upload média chat vers Supabase Storage.");
     }
+
+    return res.publicUrl;
   },
 
-  async saveTranscription(convId: string, msgId: string, transcription: string): Promise<void> {
+  /**
+   * Alias uploadMedia
+   */
+  async uploadMedia(file: File | Blob, conversationId: string, mimeType?: string): Promise<string> {
+    return this.uploadChatMedia(conversationId, file, mimeType);
+  },
+
+  /**
+   * S'abonner aux messages d'une conversation en temps réel
+   */
+  subscribeToMessages(conversationId: string, callback: (messages: ChatMessage[]) => void): () => void {
+    if (!supabase || !conversationId) return () => {};
+
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Erreur fetch messages Supabase:", error);
+        return;
+      }
+
+      const list: ChatMessage[] = (data || []).map((row: any) => ({
+        id: row.id,
+        conversationId: row.conversation_id,
+        senderId: row.sender_id,
+        content: row.content,
+        type: row.type || MessageType.TEXT,
+        status: (row.status as MessageStatus) || MessageStatus.DELIVERED,
+        timestamp: row.created_at,
+        metadata: row.metadata || {}
+      }));
+
+      callback(list);
+    };
+
+    fetchMessages();
+
+    const channel = supabase
+      .channel(`public:messages:${conversationId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        () => {
+          fetchMessages();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  /**
+   * S'abonner aux conversations d'un utilisateur
+   */
+  subscribeToConversations(userId: string, callback: (conversations: Conversation[]) => void): () => void {
+    if (!supabase || !userId) return () => {};
+
+    const fetchConvs = async () => {
+      const { data, error } = await supabase
+        .from("conversations")
+        .select("*")
+        .contains("participants", [userId])
+        .order("updated_at", { ascending: false });
+
+      if (error) {
+        console.error("Erreur fetch conversations Supabase:", error);
+        return;
+      }
+
+      const list: Conversation[] = (data || []).map((row: any) => ({
+        id: row.id,
+        type: row.type || "PRIVATE",
+        participants: row.participants || [],
+        groupName: row.group_name,
+        groupDescription: row.group_description,
+        groupImage: row.group_image,
+        createdBy: row.created_by,
+        participantDetails: {},
+        unreadCount: {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }));
+
+      callback(list);
+    };
+
+    fetchConvs();
+
+    const channel = supabase
+      .channel(`public:conversations:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations" },
+        () => {
+          fetchConvs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  },
+
+  /**
+   * Alias subscribeToUserConversations
+   */
+  subscribeToUserConversations(userId: string, callback: (conversations: Conversation[]) => void): () => void {
+    return this.subscribeToConversations(userId, callback);
+  },
+
+  /**
+   * Marquer une conversation comme lue
+   */
+  async markConversationAsRead(_conversationId: string, _userId: string): Promise<void> {
+    // Read state management
+    return;
+  },
+
+  /**
+   * Sauvegarder une transcription audio
+   */
+  async saveTranscription(messageId: string, transcription: string, _conversationId?: string): Promise<void> {
+    if (!supabase || !messageId) return;
     try {
-      const msgRef = doc(db, "conversations", convId, "messages", msgId);
-      await setDoc(msgRef, { transcription }, { merge: true });
-    } catch (error) {
-      console.error("Error saving transcription:", error);
+      await supabase
+        .from("messages")
+        .update({ content: transcription })
+        .eq("id", messageId);
+    } catch (e) {
+      console.warn("Notice save transcription:", e);
     }
   }
 };

@@ -1,520 +1,285 @@
-import { 
-  collection, 
-  doc, 
-  query, 
-  where, 
-  orderBy, 
-  onSnapshot, 
-  getDocs, 
-  getDoc,
-  runTransaction,
-  serverTimestamp,
-  updateDoc
-} from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../firebase/firebase";
-import { Relation, PartnerNotificationItem, UserProfile, Connection, UserRole } from "../types";
-import { db as localDb } from "../data";
+import { Relation, PartnerNotificationItem, UserProfile, UserRole } from "../types";
+import { supabase } from "../supabase";
 
 export const relationService = {
   /**
-   * 1. Envoyer une demande de connexion (Transaction atomique)
-   * Crée /relations/{relationId} + notification dans /notifications/{destinataireId}/items/{notifId}
+   * 1. Envoyer ou créer une relation de partenariat d'affaires B2B dans PostgreSQL
    */
   async envoyerDemandeConnexion(
     demandeur: UserProfile, 
     destinataireIdentifiant: string, 
     notes: string = ""
   ): Promise<{ success: boolean; relationId: string; destinataireNom: string; message: string }> {
+    if (!supabase) {
+      throw new Error("Supabase n'est pas configuré.");
+    }
+
     const cleanIdentifiant = destinataireIdentifiant.trim().toLowerCase();
 
-    // 1. Chercher le destinataire dans Firestore /users ou dans localDb
-    let destinataire: UserProfile | null = null;
+    // 1. Chercher le destinataire dans la table 'profiles'
+    const { data: users, error: searchError } = await supabase
+      .from("profiles")
+      .select("*")
+      .or(`email.ilike.${cleanIdentifiant},phone.ilike.${cleanIdentifiant},id.eq.${cleanIdentifiant}`);
 
-    try {
-      // Recherche Firestore par phone, téléphone ou email
-      const usersRef = collection(db, "users");
-      const qPhone = query(usersRef, where("phone", "==", destinataireIdentifiant.trim()));
-      const snapPhone = await getDocs(qPhone);
-
-      if (!snapPhone.empty) {
-        const docData = snapPhone.docs[0].data() as any;
-        destinataire = { 
-          id: snapPhone.docs[0].id, 
-          ...docData,
-          phone: docData.phone || docData.téléphone || '',
-          role: docData.role || docData.rôle || UserRole.CLIENT
-        } as UserProfile;
-      } else {
-        const qTel = query(usersRef, where("téléphone", "==", destinataireIdentifiant.trim()));
-        const snapTel = await getDocs(qTel);
-        if (!snapTel.empty) {
-          const docData = snapTel.docs[0].data() as any;
-          destinataire = { 
-            id: snapTel.docs[0].id, 
-            ...docData,
-            phone: docData.phone || docData.téléphone || '',
-            role: docData.role || docData.rôle || UserRole.CLIENT
-          } as UserProfile;
-        } else {
-          const qEmail = query(usersRef, where("email", "==", cleanIdentifiant));
-          const snapEmail = await getDocs(qEmail);
-          if (!snapEmail.empty) {
-            const docData = snapEmail.docs[0].data() as any;
-            destinataire = { 
-              id: snapEmail.docs[0].id, 
-              ...docData,
-              phone: docData.phone || docData.téléphone || '',
-              role: docData.role || docData.rôle || UserRole.CLIENT
-            } as UserProfile;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("[relationService] Erreur recherche Firestore, tentative locale:", err);
-    }
-
-    // Fallback recherche dans localDb
-    if (!destinataire) {
-      const allUsers = localDb.getUsers();
-      const cleanInput = destinataireIdentifiant.trim().toLowerCase().replace(/[\s\-\+]/g, '');
-      destinataire = allUsers.find(u => {
-        const uPhone = (u.phone || (u as any).téléphone || "").toLowerCase().replace(/[\s\-\+]/g, '');
-        return (
-          u.id === destinataireIdentifiant.trim() ||
-          (uPhone && (uPhone.includes(cleanInput) || cleanInput.includes(uPhone))) ||
-          u.email.toLowerCase() === cleanIdentifiant ||
-          u.name.toLowerCase().includes(cleanIdentifiant)
-        );
-      }) || null;
-    }
-
-    if (!destinataire) {
+    if (searchError || !users || users.length === 0) {
       throw new Error(`Aucun utilisateur trouvé avec l'identifiant "${destinataireIdentifiant}".`);
     }
 
-    if (destinataire.id === demandeur.id) {
+    const destinataireRow = users[0];
+    if (destinataireRow.id === demandeur.id) {
       throw new Error("Vous ne pouvez pas vous enregistrer vous-même comme partenaire d'affaires.");
     }
 
-    // --- COMPATIBILITY VALIDATION ---
-    const isRoleAllowed = (creatorRole: UserRole, targetRole: UserRole): boolean => {
-      // All active platform roles are compatible for business connections and trading
-      return true;
-    };
-
-    const isCompatible = isRoleAllowed(demandeur.role, destinataire.role) || isRoleAllowed(destinataire.role, demandeur.role);
-    if (!isCompatible) {
-      throw new Error(`Les profils ne sont pas compatibles pour une relation d'affaires B2B. Votre rôle (${demandeur.role}) n'est pas compatible avec celui de ce partenaire (${destinataire.role}).`);
-    }
-
-    const relationId = [demandeur.id, destinataire.id].sort().join('_');
-    const relationRef = doc(db, "relations", relationId);
-    const legacyConnRef = doc(db, "connections", relationId);
-    
-    // Référence de sous-collection /notifications/{destinataireId}/items/{notifId}
-    const notifItemRef = doc(collection(db, "notifications", destinataire.id, "items"));
-
+    const relationId = [demandeur.id, destinataireRow.id].sort().join("_");
     const demandeurNom = demandeur.companyName || demandeur.name;
-    const destinataireNom = destinataire.companyName || destinataire.name;
+    const destinataireNom = destinataireRow.company_name || destinataireRow.name;
 
-    // Transaction atomique Firestore
-    try {
-      await runTransaction(db, async (transaction) => {
-        const relDoc = await transaction.get(relationRef);
-        if (relDoc.exists()) {
-          const data = relDoc.data() as Relation;
-          if (data.statut === "actif") {
-            throw new Error("Vous êtes déjà en relation active avec ce partenaire.");
-          }
-        }
-
-        const now = serverTimestamp();
-
-        // 1. Écriture /relations/{relationId}
-        const newRelation: Omit<Relation, "id"> = {
-          demandeurId: demandeur.id,
-          destinataireId: destinataire!.id,
-          statut: "actif",
-          dateCreation: now,
-          dateReponse: now,
-          participants: [demandeur.id, destinataire!.id],
-          notes,
-          demandeurNom,
-          demandeurRole: demandeur.role,
-          destinataireNom,
-          destinataireRole: destinataire!.role
-        };
-        transaction.set(relationRef, newRelation, { merge: true });
-
-        // Rétrocompatibilité /connections
-        transaction.set(legacyConnRef, {
-          id: relationId,
-          senderId: demandeur.id,
-          receiverId: destinataire!.id,
-          status: "active",
-          senderName: demandeurNom,
-          senderRole: demandeur.role,
-          receiverName: destinataireNom,
-          receiverRole: destinataire!.role,
-          notes,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        // 2. Écriture sous-collection /notifications/{destinataireId}/items/{notifId}
-        transaction.set(notifItemRef, {
-          type: "connexion_acceptee",
-          relationId,
-          expediteurId: demandeur.id,
-          lu: false,
-          dateCreation: now,
-          contenu: `${demandeurNom} (${demandeur.role}) vous a enregistré directement comme partenaire d'affaires.`
-        });
+    // 2. Insérer ou mettre à jour la relation dans 'business_relationships'
+    const { error: relError } = await supabase
+      .from("business_relationships")
+      .upsert({
+        id: relationId,
+        supplier_id: demandeur.id,
+        buyer_id: destinataireRow.id,
+        status: "ACTIVE",
+        payment_terms: notes || null,
+        updated_at: new Date().toISOString()
       });
-    } catch (e: any) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof Error && (
-        msg.includes("déjà en relation") || 
-        msg.includes("non compatibles") || 
-        msg.includes("enregistrer vous-même") ||
-        msg.includes("La relation spécifiée n'existe pas") ||
-        msg.includes("Seul le destinataire")
-      )) {
-        throw e;
-      }
-      console.warn("[relationService] Firestore offline fallback:", msg);
+
+    if (relError) {
+      console.error("Erreur upsert business_relationships:", relError);
+      throw relError;
     }
 
-    // Sauvegarde locale systématique (Mode Hors-Ligne)
-    const localRel: Relation = {
-      id: relationId,
-      demandeurId: demandeur.id,
-      destinataireId: destinataire.id,
-      statut: "actif",
-      dateCreation: new Date().toISOString(),
-      dateReponse: new Date().toISOString(),
-      participants: [demandeur.id, destinataire.id],
-      notes,
-      demandeurNom,
-      demandeurRole: demandeur.role,
-      destinataireNom,
-      destinataireRole: destinataire.role
-    };
-
-    const localNotif: PartnerNotificationItem = {
-      id: notifItemRef.id,
-      type: "connexion_acceptee",
-      relationId,
-      expediteurId: demandeur.id,
-      lu: false,
-      dateCreation: new Date().toISOString(),
-      contenu: `${demandeurNom} (${demandeur.role}) vous a enregistré directement comme partenaire d'affaires.`
-    };
-
-    // Mettre à jour localDb
-    const currentConns = localDb.getConnections().filter(c => c.id !== relationId);
-    const legacyConn: Connection = {
-      id: relationId,
-      senderId: demandeur.id,
-      receiverId: destinataire.id,
-      status: "active",
-      senderName: demandeurNom,
-      senderRole: demandeur.role,
-      receiverName: destinataireNom,
-      receiverRole: destinataire.role,
-      notes,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    localDb.saveConnections([legacyConn, ...currentConns]);
-
-    const currentNotifs = localDb.getNotifications().filter(n => n.id !== localNotif.id);
-    localDb.saveNotifications([{
-      id: localNotif.id,
-      userId: destinataire.id,
-      senderId: demandeur.id,
+    // 3. Envoyer une notification au destinataire
+    await supabase.from("notifications").insert({
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      user_id: destinataireRow.id,
       title: "Nouveau partenaire d'affaires",
-      message: localNotif.contenu,
-      type: "CONNECTION_ACCEPTED",
+      message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
+      type: "connexion_acceptee",
       read: false,
-      createdAt: new Date().toISOString(),
-      relatedId: relationId
-    }, ...currentNotifs]);
-
-    // Déclencher les événements locaux
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
-      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
-    }
-
-    // Auto-créer la conversation
-    try {
-      const { chatService } = await import("./chatService");
-      await chatService.getOrCreatePrivateConversation(demandeur.id, destinataire.id);
-    } catch (chatErr) {
-      console.error("[relationService] Erreur création conversation chat:", chatErr);
-    }
+      metadata: { relationId, senderId: demandeur.id }
+    });
 
     return {
       success: true,
       relationId,
       destinataireNom,
-      message: `Félicitations ! ${destinataireNom} a été enregistré avec succès comme partenaire d'affaires.`
+      message: `Partenariat établi avec succès avec ${destinataireNom}.`
     };
   },
 
   /**
-   * 2. Répondre à une demande de connexion (Transaction atomique)
-   * Met à jour statut à "actif" ou "refuse" + crée notification de retour dans /notifications/{demandeurId}/items/
+   * 2. Accepter une demande de connexion
    */
-  async repondreDemandeConnexion(
-    currentUserId: string, 
-    relationId: string, 
-    reponse: "accepter" | "refuser"
-  ): Promise<void> {
-    const relationRef = doc(db, "relations", relationId);
-    const legacyConnRef = doc(db, "connections", relationId);
+  async accepterDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("business_relationships")
+      .update({ status: "ACTIVE", updated_at: new Date().toISOString() })
+      .eq("id", relationId);
 
-    let demandeurId = "";
-    let destinataireNom = "";
-
-    try {
-      await runTransaction(db, async (transaction) => {
-        const relDoc = await transaction.get(relationRef);
-        if (!relDoc.exists()) {
-          throw new Error("La relation spécifiée n'existe pas.");
-        }
-
-        const relationData = relDoc.data() as Relation;
-
-        if (relationData.destinataireId !== currentUserId) {
-          throw new Error("Seul le destinataire est autorisé à valider cette demande.");
-        }
-
-        demandeurId = relationData.demandeurId;
-        destinataireNom = relationData.destinataireNom || "Un partenaire";
-
-        const nouveauStatut = reponse === "accepter" ? "actif" : "refuse";
-        const legacyStatus = reponse === "accepter" ? "active" : "refusée";
-        const now = serverTimestamp();
-
-        // 1. Mise à jour de la relation
-        transaction.update(relationRef, {
-          statut: nouveauStatut,
-          dateReponse: now
-        });
-
-        transaction.set(legacyConnRef, {
-          status: legacyStatus,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-
-        // 2. Création notification dans /notifications/{demandeurId}/items/{notifId}
-        const notifDemandeurRef = doc(collection(db, "notifications", demandeurId, "items"));
-        const typeNotif = reponse === "accepter" ? "connexion_acceptee" : "connexion_refusee";
-        const contenuNotif = reponse === "accepter"
-          ? `${destinataireNom} a accepté votre demande de connexion B2B.`
-          : `${destinataireNom} a décliné votre demande de connexion.`;
-
-        transaction.set(notifDemandeurRef, {
-          type: typeNotif,
-          relationId,
-          expediteurId: currentUserId,
-          lu: false,
-          dateCreation: now,
-          contenu: contenuNotif
-        });
-      });
-    } catch (e: any) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (e instanceof Error && (
-        msg.includes("La relation spécifiée n'existe pas") ||
-        msg.includes("Seul le destinataire")
-      )) {
-        throw e;
-      }
-      console.warn("[relationService] Firestore offline fallback for response:", msg);
-    }
-
-    // Traitement local systématique
-    const nouveauStatutLocal = reponse === "accepter" ? "active" : "refusée";
-    const localConns = localDb.getConnections().map(c => {
-      if (c.id === relationId) {
-        return { ...c, status: nouveauStatutLocal as Connection["status"], updatedAt: new Date().toISOString() };
-      }
-      return c;
-    });
-    localDb.saveConnections(localConns);
-
-    if (demandeurId) {
-      const currentNotifs = localDb.getNotifications();
-      localDb.saveNotifications([{
-        id: `notif-${Date.now()}`,
-        userId: demandeurId,
-        senderId: currentUserId,
-        title: reponse === "accepter" ? "Connexion acceptée" : "Connexion refusée",
-        message: reponse === "accepter" ? `${destinataireNom} a accepté votre demande.` : `${destinataireNom} a refusé votre demande.`,
-        type: reponse === "accepter" ? "connexion_acceptee" : "connexion_refusee",
-        read: false,
-        createdAt: new Date().toISOString(),
-        relatedId: relationId
-      }, ...currentNotifs]);
+    if (error) {
+      console.error("Erreur accepter relation:", error);
+      throw error;
     }
   },
 
   /**
-   * 3. Listener temps réel pour les demandes EN ATTENTE reçues par l'utilisateur
-   * écoute /relations où destinataireId == userId AND statut == 'en_attente'
+   * 3. Refuser une demande de connexion
    */
-  subscribeToIncomingRequests(userId: string, callback: (relations: Relation[]) => void) {
-    const emitLocal = () => {
-      const localConns = localDb.getConnections()
-        .filter(c => c.receiverId === userId && c.status === "en_attente")
-        .map(c => ({
-          id: c.id,
-          demandeurId: c.senderId,
-          destinataireId: c.receiverId,
-          statut: "en_attente" as const,
-          dateCreation: c.createdAt,
-          dateReponse: null,
-          participants: [c.senderId, c.receiverId],
-          notes: c.notes,
-          demandeurNom: c.senderName,
-          demandeurRole: c.senderRole,
-          destinataireNom: c.receiverName,
-          destinataireRole: c.receiverRole
+  async refuserDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("business_relationships")
+      .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
+      .eq("id", relationId);
+
+    if (error) {
+      console.error("Erreur refuser relation:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 4. Bloquer un partenaire
+   */
+  async bloquerPartenaire(relationId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("business_relationships")
+      .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
+      .eq("id", relationId);
+
+    if (error) {
+      console.error("Erreur bloquer relation:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 5. Supprimer une relation
+   */
+  async supprimerRelation(relationId: string): Promise<void> {
+    if (!supabase) return;
+    const { error } = await supabase
+      .from("business_relationships")
+      .delete()
+      .eq("id", relationId);
+
+    if (error) {
+      console.error("Erreur suppression relation:", error);
+      throw error;
+    }
+  },
+
+  /**
+   * 6. Écouter les relations d'un utilisateur en temps réel depuis PostgreSQL
+   */
+  ecouterRelations(userId: string, callback: (relations: Relation[]) => void): () => void {
+    if (!supabase || !userId) return () => {};
+
+    const fetchRelations = async () => {
+      const { data, error } = await supabase
+        .from("business_relationships")
+        .select("*, supplier:profiles!business_relationships_supplier_id_fkey(name, role, company_name), buyer:profiles!business_relationships_buyer_id_fkey(name, role, company_name)")
+        .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
+
+      if (error) {
+        // Simple fallback without join if foreign keys have different naming
+        const { data: simpleData } = await supabase
+          .from("business_relationships")
+          .select("*")
+          .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
+
+        const mapped = (simpleData || []).map((row: any) => ({
+          id: row.id,
+          demandeurId: row.supplier_id,
+          destinataireId: row.buyer_id,
+          statut: (row.status === "ACTIVE" ? "actif" : row.status === "BLOCKED" ? "refuse" : "en_attente") as any,
+          dateCreation: row.created_at,
+          dateReponse: row.updated_at,
+          participants: [row.supplier_id, row.buyer_id],
+          notes: row.payment_terms || "",
+          demandeurNom: row.supplier_id === userId ? "Moi" : "Partenaire",
+          demandeurRole: UserRole.WHOLESALER,
+          destinataireNom: row.buyer_id === userId ? "Moi" : "Partenaire",
+          destinataireRole: UserRole.RETAILER
         }));
-      callback(localConns);
+        callback(mapped);
+        return;
+      }
+
+      const mapped: Relation[] = (data || []).map((row: any) => ({
+        id: row.id,
+        demandeurId: row.supplier_id,
+        destinataireId: row.buyer_id,
+        statut: (row.status === "ACTIVE" ? "actif" : row.status === "BLOCKED" ? "refuse" : "en_attente") as any,
+        dateCreation: row.created_at,
+        dateReponse: row.updated_at,
+        participants: [row.supplier_id, row.buyer_id],
+        notes: row.payment_terms || "",
+        demandeurNom: row.supplier?.company_name || row.supplier?.name || "Fournisseur",
+        demandeurRole: (row.supplier?.role || UserRole.WHOLESALER) as any,
+        destinataireNom: row.buyer?.company_name || row.buyer?.name || "Client",
+        destinataireRole: (row.buyer?.role || UserRole.RETAILER) as any
+      }));
+      callback(mapped);
     };
 
-    // Émettre les données locales immédiatement
-    emitLocal();
+    fetchRelations();
 
-    const handleLocalUpdate = () => emitLocal();
-    if (typeof window !== "undefined") {
-      window.addEventListener("wakat_connections_updated", handleLocalUpdate);
-      window.addEventListener("storage", handleLocalUpdate);
-    }
-
-    const q = query(
-      collection(db, "relations"),
-      where("destinataireId", "==", userId),
-      where("statut", "==", "en_attente")
-    );
-
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const items: Relation[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Relation));
-        callback(items);
-      }, (err) => {
-        console.warn("[relationService] Listener incoming relations error, using fallback:", err);
-      });
-    } catch (e) {
-      console.warn("[relationService] Failed to set up real-time listener for incoming relations:", e);
-    }
+    const channel = supabase
+      .channel(`public:business_relationships:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "business_relationships" },
+        () => {
+          fetchRelations();
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
-        window.removeEventListener("storage", handleLocalUpdate);
-      }
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("[relationService] Error unsubscribing from relations:", e);
-      }
+      supabase.removeChannel(channel);
     };
   },
 
   /**
-   * 4. Listener temps réel pour les NOTIFICATIONS de l'utilisateur
-   * écoute la sous-collection /notifications/{userId}/items
+   * 7. Écouter les notifications de partenariat en temps réel
    */
-  subscribeToUserNotifications(userId: string, callback: (notifications: PartnerNotificationItem[]) => void) {
-    const emitLocal = () => {
-      const localNotifs = localDb.getNotifications()
-        .filter(n => n.userId === userId)
-        .map(n => ({
-          id: n.id,
-          type: (n.type.toLowerCase().includes("accepte") ? "connexion_acceptee" : (n.type.toLowerCase().includes("refus") ? "connexion_refusee" : "demande_connexion")) as PartnerNotificationItem["type"],
-          relationId: n.relatedId || "",
-          expediteurId: n.senderId || "",
-          lu: n.read,
-          dateCreation: n.createdAt,
-          contenu: n.message || n.title
-        }));
-      callback(localNotifs);
+  ecouterNotifications(userId: string, callback: (notifs: PartnerNotificationItem[]) => void): () => void {
+    if (!supabase || !userId) return () => {};
+
+    const fetchNotifs = async () => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Erreur fetch notifications Supabase:", error);
+        return;
+      }
+
+      const mapped: PartnerNotificationItem[] = (data || []).map((n: any) => ({
+        id: n.id,
+        type: n.type || "connexion_acceptee",
+        relationId: n.metadata?.relationId,
+        venteId: n.metadata?.venteId,
+        orderId: n.metadata?.orderId,
+        expediteurId: n.metadata?.senderId,
+        lu: n.read || false,
+        dateCreation: n.created_at,
+        contenu: n.message || n.title
+      }));
+      callback(mapped);
     };
 
-    emitLocal();
+    fetchNotifs();
 
-    const handleLocalUpdate = () => emitLocal();
-    if (typeof window !== "undefined") {
-      window.addEventListener("wakat_notifications_updated", handleLocalUpdate);
-      window.addEventListener("storage", handleLocalUpdate);
-    }
-
-    const q = query(
-      collection(db, "notifications", userId, "items"),
-      orderBy("dateCreation", "desc")
-    );
-
-    let unsub = () => {};
-    try {
-      unsub = onSnapshot(q, (snapshot) => {
-        const localMap = new Map(localDb.getNotifications().map(n => [n.id, n]));
-        const items: PartnerNotificationItem[] = snapshot.docs.map(doc => {
-          const data = doc.data() as any;
-          const local = localMap.get(doc.id);
-          const isRead = local?.read || data.lu || data.read || false;
-          return {
-            id: doc.id,
-            ...data,
-            lu: isRead
-          } as PartnerNotificationItem;
-        });
-        callback(items);
-      }, (err) => {
-        console.warn("[relationService] Listener notifications error, using fallback:", err);
-        emitLocal();
-      });
-    } catch (e) {
-      console.warn("[relationService] Failed to set up real-time listener for partner notifications:", e);
-    }
+    const channel = supabase
+      .channel(`public:notifications:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+        () => {
+          fetchNotifs();
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("wakat_notifications_updated", handleLocalUpdate);
-        window.removeEventListener("storage", handleLocalUpdate);
-      }
-      try {
-        unsub();
-      } catch (e) {
-        console.warn("[relationService] Error unsubscribing from partner notifications:", e);
-      }
+      supabase.removeChannel(channel);
     };
   },
 
   /**
-   * 5. Marquer une notification comme lue dans /notifications/{userId}/items/{notifId}
+   * Marquer une notification comme lue
+   */
+  async marquerNotificationLue(userId: string, notifId: string): Promise<void> {
+    if (!supabase) return;
+    await supabase
+      .from("notifications")
+      .update({ read: true })
+      .eq("id", notifId)
+      .eq("user_id", userId);
+  },
+
+  /**
+   * Alias pour marquerNotificationLue
    */
   async marquerNotificationCommeLue(userId: string, notifId: string): Promise<void> {
-    const localNotifs = localDb.getNotifications().map(n => {
-      if (n.id === notifId) return { ...n, read: true };
-      return n;
-    });
-    localDb.saveNotifications(localNotifs);
+    return this.marquerNotificationLue(userId, notifId);
+  },
 
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
-    }
-
-    try {
-      const notifRef = doc(db, "notifications", userId, "items", notifId);
-      await updateDoc(notifRef, { lu: true, read: true });
-    } catch (e) {
-      console.warn("[relationService] Error marking notification as read:", e);
-    }
+  /**
+   * Alias pour ecouterNotifications
+   */
+  subscribeToUserNotifications(userId: string, callback: (notifs: PartnerNotificationItem[]) => void): () => void {
+    return this.ecouterNotifications(userId, callback);
   }
 };
