@@ -1,8 +1,11 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const defaultSupabaseUrl = "https://uefgeyokmhbovgrrxoje.supabase.co";
+const defaultSupabasePublishableKey = "sb_publishable_fHZov5y-mAQQLdBg7ZfnFQ_3xji3Xpd";
+
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || defaultSupabaseUrl)?.trim();
+const supabasePublishableKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || defaultSupabasePublishableKey)?.trim();
 
 export type BucketName = "MonBucket" | "Chat";
 
@@ -20,12 +23,13 @@ function isValidHttpUrl(stringUrl?: string | null): boolean {
 }
 
 if (!supabaseUrl || !supabasePublishableKey) {
-  supabaseConfigError = "Les variables d'environnement VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY ne sont pas encore renseignées dans le projet.";
+  supabaseConfigError = "Les identifiants Supabase (VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY) ne sont pas configurés.";
 } else if (!isValidHttpUrl(supabaseUrl)) {
-  supabaseConfigError = `L'URL Supabase spécifiée ("${supabaseUrl}") n'est pas une URL HTTP/HTTPS valide. Exemple attendu : https://xyzcompany.supabase.co`;
+  supabaseConfigError = `L'URL Supabase spécifiée ("${supabaseUrl}") n'est pas une URL HTTP/HTTPS valide.`;
 } else {
   try {
-    supabase = createClient(supabaseUrl.trim(), supabasePublishableKey.trim());
+    supabase = createClient(supabaseUrl, supabasePublishableKey);
+    supabaseConfigError = null;
   } catch (err: any) {
     supabaseConfigError = `Erreur d'initialisation Supabase : ${err.message || err}`;
     console.error("Supabase initialization failed:", err);
