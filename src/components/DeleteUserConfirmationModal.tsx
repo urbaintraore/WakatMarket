@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, AlertTriangle, Trash2, RefreshCw, CheckCircle } from "lucide-react";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { userService } from "../services/userService";
+import { supabase } from "../supabase";
 import { UserProfile } from "../types";
 
 interface DeleteUserConfirmationModalProps {
@@ -74,29 +75,19 @@ export default function DeleteUserConfirmationModal({
     }
 
     try {
-      const functions = getFunctions();
-      const supprimerCompteAdmin = httpsCallable<{ uid: string }, { success: boolean; message: string }>(
-        functions,
-        "supprimerCompteAdmin"
-      );
+      await userService.deleteUser(user.id);
       
-      const result = await supprimerCompteAdmin({ uid: user.id });
-      
-      if (result.data && result.data.success) {
-        setSuccess(true);
-        onSuccess(user.id);
-      } else {
-        throw new Error(result.data?.message || "Échec de l'appel de suppression.");
+      // Also clean up from Supabase table if directly available
+      if (supabase) {
+        await supabase.from("profiles").delete().eq("id", user.id);
+        await supabase.from("users").delete().eq("id", user.id);
       }
+
+      setSuccess(true);
+      onSuccess(user.id);
     } catch (err: any) {
-      console.error("Erreur lors de l'appel à supprimerCompteAdmin:", err);
-      // Extraire le message propre de Firebase Cloud Function si possible
-      let friendlyMessage = err.message || "Une erreur inattendue est survenue.";
-      if (err.code === "permission-denied") {
-        friendlyMessage = "Accès refusé. Vous n'avez pas les autorisations d'administrateur requises.";
-      } else if (err.code === "unauthenticated") {
-        friendlyMessage = "Vous devez être connecté en tant qu'administrateur pour faire cela.";
-      }
+      console.error("Erreur lors de la suppression de l'utilisateur:", err);
+      const friendlyMessage = err.message || "Une erreur inattendue est survenue lors de la suppression.";
       setError(friendlyMessage);
     } finally {
       setIsDeleting(false);

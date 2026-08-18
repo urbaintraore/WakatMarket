@@ -27,7 +27,6 @@ import { venteService } from "./services/venteService";
 import { connectionService } from "./services/connectionService";
 import { relationService } from "./services/relationService";
 import { syncService } from "./services/syncService";
-import { formatFirebaseError } from "./utils/firebaseErrors";
 import { supabaseConfigError } from "./supabase";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -225,12 +224,12 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Silent background cleanup of any remaining mock/fictional inventory items & target users
+  // Silent background cleanup of any remaining mock/fictional inventory items
   useEffect(() => {
     const runDeepCleanup = async () => {
       if (!isRealUserAuthenticated) return;
       
-      // 1. Clean local state and db inventory items matching the mock conditions
+      // 1. Clean local state and db inventory items matching mock conditions
       if (inventory.length > 0) {
         const mockItems = inventory.filter(i => 
           i.id.includes("bonk") || 
@@ -238,7 +237,6 @@ export default function App() {
           (i.ownerId && (i.ownerId.includes("bonk") || i.ownerId.includes("sayouba") || i.ownerId.includes("ujk.b") || i.ownerId.includes("ujkz")))
         );
         if (mockItems.length > 0) {
-          console.log("[Auto-Cleanup] Detected mock inventory items, deleting:", mockItems.map(i => i.id));
           for (const item of mockItems) {
             await inventoryService.deleteInventoryItem(item.id).catch(err => {
               console.error("Failed to delete mock item from database:", item.id, err);
@@ -252,130 +250,10 @@ export default function App() {
           syncInventory(cleanInventory);
         }
       }
-
-      // 2. Query Firestore dynamically to find and delete catalog of bonkoungou@ujkz.bf & sayouba@ujkz.bf
-      try {
-        const { collection, getDocs, doc, deleteDoc } = await import("firebase/firestore");
-        const { db: firestoreDb } = await import("./firebase/firebase");
-        
-        const targetEmails = ["bonkoungou@ujkz.bf", "sayouba@ujkz.bf"];
-        
-        // Find UIDs of these emails in users collection and restore SEMI_WHOLESALER role
-        const usersCol = collection(firestoreDb, "users");
-        const usersSnap = await getDocs(usersCol);
-        const { updateDoc: updateFirestoreDoc } = await import("firebase/firestore");
-        
-        const targetUids: string[] = [];
-        usersSnap.forEach(async (uDoc) => {
-          if (uDoc.exists()) {
-            const data = uDoc.data();
-            const email = (data.email || "").toLowerCase().trim();
-            if (targetEmails.includes(email)) {
-              targetUids.push(uDoc.id);
-              if (data.rôle !== "SEMI_WHOLESALER" || data.role !== "SEMI_WHOLESALER") {
-                await updateFirestoreDoc(doc(firestoreDb, "users", uDoc.id), {
-                  rôle: "SEMI_WHOLESALER",
-                  role: "SEMI_WHOLESALER"
-                }).catch(() => {});
-              }
-            }
-          }
-        });
-
-        // Also query "utilisateurs" collection just in case
-        try {
-          const utilsCol = collection(firestoreDb, "utilisateurs");
-          const utilsSnap = await getDocs(utilsCol);
-          utilsSnap.forEach(uDoc => {
-            if (uDoc.exists()) {
-              const data = uDoc.data();
-              const email = (data.email || "").toLowerCase().trim();
-              if (targetEmails.includes(email) && !targetUids.includes(uDoc.id)) {
-                targetUids.push(uDoc.id);
-              }
-            }
-          });
-        } catch (e) {}
-
-        // Add default known domains or identifiers to ensure full removal
-        const allTargetIdentifiers = [...targetUids, ...targetEmails, "sayouba", "bonkoungou"];
-
-        // Query the global inventory collection and delete matching ownerIds
-        const inventoryCol = collection(firestoreDb, "inventory");
-        const inventorySnap = await getDocs(inventoryCol);
-        inventorySnap.forEach(async (invDoc) => {
-          if (invDoc.exists()) {
-            const data = invDoc.data();
-            const ownerId = (data.ownerId || "").toLowerCase().trim();
-            const id = invDoc.id;
-            
-            const matchesTarget = allTargetIdentifiers.some(ident => {
-              const cleanIdent = ident.toLowerCase().trim();
-              return ownerId === cleanIdent || id.includes(cleanIdent);
-            });
-
-            if (matchesTarget) {
-              console.log(`[Deep-Cleanup] Deleting global inventory item ${id} for ${ownerId}`);
-              await deleteDoc(doc(firestoreDb, "inventory", id)).catch(() => {});
-            }
-          }
-        });
-
-        // Clear subcollections /stocks/{uid}/items for each target UID found
-        for (const uid of targetUids) {
-          try {
-            const itemsCol = collection(firestoreDb, "stocks", uid, "items");
-            const itemsSnap = await getDocs(itemsCol);
-            if (!itemsSnap.empty) {
-              console.log(`[Deep-Cleanup] Found ${itemsSnap.size} subcollection stock items to clear for UID: ${uid}`);
-              for (const itemDoc of itemsSnap.docs) {
-                await deleteDoc(doc(firestoreDb, "stocks", uid, "items", itemDoc.id)).catch(() => {});
-              }
-            }
-          } catch (subErr) {
-            console.error(`[Deep-Cleanup] Error clearing stock items for UID ${uid}:`, subErr);
-          }
-        }
-
-        // Query products collection and delete products created by target emails/UIDs
-        try {
-          const productsCol = collection(firestoreDb, "products");
-          const productsSnap = await getDocs(productsCol);
-          productsSnap.forEach(async (pDoc) => {
-            if (pDoc.exists()) {
-              const data = pDoc.data();
-              const creatorId = (data.creatorId || "").toLowerCase().trim();
-              const pId = pDoc.id;
-              const matchesTarget = allTargetIdentifiers.some(ident => {
-                const cleanIdent = ident.toLowerCase().trim();
-                return creatorId === cleanIdent || pId.includes(cleanIdent);
-              });
-              if (matchesTarget) {
-                console.log(`[Deep-Cleanup] Deleting product ${pId} created by ${creatorId}`);
-                await deleteDoc(doc(firestoreDb, "products", pId)).catch(() => {});
-              }
-            }
-          });
-        } catch (pErr) {
-          console.error(`[Deep-Cleanup] Error clearing products:`, pErr);
-        }
-
-        // Ensure users local state is synced to SEMI_WHOLESALER
-        setUsers(prev => prev.map(u => {
-          const email = (u.email || "").toLowerCase().trim();
-          if (targetEmails.includes(email) || email.includes("bonkoungou")) {
-            return { ...u, role: UserRole.SEMI_WHOLESALER };
-          }
-          return u;
-        }));
-
-      } catch (err) {
-        console.error("[Deep-Cleanup] Error during Firestore deep cleanup execution:", err);
-      }
     };
 
     runDeepCleanup();
-  }, [isRealUserAuthenticated, inventory, users]);
+  }, [isRealUserAuthenticated]);
 
   // Sub-collection user stock sync
   useEffect(() => {
@@ -1064,10 +942,10 @@ export default function App() {
     setFbMsg(null);
     try {
       await loginWithEmail(fbEmail, fbPassword);
-      setFbMsg({ type: "success", text: "Connexion Firebase réussie !" });
+      setFbMsg({ type: "success", text: "Connexion réussie !" });
       setIsAuthScreen(false);
     } catch (err: any) {
-      setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur de connexion Firebase.") });
+      setFbMsg({ type: "error", text: err.message || "Erreur lors de la connexion." });
     }
   };
 
@@ -1112,7 +990,7 @@ export default function App() {
       setFbMsg({ type: "success", text: "Inscription et création de profil réussies !" });
       setIsAuthScreen(false);
     } catch (err: any) {
-      setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur d'inscription Firebase.") });
+      setFbMsg({ type: "error", text: err.message || "Erreur lors de l'inscription." });
     }
   };
 
@@ -1123,7 +1001,7 @@ export default function App() {
       await sendPasswordReset(fbEmail);
       setFbMsg({ type: "success", text: "E-mail de réinitialisation envoyé avec succès !" });
     } catch (err: any) {
-      setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur d'envoi de l'e-mail.") });
+      setFbMsg({ type: "error", text: err.message || "Erreur d'envoi de l'e-mail." });
     }
   };
 
@@ -1138,7 +1016,7 @@ export default function App() {
       await requestPhoneOTP(fbTéléphone, "recaptcha-container");
       setFbMsg({ type: "success", text: "Code de vérification envoyé !" });
     } catch (err: any) {
-      setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur lors de l'envoi de l'OTP.") });
+      setFbMsg({ type: "error", text: err.message || "Erreur lors de l'envoi de l'OTP." });
     }
   };
 
@@ -1150,7 +1028,7 @@ export default function App() {
       setFbMsg({ type: "success", text: "Vérification OTP réussie !" });
       setIsAuthScreen(false);
     } catch (err: any) {
-      setFbMsg({ type: "error", text: formatFirebaseError(err.message || "Erreur lors de la vérification OTP.") });
+      setFbMsg({ type: "error", text: err.message || "Erreur lors de la vérification OTP." });
     }
   };
 

@@ -25,8 +25,7 @@ import {
 } from "recharts";
 import { Order } from "../types";
 import { formatCFA } from "../data";
-import { db } from "../firebase/firebase";
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query } from "firebase/firestore";
+import { supabase } from "../supabase";
 
 interface AccountingDashboardProps {
   currentUserId: string;
@@ -51,24 +50,66 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
   const [newDesc, setNewDesc] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
 
-  // Écoute en temps réel de Firestore pour les dépenses de l'utilisateur
+  // Écoute et chargement des dépenses depuis Supabase
   useEffect(() => {
     if (!currentUserId) return;
-    const q = query(collection(db, "comptabilite", currentUserId, "depenses"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list: Expense[] = [];
-      snapshot.forEach((docSnap) => {
-        if (docSnap.exists()) {
-          list.push(docSnap.data() as Expense);
-        }
-      });
-      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setExpenses(list);
-    }, (err) => {
-      console.warn("Notice: Firestore comptabilite listener:", err);
-    });
 
-    return () => unsub();
+    const fetchExpenses = async () => {
+      if (!supabase) return;
+      try {
+        const { data, error } = await supabase
+          .from("comptabilite_depenses")
+          .select("*")
+          .eq("user_id", currentUserId)
+          .order("date", { ascending: false });
+
+        if (error) {
+          console.warn("Notice: Supabase comptabilite_depenses query error:", error.message);
+          return;
+        }
+
+        if (data) {
+          const list: Expense[] = data.map((d: any) => ({
+            id: d.id,
+            categorie: d.categorie || d.category || "Divers",
+            montant: Number(d.montant || d.amount || 0),
+            description: d.description || "",
+            date: d.date || new Date().toISOString().slice(0, 10)
+          }));
+          setExpenses(list);
+        }
+      } catch (err) {
+        console.warn("Error fetching comptabilite_depenses:", err);
+      }
+    };
+
+    fetchExpenses();
+
+    // Supabase Realtime Subscription
+    let channel: any = null;
+    if (supabase) {
+      channel = supabase
+        .channel(`comptabilite_${currentUserId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "comptabilite_depenses",
+            filter: `user_id=eq.${currentUserId}`
+          },
+          () => {
+            fetchExpenses();
+          }
+        )
+        .subscribe();
+    }
+
+    return () => {
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [currentUserId]);
 
   const handleAddExpense = async (e: React.FormEvent) => {
@@ -84,14 +125,31 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
       date: newDate
     };
 
-    try {
-      await setDoc(doc(db, "comptabilite", currentUserId, "depenses", newExp.id), newExp);
-      setIsExpenseModalOpen(false);
-      setNewAmount("");
-      setNewDesc("");
-      setNewDate(new Date().toISOString().slice(0, 10));
-    } catch (err) {
-      console.error("Erreur enregistrement dépense Firestore:", err);
+    // Optimistic local state update
+    setExpenses(prev => [newExp, ...prev.filter(exp => exp.id !== newExp.id)]);
+    setIsExpenseModalOpen(false);
+    setNewAmount("");
+    setNewDesc("");
+    setNewDate(new Date().toISOString().slice(0, 10));
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("comptabilite_depenses").upsert({
+          id: newExp.id,
+          user_id: currentUserId,
+          categorie: newExp.categorie,
+          montant: newExp.montant,
+          description: newExp.description,
+          date: newExp.date,
+          created_at: new Date().toISOString()
+        });
+
+        if (error) {
+          console.error("Erreur enregistrement dépense Supabase:", error.message);
+        }
+      } catch (err) {
+        console.error("Erreur enregistrement dépense Supabase:", err);
+      }
     }
   };
 

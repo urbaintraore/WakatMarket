@@ -718,17 +718,7 @@ export function ManufacturerDashboard({
   };
 
   const handleCheckoutPOS = async (saleData: any) => {
-    // 1. Appel de la Cloud Function 'enregistrerVente' (simulé ou réel)
     try {
-      /* 
-      // VRAI APPEL CLOUD FUNCTION (Décommenter si Firebase configuré)
-      import { getFunctions, httpsCallable } from "firebase/functions";
-      const functions = getFunctions();
-      const enregistrerVente = httpsCallable(functions, 'enregistrerVente');
-      await enregistrerVente(saleData);
-      */
-      
-      // Simulation pour l'UI React locale :
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
       
