@@ -21,7 +21,7 @@ function mapRowToProduct(row: any): Product {
     volume: row.volume ? Number(row.volume) : 0,
     image: imageUrl,
     imageUrl: imageUrl,
-    barcode: row.barcode || "",
+    barcode: "",
     qrCode: row.qr_code || "",
     expirationDate: row.expiration_date || undefined,
     creatorId: row.creator_id || "",
@@ -156,12 +156,12 @@ export const productService = {
       image_url: finalImageUrl,
       image_storage_path: storagePath,
       base_price: product.prixGros || product.prixDetail || 0,
-      // prix_gros: product.prixGros || null,
-      // prix_detail: product.prixDetail || null,
-      // quantite_minimum: product.quantiteMinimum || 1,
-      // barcode: product.barcode || null,
-      // qr_code: product.qrCode || null,
-      // expiration_date: product.expirationDate || null,
+      prix_gros: product.prixGros || null,
+      prix_detail: product.prixDetail || null,
+      quantite_minimum: product.quantiteMinimum || 1,
+      barcode: null,
+      qr_code: product.qrCode || null,
+      expiration_date: product.expirationDate || null,
       updated_at: new Date().toISOString()
     };
 
@@ -186,9 +186,9 @@ export const productService = {
     if (updates.category !== undefined) dbUpdates.category = updates.category;
     if (updates.brand !== undefined) dbUpdates.brand = updates.brand;
     if (updates.unit !== undefined) dbUpdates.unit = updates.unit;
-    // if (updates.prixGros !== undefined) dbUpdates.prix_gros = updates.prixGros;
-    // if (updates.prixDetail !== undefined) dbUpdates.prix_detail = updates.prixDetail;
-    // if (updates.quantiteMinimum !== undefined) dbUpdates.quantite_minimum = updates.quantiteMinimum;
+    if (updates.prixGros !== undefined) dbUpdates.prix_gros = updates.prixGros;
+    if (updates.prixDetail !== undefined) dbUpdates.prix_detail = updates.prixDetail;
+    if (updates.quantiteMinimum !== undefined) dbUpdates.quantite_minimum = updates.quantiteMinimum;
     if (updates.image || updates.imageUrl) {
       dbUpdates.image_url = formatStorageUrl(updates.imageUrl || updates.image);
     }
