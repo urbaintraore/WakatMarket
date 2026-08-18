@@ -66,10 +66,13 @@ export const userService = {
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from("profiles").upsert(profileRecord);
-    if (error) {
-      console.error("Erreur lors de l'enregistrement du profil Supabase (profiles):", error);
-      throw error;
+    try {
+      const { error } = await supabase.from("profiles").upsert(profileRecord);
+      if (error) {
+        console.warn("Notice: Enregistrement dans table profiles Supabase:", error.message);
+      }
+    } catch (err) {
+      console.warn("Notice: Exception lors de l'enregistrement du profil Supabase:", err);
     }
   },
 

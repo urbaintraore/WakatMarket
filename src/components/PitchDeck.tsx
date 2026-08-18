@@ -41,7 +41,7 @@ export default function PitchDeck({ onClose }: PitchDeckProps) {
             <div className="bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-left">
               <p className="text-[10px] text-zinc-400 font-bold uppercase">Technologie</p>
               <p className="text-lg font-black text-emerald-400 mt-0.5">Offline-First</p>
-              <p className="text-[9px] text-emerald-500/80 font-bold mt-0.5">Sync Firebase</p>
+              <p className="text-[9px] text-emerald-500/80 font-bold mt-0.5">Sync Supabase</p>
             </div>
             <div className="bg-white/5 border border-white/10 px-5 py-3 rounded-2xl text-left">
               <p className="text-[10px] text-zinc-400 font-bold uppercase">Innovation</p>
@@ -115,7 +115,7 @@ export default function PitchDeck({ onClose }: PitchDeckProps) {
           {[
             {
               title: "Offline-First & PWA",
-              desc: "Parfaitement fonctionnel dans les zones à faible connectivité. Les vendeurs encaissent, scannent et enregistrent les dettes hors-ligne, la synchronisation Firebase se déclenche dès le retour du réseau.",
+              desc: "Parfaitement fonctionnel dans les zones à faible connectivité. Les vendeurs encaissent, scannent et enregistrent les dettes hors-ligne, la synchronisation Supabase se déclenche dès le retour du réseau.",
               icon: Smartphone,
               color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
             },

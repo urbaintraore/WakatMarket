@@ -213,11 +213,11 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         console.log(`[ChatModule] File selected for upload: name=${file.name}, size=${file.size} bytes, type=${file.type}`);
         let url;
         try {
-          console.log(`[ChatModule] Attempting to upload to Firebase Storage...`);
+          console.log(`[ChatModule] Attempting to upload to Supabase Storage...`);
           url = await chatService.uploadMedia(file, type.toLowerCase() + 's', `${Date.now()}_${file.name}`);
           console.log(`[ChatModule] Upload successful. URL obtained: ${url.substring(0, 50)}...`);
         } catch (e) {
-          console.warn("[ChatModule] Firebase Storage upload failed. Fallback to base64 encoding.", e);
+          console.warn("[ChatModule] Supabase Storage upload failed. Fallback to base64 encoding.", e);
           if (file.size > 750000) {
             console.error(`[ChatModule] File size (${file.size} bytes) exceeds limit for base64 fallback (750KB).`);
             alert(`Impossible d'envoyer : le fichier de ${(file.size/1000000).toFixed(2)} Mo est trop volumineux pour le mode hors ligne/limité.`);

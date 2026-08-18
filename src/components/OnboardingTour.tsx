@@ -131,7 +131,7 @@ export function OnboardingTour({ currentUser, isOpen, onClose }: OnboardingTourP
         "Alertes sonores en cas de paiement encaissé ou d'acompte reçu",
         "Alertes immédiates en cas de stock critique sous le seuil",
         "Sauvegarde locale permanente en cas de coupure réseau",
-        "Synchronisation transparente avec Firebase au retour de la connexion"
+        "Synchronisation transparente avec Supabase au retour de la connexion"
       ]
     }
   ];

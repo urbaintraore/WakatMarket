@@ -2739,7 +2739,7 @@ export default function App() {
               onClick={async () => {
                 if (isRealUserAuthenticated) {
                   await firebaseLogout();
-                  setFbMsg({ type: "success", text: "Déconnecté de Firebase." });
+                  setFbMsg({ type: "success", text: "Déconnecté de la session." });
                   setCurrentUser(null);
                   setIsAuthScreen(true);
                 } else {
@@ -3106,23 +3106,23 @@ export default function App() {
                   className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 >
                   {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                  Créer mon profil Firebase
+                  Créer mon compte
                 </button>
               </form>
             )}
 
-            {/* Option to Disconnect Firebase User if signed in */}
+            {/* Option to Disconnect User if signed in */}
             {firebaseUser && (
               <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px]">
                 <span className="text-zinc-500 font-medium">Connecté: <strong className="text-emerald-600">{firebaseUser.email || firebaseUser.phoneNumber}</strong></span>
                 <button
                   onClick={async () => {
                     await firebaseLogout();
-                    setFbMsg({ type: "success", text: "Déconnecté de Firebase." });
+                    setFbMsg({ type: "success", text: "Session fermée avec succès." });
                   }}
                   className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5" /> Se déconnecter de Firebase
+                  <LogOut className="w-3.5 h-3.5" /> Se déconnecter
                 </button>
               </div>
             )}
