@@ -423,3 +423,103 @@ export function isConnectionActive(c: any): boolean {
   const status = (c.status || c.statut || "").toLowerCase();
   return status === "active" || status === "actif";
 }
+
+/* ==========================================================================
+   Supabase PostgreSQL Official Database Models (Source of Truth)
+   ========================================================================== */
+
+export interface ProductDB {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  brand: string | null;
+  unit: string | null;
+  creator_id: string | null;
+  prix_gros: number | null;
+  prix_detail: number | null;
+  image: string | null;
+  barcode: string | null;
+  expiration_date: string | null;
+  created_at?: string;
+}
+
+export interface InventoryDB {
+  id: string;
+  product_id: string;
+  owner_id: string;
+  quantity: number;
+  price: number;
+  updated_at: string;
+}
+
+export interface ProfileDB {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  role: string | null;
+  company_name: string | null;
+  address: string | null;
+  rccm: string | null;
+  ifu: string | null;
+  logo_url: string | null;
+  balance: number | null;
+  credit_limit: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RelationDB {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  status: string;
+  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OrderDB {
+  id: string;
+  buyer_id: string;
+  seller_id: string;
+  sender_id?: string;
+  receiver_id?: string;
+  order_type: string;
+  status: string;
+  total_amount: number;
+  amount_paid: number;
+  payment_status: string;
+  payment_method: string;
+  delivery_address: string;
+  delivery_notes: string | null;
+  shipping_fee: number;
+  items: any;
+  driver_id?: string | null;
+  payment_proof_url?: string | null;
+  statut_paiement?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OrderItemDB {
+  id: string;
+  order_id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+}
+
+export interface NotificationDB {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: string;
+  read: boolean;
+  metadata?: any;
+  created_at?: string;
+}
+

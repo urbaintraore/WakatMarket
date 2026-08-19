@@ -1262,20 +1262,30 @@ export default function App() {
       return;
     }
 
+    let productSaved = false;
     try {
       // 1. Enregistrement du produit dans Supabase (table products)
       await productService.createProduct(newProd);
+      productSaved = true;
+      console.log(`[SYNC TRANSACTION] Étape 1/2 validée : Produit ${newProd.id} enregistré dans products`);
 
       // 2. Enregistrement du stock dans Supabase (table inventory)
       await inventoryService.updateInventoryItem(newInvItem);
+      console.log(`[SYNC TRANSACTION] Étape 2/2 validée : Inventaire ${newInvItem.id} enregistré dans inventory`);
 
-      // 3. Mise à jour de l'état React local uniquement après confirmation Supabase
+      // 3. Mise à jour de l'état React local uniquement après confirmation complète
       setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
       setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
-      addNotification(`Nouveau produit créé et synchronisé sur le Cloud : ${p.name}`);
+      addNotification(`Produit et stock synchronisés avec succès : ${p.name}`);
     } catch (err: any) {
       console.error("[Erreur de synchronisation Supabase Produit/Stock]:", err);
-      addNotification(`Échec de publication sur le Cloud : ${err?.message || "Erreur Supabase"}.`);
+      if (productSaved) {
+        // Le produit est enregistré mais pas le stock
+        setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
+        addNotification(`Attention : Produit enregistré mais stock non synchronisé (${err?.message || "Erreur inventory"}). Veuillez rééditer le stock.`);
+      } else {
+        addNotification(`Échec de création du produit : ${err?.message || "Erreur Supabase"}.`);
+      }
     }
   };
 

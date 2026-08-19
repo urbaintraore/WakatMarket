@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 
 export const relationService = {
   /**
-   * 1. Envoyer ou créer une relation de partenariat d'affaires B2B dans PostgreSQL
+   * 1. Envoyer ou créer une relation de partenariat d'affaires B2B dans PostgreSQL (table relations)
    */
   async envoyerDemandeConnexion(
     demandeur: UserProfile, 
@@ -34,34 +34,39 @@ export const relationService = {
     const relationId = [demandeur.id, destinataireRow.id].sort().join("_");
     const demandeurNom = demandeur.companyName || demandeur.name;
     const destinataireNom = destinataireRow.company_name || destinataireRow.name;
+    const nowIso = new Date().toISOString();
 
-    // 2. Insérer ou mettre à jour la relation dans 'business_relationships'
+    // 2. Insérer ou mettre à jour la relation dans 'relations'
     const { error: relError } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .upsert({
         id: relationId,
-        supplier_id: demandeur.id,
-        buyer_id: destinataireRow.id,
+        sender_id: demandeur.id,
+        receiver_id: destinataireRow.id,
         status: "ACTIVE",
-        payment_terms: notes || null,
-        updated_at: new Date().toISOString()
+        notes: notes || null,
+        updated_at: nowIso
       });
 
     if (relError) {
-      console.error("Erreur upsert business_relationships:", relError);
+      console.error("[Supabase Relation Sync Error]:", relError);
       throw relError;
     }
 
     // 3. Envoyer une notification au destinataire
-    await supabase.from("notifications").insert({
-      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      user_id: destinataireRow.id,
-      title: "Nouveau partenaire d'affaires",
-      message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
-      type: "connexion_acceptee",
-      read: false,
-      metadata: { relationId, senderId: demandeur.id }
-    });
+    try {
+      await supabase.from("notifications").insert({
+        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        user_id: destinataireRow.id,
+        title: "Nouveau partenaire d'affaires",
+        message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
+        type: "connexion_acceptee",
+        read: false,
+        metadata: { relationId, senderId: demandeur.id }
+      });
+    } catch (notifErr) {
+      console.warn("Notice insertion notification:", notifErr);
+    }
 
     return {
       success: true,
@@ -77,7 +82,7 @@ export const relationService = {
   async accepterDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
     if (!supabase) return;
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .update({ status: "ACTIVE", updated_at: new Date().toISOString() })
       .eq("id", relationId);
 
@@ -93,7 +98,7 @@ export const relationService = {
   async refuserDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
     if (!supabase) return;
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
       .eq("id", relationId);
 
@@ -109,7 +114,7 @@ export const relationService = {
   async bloquerPartenaire(relationId: string): Promise<void> {
     if (!supabase) return;
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
       .eq("id", relationId);
 
@@ -125,7 +130,7 @@ export const relationService = {
   async supprimerRelation(relationId: string): Promise<void> {
     if (!supabase) return;
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .delete()
       .eq("id", relationId);
 
@@ -143,48 +148,28 @@ export const relationService = {
 
     const fetchRelations = async () => {
       const { data, error } = await supabase
-        .from("business_relationships")
-        .select("*, supplier:profiles!business_relationships_supplier_id_fkey(name, role, company_name), buyer:profiles!business_relationships_buyer_id_fkey(name, role, company_name)")
-        .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
+        .from("relations")
+        .select("*")
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
       if (error) {
-        // Simple fallback without join if foreign keys have different naming
-        const { data: simpleData } = await supabase
-          .from("business_relationships")
-          .select("*")
-          .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
-
-        const mapped = (simpleData || []).map((row: any) => ({
-          id: row.id,
-          demandeurId: row.supplier_id,
-          destinataireId: row.buyer_id,
-          statut: (row.status === "ACTIVE" ? "actif" : row.status === "BLOCKED" ? "refuse" : "en_attente") as any,
-          dateCreation: row.created_at,
-          dateReponse: row.updated_at,
-          participants: [row.supplier_id, row.buyer_id],
-          notes: row.payment_terms || "",
-          demandeurNom: row.supplier_id === userId ? "Moi" : "Partenaire",
-          demandeurRole: UserRole.WHOLESALER,
-          destinataireNom: row.buyer_id === userId ? "Moi" : "Partenaire",
-          destinataireRole: UserRole.RETAILER
-        }));
-        callback(mapped);
+        console.warn("Erreur lecture relations Supabase:", error.message);
         return;
       }
 
       const mapped: Relation[] = (data || []).map((row: any) => ({
         id: row.id,
-        demandeurId: row.supplier_id,
-        destinataireId: row.buyer_id,
+        demandeurId: row.sender_id,
+        destinataireId: row.receiver_id,
         statut: (row.status === "ACTIVE" ? "actif" : row.status === "BLOCKED" ? "refuse" : "en_attente") as any,
         dateCreation: row.created_at,
         dateReponse: row.updated_at,
-        participants: [row.supplier_id, row.buyer_id],
-        notes: row.payment_terms || "",
-        demandeurNom: row.supplier?.company_name || row.supplier?.name || "Fournisseur",
-        demandeurRole: (row.supplier?.role || UserRole.WHOLESALER) as any,
-        destinataireNom: row.buyer?.company_name || row.buyer?.name || "Client",
-        destinataireRole: (row.buyer?.role || UserRole.RETAILER) as any
+        participants: [row.sender_id, row.receiver_id],
+        notes: row.notes || "",
+        demandeurNom: row.sender_id === userId ? "Moi" : "Partenaire",
+        demandeurRole: UserRole.WHOLESALER,
+        destinataireNom: row.receiver_id === userId ? "Moi" : "Partenaire",
+        destinataireRole: UserRole.RETAILER
       }));
       callback(mapped);
     };
@@ -193,10 +178,10 @@ export const relationService = {
 
     const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:business_relationships:${userId}:${uniqueId}`)
+      .channel(`public:relations:${userId}:${uniqueId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "business_relationships" },
+        { event: "*", schema: "public", table: "relations" },
         () => {
           fetchRelations();
         }

@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 
 export const connectionService = {
   /**
-   * Créer une demande ou relation de connexion d'affaires
+   * Créer une demande ou relation de connexion d'affaires dans la table 'relations'
    */
   async createConnectionRequest(
     sender: UserProfile,
@@ -32,32 +32,36 @@ export const connectionService = {
       updatedAt: nowIso
     };
 
-    // 1. Sauvegarder dans 'business_relationships'
-    const { error: relError } = await supabase.from("business_relationships").upsert({
+    // 1. Sauvegarder dans 'relations'
+    const { error: relError } = await supabase.from("relations").upsert({
       id: connectionId,
-      supplier_id: sender.id,
-      buyer_id: receiver.id,
+      sender_id: sender.id,
+      receiver_id: receiver.id,
       status: initialStatus === "active" ? "ACTIVE" : "PENDING",
-      payment_terms: notes || null,
+      notes: notes || null,
       updated_at: nowIso
     });
 
-    if (relError && relError.code === 'PGRST205') { console.warn("Table business_relationships missing"); return; } else if (relError) {
-      console.error("Erreur enregistrement connexion Supabase:", relError);
+    if (relError) {
+      console.error("[Supabase Connection Sync Error]:", relError);
       throw relError;
     }
 
     // 2. Créer une notification pour le destinataire
     if (initialStatus === "en_attente") {
-      await supabase.from("notifications").insert({
-        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        user_id: receiver.id,
-        title: "Demande de connexion d'affaires",
-        type: "demande_connexion",
-        read: false,
-        metadata: { relationId: connectionId, senderId: sender.id },
-        message: `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter comme partenaire d'affaires.`
-      });
+      try {
+        await supabase.from("notifications").insert({
+          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          user_id: receiver.id,
+          title: "Demande de connexion d'affaires",
+          type: "demande_connexion",
+          read: false,
+          metadata: { relationId: connectionId, senderId: sender.id },
+          message: `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter comme partenaire d'affaires.`
+        });
+      } catch (notifErr) {
+        console.warn("Notice notification creation:", notifErr);
+      }
     }
 
     return newConnection;
@@ -71,7 +75,7 @@ export const connectionService = {
     const nowIso = new Date().toISOString();
 
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .update({ status: "ACTIVE", updated_at: nowIso })
       .eq("id", connectionId);
 
@@ -89,7 +93,7 @@ export const connectionService = {
     const nowIso = new Date().toISOString();
 
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .update({ status: "BLOCKED", updated_at: nowIso })
       .eq("id", connectionId);
 
@@ -123,7 +127,7 @@ export const connectionService = {
   async deleteConnection(connectionId: string): Promise<void> {
     if (!supabase) return;
     const { error } = await supabase
-      .from("business_relationships")
+      .from("relations")
       .delete()
       .eq("id", connectionId);
 
@@ -141,26 +145,25 @@ export const connectionService = {
 
     const fetchConnections = async () => {
       const { data, error } = await supabase
-        .from("business_relationships")
+        .from("relations")
         .select("*")
-        .or(`supplier_id.eq.${userId},buyer_id.eq.${userId}`);
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
       if (error) {
-        if (error.code === 'PGRST205') { return; }
-        console.error("Erreur fetch connections Supabase:", error);
+        console.warn("Erreur fetch connections Supabase:", error.message);
         return;
       }
 
       const list: Connection[] = (data || []).map((row: any) => ({
         id: row.id,
-        senderId: row.supplier_id,
-        receiverId: row.buyer_id,
+        senderId: row.sender_id,
+        receiverId: row.receiver_id,
         status: (row.status === "ACTIVE" ? "active" : row.status === "BLOCKED" ? "bloque" : "en_attente") as any,
-        senderName: "Fournisseur",
+        senderName: "Partenaire",
         senderRole: UserRole.WHOLESALER,
-        receiverName: "Client",
+        receiverName: "Partenaire",
         receiverRole: UserRole.RETAILER,
-        notes: row.payment_terms || "",
+        notes: row.notes || "",
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }));
@@ -172,10 +175,10 @@ export const connectionService = {
 
     const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:connections:${userId}:${uniqueId}`)
+      .channel(`public:relations_conn:${userId}:${uniqueId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "business_relationships" },
+        { event: "*", schema: "public", table: "relations" },
         () => {
           fetchConnections();
         }
@@ -201,8 +204,7 @@ export const connectionService = {
         .order("created_at", { ascending: false });
 
       if (error) {
-        if (error.code === 'PGRST205') { return; }
-        console.error("Erreur fetch notifications Supabase:", error);
+        console.warn("Erreur fetch notifications Supabase:", error.message);
         return;
       }
 

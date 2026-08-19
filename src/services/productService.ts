@@ -157,11 +157,28 @@ export const productService = {
       expiration_date: product.expirationDate || null
     };
 
-    const { error } = await supabase.from("products").upsert(record);
+    const { data, error } = await supabase
+      .from("products")
+      .upsert(record)
+      .select()
+      .single();
+
     if (error) {
-      console.error("Erreur enregistrement produit dans Supabase (products):", error);
+      console.error("[SYNC PRODUCT] FAILED", {
+        productId: product.id,
+        error: error.message,
+        code: error.code,
+        payload: record
+      });
       throw error;
     }
+
+    console.log("[SYNC PRODUCT] SUCCESS", {
+      productId: product.id,
+      name: product.name,
+      creatorId: product.creatorId,
+      data
+    });
   },
 
   /**

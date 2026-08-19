@@ -150,21 +150,25 @@ export const inventoryService = {
       .single();
 
     if (error) {
-      console.error("[Supabase Inventory Sync Error]", {
+      console.error("[SYNC INVENTORY] FAILED", {
+        productId: item.productId,
+        inventoryId: item.id,
+        ownerId: item.ownerId,
+        quantity: item.stock,
+        error: error.message,
         code: error.code,
-        message: error.message,
         details: error.details,
         hint: error.hint,
-        productId: item.productId,
         payloadSent: record
       });
       throw error;
     }
 
-    console.log("[Supabase Inventory Sync Success]", {
+    console.log("[SYNC INVENTORY] SUCCESS", {
       productId: item.productId,
       inventoryId: item.id,
       ownerId: item.ownerId,
+      quantity: item.stock,
       data
     });
   },

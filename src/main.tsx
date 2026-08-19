@@ -5,6 +5,8 @@ import './index.css';
 import { AuthProvider } from './context/AuthContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
+console.log("[WAKATMARKET] SUPABASE-ALIGNMENT-V1");
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
