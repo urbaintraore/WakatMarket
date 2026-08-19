@@ -139,12 +139,16 @@ export const inventoryService = {
       product_id: item.productId,
       owner_id: item.ownerId,
       quantity: Number(item.stock || 0),
-      low_stock_threshold: Number(item.threshold || 5),
       price: Number(item.price || 0),
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from("inventory").upsert(record);
+    const { data, error } = await supabase
+      .from("inventory")
+      .upsert(record)
+      .select()
+      .single();
+
     if (error) {
       console.error("[Supabase Inventory Sync Error]", {
         code: error.code,
@@ -156,6 +160,13 @@ export const inventoryService = {
       });
       throw error;
     }
+
+    console.log("[Supabase Inventory Sync Success]", {
+      productId: item.productId,
+      inventoryId: item.id,
+      ownerId: item.ownerId,
+      data
+    });
   },
 
   /**
