@@ -139,19 +139,21 @@ export const inventoryService = {
       product_id: item.productId,
       owner_id: item.ownerId,
       quantity: Number(item.stock || 0),
-      reserved_quantity: 0,
       low_stock_threshold: Number(item.threshold || 5),
       price: Number(item.price || 0),
-      prix_gros: item.prixGros ? Number(item.prixGros) : null,
-      prix_detail: item.prixDetail ? Number(item.prixDetail) : null,
-      quantite_minimum: item.quantiteMinimum ? Number(item.quantiteMinimum) : 1,
-      expiration_date: item.expirationDate || null,
       updated_at: new Date().toISOString()
     };
 
     const { error } = await supabase.from("inventory").upsert(record);
     if (error) {
-      console.error("Erreur updateInventoryItem Supabase (inventory):", error);
+      console.error("[Supabase Inventory Sync Error]", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        productId: item.productId,
+        payloadSent: record
+      });
       throw error;
     }
   },

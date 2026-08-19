@@ -1225,7 +1225,11 @@ export default function App() {
     prixDetail?: number,
     quantiteMinimum?: number
   ) => {
-    if (!currentUser) return;
+    if (!currentUser || !currentUser.id) {
+      addNotification("Erreur: Vous devez être connecté avec un compte valide pour créer un produit.");
+      return;
+    }
+
     const newId = `p-${Date.now()}`;
     const newProd: Product = {
       ...p,
@@ -1234,9 +1238,10 @@ export default function App() {
       prixGros: prixGros !== undefined ? prixGros : price,
       prixDetail: prixDetail !== undefined ? prixDetail : price,
     };
+
     const newInvItem: InventoryItem = {
       id: `i-${Date.now()}`,
-      productId: newId,
+      productId: newProd.id,
       ownerId: currentUser.id,
       stock: initialStock,
       threshold: Math.max(5, Math.round(initialStock * 0.15)),
@@ -1247,16 +1252,30 @@ export default function App() {
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
     };
 
-    setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
-    setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
+    // Vérification de sécurité de l'identifiant produit
+    if (newInvItem.productId !== newProd.id) {
+      console.error("[Inventory Sync Validation Error] newInvItem.productId !== newProd.id", {
+        invProductId: newInvItem.productId,
+        prodId: newProd.id
+      });
+      addNotification("Erreur interne : incohérence d'identifiant produit.");
+      return;
+    }
 
     try {
+      // 1. Enregistrement du produit dans Supabase (table products)
       await productService.createProduct(newProd);
+
+      // 2. Enregistrement du stock dans Supabase (table inventory)
       await inventoryService.updateInventoryItem(newInvItem);
+
+      // 3. Mise à jour de l'état React local uniquement après confirmation Supabase
+      setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
+      setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
       addNotification(`Nouveau produit créé et synchronisé sur le Cloud : ${p.name}`);
-    } catch (err) {
-      if (err && err.code === 'PGRST204') { /* suppress */ } else { console.error("Erreur création produit Supabase:", err); }
-      addNotification("Produit créé localement (Échec sync. cloud, réessayez plus tard).");
+    } catch (err: any) {
+      console.error("[Erreur de synchronisation Supabase Produit/Stock]:", err);
+      addNotification(`Échec de publication sur le Cloud : ${err?.message || "Erreur Supabase"}.`);
     }
   };
 
