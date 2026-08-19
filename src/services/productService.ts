@@ -144,25 +144,17 @@ export const productService = {
     // 2. Persister directement dans la table PostgreSQL 'products'
     const record = {
       id: product.id,
-      creator_id: product.creatorId || null,
       name: product.name,
-      category: product.category || "Alimentation",
-      sub_category: product.subCategory || null,
-      brand: product.brand || null,
       description: product.description || "",
+      category: product.category || "Alimentation",
+      brand: product.brand || null,
       unit: product.unit || "Pièce",
-      weight: product.weight || 0,
-      volume: product.volume || 0,
-      image_url: finalImageUrl,
-      image_storage_path: storagePath,
-      base_price: product.prixGros || product.prixDetail || 0,
+      creator_id: product.creatorId || null,
       prix_gros: product.prixGros || null,
       prix_detail: product.prixDetail || null,
-      quantite_minimum: product.quantiteMinimum || 1,
-      barcode: null,
-      qr_code: product.qrCode || null,
-      expiration_date: product.expirationDate || null,
-      updated_at: new Date().toISOString()
+      image: finalImageUrl || null,
+      barcode: product.barcode || null,
+      expiration_date: product.expirationDate || null
     };
 
     const { error } = await supabase.from("products").upsert(record);
@@ -177,20 +169,20 @@ export const productService = {
    */
   async updateProduct(id: string, updates: Partial<Product>): Promise<void> {
     if (!supabase) return;
-    const dbUpdates: Record<string, any> = {
-      updated_at: new Date().toISOString()
-    };
+    const dbUpdates: Record<string, any> = {};
 
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.category !== undefined) dbUpdates.category = updates.category;
     if (updates.brand !== undefined) dbUpdates.brand = updates.brand;
     if (updates.unit !== undefined) dbUpdates.unit = updates.unit;
+    if (updates.creatorId !== undefined) dbUpdates.creator_id = updates.creatorId;
     if (updates.prixGros !== undefined) dbUpdates.prix_gros = updates.prixGros;
     if (updates.prixDetail !== undefined) dbUpdates.prix_detail = updates.prixDetail;
-    if (updates.quantiteMinimum !== undefined) dbUpdates.quantite_minimum = updates.quantiteMinimum;
-    if (updates.image || updates.imageUrl) {
-      dbUpdates.image_url = formatStorageUrl(updates.imageUrl || updates.image);
+    if (updates.barcode !== undefined) dbUpdates.barcode = updates.barcode;
+    if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate;
+    if (updates.image !== undefined || updates.imageUrl !== undefined) {
+      dbUpdates.image = formatStorageUrl(updates.imageUrl || updates.image);
     }
 
     const { error } = await supabase.from("products").update(dbUpdates).eq("id", id);
