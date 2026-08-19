@@ -138,8 +138,13 @@ export const inventoryService = {
       id: item.id,
       product_id: item.productId,
       owner_id: item.ownerId,
-      quantity: Number(item.stock || 0),
+      stock: Number(item.stock || 0),
+      threshold: Number(item.threshold || 5),
       price: Number(item.price || 0),
+      prix_gros: item.prixGros !== undefined ? Number(item.prixGros) : null,
+      prix_detail: item.prixDetail !== undefined ? Number(item.prixDetail) : null,
+      quantite_minimum: item.quantiteMinimum !== undefined ? Number(item.quantiteMinimum) : 1,
+      expiration_date: item.expirationDate || null,
       updated_at: new Date().toISOString()
     };
 
@@ -154,7 +159,7 @@ export const inventoryService = {
         productId: item.productId,
         inventoryId: item.id,
         ownerId: item.ownerId,
-        quantity: item.stock,
+        stock: item.stock,
         error: error.message,
         code: error.code,
         details: error.details,
@@ -168,7 +173,7 @@ export const inventoryService = {
       productId: item.productId,
       inventoryId: item.id,
       ownerId: item.ownerId,
-      quantity: item.stock,
+      stock: item.stock,
       data
     });
   },

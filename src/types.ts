@@ -448,8 +448,13 @@ export interface InventoryDB {
   id: string;
   product_id: string;
   owner_id: string;
-  quantity: number;
+  stock: number;
+  threshold?: number | null;
   price: number;
+  prix_gros?: number | null;
+  prix_detail?: number | null;
+  quantite_minimum?: number | null;
+  expiration_date?: string | null;
   updated_at: string;
 }
 
