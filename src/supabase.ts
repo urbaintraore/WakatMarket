@@ -22,13 +22,44 @@ function isValidHttpUrl(stringUrl?: string | null): boolean {
   }
 }
 
+const resilientFetch: typeof fetch = async (input, init) => {
+  let attempts = 0;
+  const maxAttempts = 3;
+  while (attempts < maxAttempts) {
+    try {
+      attempts++;
+      return await fetch(input, init);
+    } catch (err: any) {
+      const isFailedFetch =
+        err?.name === 'TypeError' ||
+        String(err?.message || '').toLowerCase().includes('failed to fetch') ||
+        String(err || '').toLowerCase().includes('failed to fetch');
+
+      if (isFailedFetch && attempts < maxAttempts) {
+        await new Promise(res => setTimeout(res, attempts * 400));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return fetch(input, init);
+};
+
 if (!supabaseUrl || !supabasePublishableKey) {
   supabaseConfigError = "Les identifiants Supabase (VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY) ne sont pas configurés.";
 } else if (!isValidHttpUrl(supabaseUrl)) {
   supabaseConfigError = `L'URL Supabase spécifiée ("${supabaseUrl}") n'est pas une URL HTTP/HTTPS valide.`;
 } else {
   try {
-    supabase = createClient(supabaseUrl, supabasePublishableKey);
+    supabase = createClient(supabaseUrl, supabasePublishableKey, {
+      global: {
+        fetch: resilientFetch
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true
+      }
+    });
     supabaseConfigError = null;
   } catch (err: any) {
     supabaseConfigError = `Erreur d'initialisation Supabase : ${err.message || err}`;
