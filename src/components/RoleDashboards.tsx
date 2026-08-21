@@ -26,6 +26,7 @@ import { MyBuyersModule } from "./MyBuyersModule";
 import { AdminUserEditModal } from "./AdminUserEditModal";
 import { EditProductStockModal } from "./EditProductStockModal";
 import { CreateProductModal } from "./CreateProductModal";
+import { StockCategoryOrganizer } from "./StockCategoryOrganizer";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -884,7 +885,18 @@ export function ManufacturerDashboard({
                   barcode: Math.floor(1000000000000 + Math.random() * 9000000000000).toString(),
                   qrCode: `QR_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
                 };
-                onCreateProduct(p, parseInt(fd.get("stock") as string), parseFloat(fd.get("price") as string));
+                const basePrice = parseFloat(fd.get("price") as string) || 0;
+                const prixGrosVal = parseFloat(fd.get("prixGros") as string) || basePrice;
+                const prixDetailVal = parseFloat(fd.get("prixDetail") as string) || basePrice;
+                const moqVal = parseInt(fd.get("quantiteMinimum") as string) || 1;
+                onCreateProduct(
+                  p,
+                  parseInt(fd.get("stock") as string) || 0,
+                  basePrice,
+                  prixGrosVal,
+                  prixDetailVal,
+                  moqVal
+                );
                 setIsAdding(false);
               }}
               className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"
@@ -1048,14 +1060,22 @@ export function ManufacturerDashboard({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Stock Initial</label>
-                    <input required type="number" name="stock" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required type="number" name="stock" defaultValue="50" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                   <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Prix de gros usine (FCFA)</label>
-                    <input required type="number" name="price" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <label className="block text-emerald-700 dark:text-emerald-400 font-bold mb-1">Prix Gros B2B (FCFA)</label>
+                    <input required type="number" name="prixGros" placeholder="Ex: 5000" className="w-full px-3 py-2 border border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/20 rounded-xl font-bold font-mono" />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Quantité Min B2B</label>
+                    <input required type="number" name="quantiteMinimum" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="block text-amber-700 dark:text-amber-400 font-bold mb-1">Prix Détail (FCFA)</label>
+                    <input required type="number" name="prixDetail" placeholder="Ex: 7500" className="w-full px-3 py-2 border border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20 rounded-xl font-bold font-mono" />
                   </div>
                 </div>
                 <div className="pt-2">
@@ -1067,87 +1087,18 @@ export function ManufacturerDashboard({
             </form>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {myInventory.map((item) => {
-              const prod = products.find((p) => p.id === item.productId);
-              if (!prod) return null;
-              return (
-                <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex flex-col gap-3 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-3 items-center min-w-0">
-                      <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover" />
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
-                        <p className="text-[10px] text-zinc-500 font-medium">Unité : {prod.unit}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                            Stock : {item.stock} u
-                          </span>
-                          <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono">
-                            {formatCFA(item.price)} / u
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    {/* Inline Stock Fast update */}
-                    <div className="flex gap-2 items-center">
-                      <button
-                        onClick={() => setSelectedProductForChart(selectedProductForChart === item.id ? null : item.id)}
-                        className={`p-1.5 rounded-lg transition ${selectedProductForChart === item.id ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"}`}
-                        title="Historique des prix"
-                      >
-                        <TrendingUp className="w-4 h-4" />
-                      </button>
-                      <div className="flex flex-col items-center">
-                        <label className="text-[9px] text-zinc-500 font-bold">Stock</label>
-                        <input
-                          type="number"
-                          defaultValue={item.stock}
-                          className="w-16 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                          onBlur={(e) => {
-                            const val = parseInt(e.target.value);
-                            if (!isNaN(val)) onUpdateInventory(item.id, val, item.price);
-                          }}
-                        />
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <label className="text-[9px] text-zinc-500 font-bold">Prix</label>
-                        <input
-                          type="number"
-                          defaultValue={item.price}
-                          className="w-20 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                          onBlur={(e) => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) onUpdateInventory(item.id, item.stock, val);
-                          }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
-                        className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                        title="Modifier tous les champs (page d'édition)"
-                      >
-                        Modifier
-                      </button>
-                      <button
-                        onClick={() => onDeleteInventoryItem(item.id, item.productId)}
-                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                        title="Supprimer ce produit du stock"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {selectedProductForChart === item.id && (
-                    <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 animate-fade-in">
-                      <PriceHistoryChart basePrice={item.price} buyingPrice={prod?.prixGros} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <StockCategoryOrganizer
+            inventory={inventory}
+            products={products}
+            currentUserId={currentUser.id}
+            onUpdateInventory={onUpdateInventory}
+            onDeleteInventoryItem={onDeleteInventoryItem}
+            onEditProduct={(product, inventoryItem) => setEditingModalItem({ product, inventoryItem })}
+            onOpenAddModal={() => setIsAdding(true)}
+            onExportCSV={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
+            title="Catalogue Usine & Marchandises par Catégorie"
+            role={currentUser.role}
+          />
         </div>
       )}
 
@@ -2081,100 +2032,18 @@ export function WholesalerDashboard({
             </div>
           </div>
           
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mon Stock de Gros</h4>
-            <button
-              onClick={() => setStockSort(prev => prev === "asc" ? "desc" : prev === "desc" ? "none" : "asc")}
-              className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              {stockSort === "asc" ? "Tri : Stock Croissant ↑" : stockSort === "desc" ? "Tri : Stock Décroissant ↓" : "Trier par niveau de stock"}
-            </button>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(() => {
-              let sorted = [...myInventory];
-              if (stockSort === "asc") sorted.sort((a, b) => a.stock - b.stock);
-              else if (stockSort === "desc") sorted.sort((a, b) => b.stock - a.stock);
-              return sorted;
-            })().map((item) => {
-              const prod = products.find((p) => p.id === item.productId);
-              if (!prod) return null;
-              return (
-                <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
-                  <div className="flex gap-3 items-center min-w-0">
-                    <img loading="lazy" src={prod.image} alt={prod.name} className="w-11 h-11 rounded-lg object-cover" />
-                    <div className="min-w-0">
-                      <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
-                      <p className="text-[10px] text-zinc-500 font-medium">Seuil critique : {item.threshold} u</p>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
-                          Stock : {item.stock} u
-                        </span>
-                        {(item as any).vitesseVenteJournaliere > 0 && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-                            ⚡ {(item as any).vitesseVenteJournaliere} u/j
-                          </span>
-                        )}
-                        {(item as any).joursRestants !== undefined && (item as any).joursRestants !== null && (
-                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase ${
-                            (item as any).joursRestants <= 5 ? 'bg-rose-600 text-white animate-pulse' :
-                            (item as any).joursRestants <= 10 ? 'bg-amber-500 text-white' :
-                            'bg-emerald-600 text-white'
-                          }`}>
-                            {(item as any).joursRestants <= 0 ? 'Rupture' : `${(item as any).joursRestants} j restants`}
-                          </span>
-                        )}
-                        <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono ml-1">
-                          {formatCFA(item.price)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <div className="flex flex-col items-center">
-                      <label className="text-[9px] text-zinc-500 font-bold">Stock</label>
-                      <input
-                        type="number"
-                        defaultValue={item.stock}
-                        className="w-16 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (!isNaN(val)) onUpdateInventory(item.id, val, item.price, item.prixGros, item.prixDetail, item.quantiteMinimum, item.productId);
-                        }}
-                      />
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <label className="text-[9px] text-zinc-500 font-bold">Prix</label>
-                      <input
-                        type="number"
-                        defaultValue={item.price}
-                        className="w-20 p-1.5 text-xs border border-zinc-200 dark:border-zinc-700 rounded-lg text-center font-bold"
-                        onBlur={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val)) onUpdateInventory(item.id, item.stock, val, item.prixGros, item.prixDetail, item.quantiteMinimum, item.productId);
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
-                      className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                      title="Modifier tous les champs (page d'édition)"
-                    >
-                      Modifier
-                    </button>
-                    <button
-                      onClick={() => onDeleteInventoryItem(item.id, item.productId)}
-                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                      title="Supprimer ce produit du stock"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <StockCategoryOrganizer
+            inventory={inventory}
+            products={products}
+            currentUserId={currentUser.id}
+            onUpdateInventory={onUpdateInventory}
+            onDeleteInventoryItem={onDeleteInventoryItem}
+            onEditProduct={(product, inventoryItem) => setEditingModalItem({ product, inventoryItem })}
+            onOpenAddModal={() => setIsAddingStockModalOpen(true)}
+            onExportCSV={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
+            title="Mon Stock de Gros par Catégorie"
+            role={currentUser.role}
+          />
 
           {/* Modal Ajout / Mise à jour de stock produit */}
           {isAddingStockModalOpen && (
@@ -3466,85 +3335,18 @@ export function RetailerDashboard({
             </div>
           )}
 
-          <div className="flex justify-between items-center flex-wrap gap-2 mb-3">
-            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Inventaire de la Boutique</h4>
-            <button
-              onClick={() => setStockSort(prev => prev === "asc" ? "desc" : prev === "desc" ? "none" : "asc")}
-              className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              {stockSort === "asc" ? "Tri : Stock Croissant ↑" : stockSort === "desc" ? "Tri : Stock Décroissant ↓" : "Trier par niveau de stock"}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(() => {
-              let sorted = [...myInventory];
-              if (stockSort === "asc") sorted.sort((a, b) => a.stock - b.stock);
-              else if (stockSort === "desc") sorted.sort((a, b) => b.stock - a.stock);
-              return sorted;
-            })().map((item) => {
-              const prod = products.find((p) => p.id === item.productId);
-              if (!prod) return null;
-              return (
-                <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
-                  <div className="flex gap-3 items-center min-w-0">
-                    <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover" />
-                    <div className="min-w-0">
-                      <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">{prod.name}</p>
-                      {prod.description && (
-                        <p className="text-[10px] text-zinc-500 truncate max-w-[200px]">{prod.description}</p>
-                      )}
-                      <p className="text-[10px] text-zinc-500 font-medium">Seuil critique : {item.threshold} u</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${item.stock <= item.threshold ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          Stock : {item.stock} u
-                        </span>
-                        <span className="text-[10px] font-bold text-zinc-700 dark:text-zinc-300 font-mono">
-                          {formatCFA(item.price)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap items-center">
-                    <button
-                      onClick={() => prod && setEditingModalItem({ product: prod, inventoryItem: item })}
-                      className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                      title="Modifier tous les champs"
-                    >
-                      Modifier
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAdjustingStockItem(item);
-                        setAdjustingStockValue(item.stock.toString());
-                      }}
-                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-lg transition cursor-pointer"
-                    >
-                      Ajuster Stock
-                    </button>
-                    <button
-                      onClick={() => onDeleteInventoryItem(item.id, item.productId)}
-                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
-                      title="Supprimer ce produit du catalogue"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                    </button>
-                    <button
-                      onClick={() => {
-                        const pr = prompt("Changer prix de vente public :", item.price.toString());
-                        if (pr) {
-                          onUpdateInventory(item.id, item.stock, parseFloat(pr));
-                        }
-                      }}
-                      className="px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[10px] font-bold rounded-lg transition cursor-pointer"
-                    >
-                      Prix Public
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <StockCategoryOrganizer
+            inventory={inventory}
+            products={products}
+            currentUserId={currentUser.id}
+            onUpdateInventory={onUpdateInventory}
+            onDeleteInventoryItem={onDeleteInventoryItem}
+            onEditProduct={(product, inventoryItem) => setEditingModalItem({ product, inventoryItem })}
+            onOpenAddModal={() => setIsAdding(true)}
+            onExportCSV={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
+            title="Stock & Rayons de la Boutique par Catégorie"
+            role={currentUser.role}
+          />
 
           {/* Stock Adjustment Modal */}
           {adjustingStockItem && (
@@ -4886,29 +4688,9 @@ export function SemiWholesalerDashboard({
 
   return (
     <div className="space-y-6" id="semi-wholesaler-dashboard">
-      {/* Title block */}
-      <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-3xl p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
-          <div className="bg-white/20 p-2 rounded-2xl">
-            <Factory className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <span className="bg-orange-500/30 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">Acteur Hybride</span>
-            <h2 className="font-sans font-bold text-xl tracking-tight mt-1">{currentUser.companyName}</h2>
-            <div className="flex items-center gap-2 mt-1 justify-center md:justify-start">
-              <p className="text-xs text-orange-100 italic tracking-wide">Demi-Gros & Vente Directe • {currentUser.region}, {currentUser.country}</p>
-              <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
-            </div>
-          </div>
-        </div>
-        <div className="bg-white/10 backdrop-blur-xs p-4 rounded-2xl text-right md:min-w-44">
-          <p className="text-[10px] uppercase font-bold tracking-wider text-orange-200">Solde Compte</p>
-          <p className="font-mono font-bold text-lg text-white mt-1">{formatCFA(currentUser.balance)}</p>
-        </div>
-      </div>
-
-      {/* Tabs list */}
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px">
+      {/* Tabs list with Sync Indicator */}
+      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
+        <div className="flex">
         <button
           onClick={() => setActiveTab("dashboard")}
           className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
@@ -4994,6 +4776,10 @@ export function SemiWholesalerDashboard({
         >
           <Users className="w-4 h-4 inline mr-1.5" /> Mes Acheteurs
         </button>
+        </div>
+        <div className="px-4 shrink-0">
+          <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
+        </div>
       </div>
 
       {activeTab === "buyers" && (
@@ -5761,121 +5547,18 @@ export function SemiWholesalerDashboard({
             </div>
           )}
 
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-zinc-50 dark:bg-zinc-950/40 text-zinc-500 border-b border-zinc-150 dark:border-zinc-850 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="p-4">Produit & Péremption</th>
-                    <th className="p-4">Quantité & Seuil Alerte</th>
-                    <th className="p-4">Tarifs (Principal / Gros / Détail)</th>
-                    <th className="p-4">Min. Commande</th>
-                    <th className="p-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-150 dark:divide-zinc-850">
-                  {myInventory.map((item) => {
-                    const prod = products.find((p) => p.id === item.productId);
-                    if (!prod) return null;
-                    const isEditing = editingItemId === item.id;
-                    const expDate = item.expirationDate || prod.expirationDate;
-
-                    return (
-                      <tr key={item.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-850/10 transition-colors">
-                        <td className="p-4">
-                          <div className="flex gap-2.5 items-center">
-                            <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover border border-zinc-200 dark:border-zinc-800" />
-                            <div>
-                              <p className="font-bold text-zinc-950 dark:text-white leading-tight">{prod.name}</p>
-                              <p className="text-[10px] text-zinc-500 font-medium">{prod.brand} • {prod.unit}</p>
-                              {expDate && (
-                                <span className="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 font-bold mt-1">
-                                  <Calendar className="w-2.5 h-2.5" /> Pér. {new Date(expDate).toLocaleDateString("fr-FR")}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-4 font-mono">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editStock}
-                              onChange={(e) => setEditStock(parseInt(e.target.value) || 0)}
-                              className="w-16 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 rounded text-zinc-900 dark:text-zinc-100"
-                            />
-                          ) : (
-                            <div className="space-y-0.5">
-                              <span className={`font-bold text-xs block ${item.stock <= item.threshold ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-zinc-900 dark:text-zinc-100"}`}>
-                                {item.stock} unités
-                              </span>
-                              <span className="text-[10px] text-zinc-400 block font-sans">
-                                Seuil alerte : ≤ {item.threshold || 5} u
-                              </span>
-                              {item.stock <= item.threshold && (
-                                <span className="inline-block text-[9px] px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 font-bold uppercase tracking-wider">
-                                  Alerte Stock !
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-4 font-mono text-xs">
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              value={editPrice}
-                              onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
-                              className="w-20 px-1.5 py-0.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-850 rounded text-zinc-900 dark:text-zinc-100"
-                            />
-                          ) : (
-                            <div className="space-y-0.5">
-                              <p className="font-extrabold text-emerald-600 dark:text-emerald-400">{formatCFA(item.price)}</p>
-                              <p className="text-[10px] text-zinc-500 font-sans">
-                                Gros: <span className="font-mono text-zinc-700 dark:text-zinc-300">{formatCFA(item.prixGros || prod.prixGros || item.price)}</span>
-                              </p>
-                              <p className="text-[10px] text-zinc-500 font-sans">
-                                Détail: <span className="font-mono text-zinc-700 dark:text-zinc-300">{formatCFA(item.prixDetail || prod.prixDetail || item.price)}</span>
-                              </p>
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-4 font-mono text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                          {item.quantiteMinimum || prod.quantiteMinimum || 1} min
-                        </td>
-                        <td className="p-4 text-right space-x-2 whitespace-nowrap">
-                          {isEditing ? (
-                            <button
-                              onClick={saveEditItem}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-2 py-1 rounded font-bold text-[10px]"
-                            >
-                              Save
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setEditingModalItem({ product: prod, inventoryItem: item });
-                              }}
-                              className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-xl font-bold text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                            >
-                              Modifier
-                            </button>
-                          )}
-                          <button
-                            onClick={() => onDeleteInventoryItem(item.id, item.productId)}
-                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 text-[10px] font-bold rounded-lg transition cursor-pointer inline-flex items-center gap-1"
-                            title="Supprimer du stock"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <StockCategoryOrganizer
+            inventory={inventory}
+            products={products}
+            currentUserId={currentUser.id}
+            onUpdateInventory={onUpdateInventory}
+            onDeleteInventoryItem={onDeleteInventoryItem}
+            onEditProduct={(product, inventoryItem) => setEditingModalItem({ product, inventoryItem })}
+            onOpenAddModal={() => setIsAdding(true)}
+            onExportCSV={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
+            title="Catalogue & Stocks de Demi-Gros par Catégorie"
+            role={currentUser.role}
+          />
         </div>
       )}
 

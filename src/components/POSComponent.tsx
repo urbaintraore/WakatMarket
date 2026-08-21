@@ -34,6 +34,7 @@ export function POSComponent({
   title = "Caisse Minute (POS Comptoir)"
 }: POSComponentProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   // Determine available sale types based on role
   const role = currentUser.role;
   const isWholesaler = role === UserRole.WHOLESALER;
@@ -185,11 +186,59 @@ export function POSComponent({
           </div>
         </div>
 
+        {/* Category Filter Pills in POS */}
+        {(() => {
+          const categoriesSet = new Set<string>();
+          inventory.forEach(item => {
+            const prod = products.find(p => p.id === item.productId);
+            if (prod && prod.category) categoriesSet.add(prod.category);
+          });
+          const categories = Array.from(categoriesSet);
+          if (categories.length === 0) return null;
+
+          return (
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none items-center">
+              <button
+                onClick={() => setSelectedCategory("ALL")}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition whitespace-nowrap cursor-pointer ${
+                  selectedCategory === "ALL"
+                    ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 shadow-xs"
+                    : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+                }`}
+              >
+                Tous ({inventory.length})
+              </button>
+              {categories.map((cat) => {
+                const count = inventory.filter(item => {
+                  const prod = products.find(p => p.id === item.productId);
+                  return prod?.category === cat;
+                }).length;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition whitespace-nowrap cursor-pointer ${
+                      selectedCategory === cat
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+                    }`}
+                  >
+                    {cat} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1 scrollbar-thin">
           {inventory
             .filter(item => {
               const prod = products.find(p => p.id === item.productId);
-              return prod?.name.toLowerCase().includes(searchQuery.toLowerCase());
+              if (!prod) return false;
+              const matchesSearch = prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || (prod.category && prod.category.toLowerCase().includes(searchQuery.toLowerCase()));
+              const matchesCategory = selectedCategory === "ALL" || prod.category === selectedCategory;
+              return matchesSearch && matchesCategory;
             })
             .map((item) => {
             const prod = products.find((p) => p.id === item.productId);

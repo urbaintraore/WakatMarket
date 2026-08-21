@@ -56,6 +56,7 @@ import { PWAInstallModal } from "./components/PWAInstallModal";
 import { PaiementsAValiderModule } from "./components/PaiementsAValiderModule";
 import { PreuvePaiementUploadModal } from "./components/PreuvePaiementUploadModal";
 import { NotificationBell } from "./components/NotificationBell";
+import { QuickActionsBar } from "./components/QuickActionsBar";
 
 export default function App() {
   const [showResetModal, setShowResetModal] = useState(false);
@@ -142,33 +143,80 @@ export default function App() {
         setShowDiagnostic(true);
       }
 
+      // Check if global prompt was already captured by main.tsx
+      if ((window as any).__DEFERRED_PWA_PROMPT__) {
+        setDeferredPrompt((window as any).__DEFERRED_PWA_PROMPT__);
+      }
+
       // PWA Install prompt listener
-      const handleBeforeInstallPrompt = (e: Event) => {
+      const handleBeforeInstallPrompt = (e: any) => {
         e.preventDefault();
+        (window as any).__DEFERRED_PWA_PROMPT__ = e;
         setDeferredPrompt(e);
-        console.log("[PWA] beforeinstallprompt captured and ready.");
+        console.log("[PWA] beforeinstallprompt captured and ready in App.");
+      };
+
+      const handleCustomPromptReady = (e: any) => {
+        if (e.detail) {
+          setDeferredPrompt(e.detail);
+        }
       };
 
       const handleAppInstalled = () => {
         setIsPWAInstalled(true);
         setDeferredPrompt(null);
+        (window as any).__DEFERRED_PWA_PROMPT__ = null;
+        (window as any).__PWA_INSTALLED__ = true;
         console.log("[PWA] App successfully installed!");
         addNotification("Application WakatMarket installée avec succès !");
       };
 
       window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.addEventListener("pwa-prompt-ready", handleCustomPromptReady);
       window.addEventListener("appinstalled", handleAppInstalled);
+      window.addEventListener("pwa-installed", handleAppInstalled);
 
-      if (window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone) {
+      if (
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true ||
+        (window as any).__PWA_INSTALLED__ === true
+      ) {
         setIsPWAInstalled(true);
       }
 
       return () => {
         window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+        window.removeEventListener("pwa-prompt-ready", handleCustomPromptReady);
         window.removeEventListener("appinstalled", handleAppInstalled);
+        window.removeEventListener("pwa-installed", handleAppInstalled);
       };
     }
   }, []);
+
+  const triggerPWAInstall = async () => {
+    const promptToUse = deferredPrompt || (typeof window !== "undefined" ? (window as any).__DEFERRED_PWA_PROMPT__ : null);
+    if (promptToUse && typeof promptToUse.prompt === "function") {
+      try {
+        await promptToUse.prompt();
+        const choice = await promptToUse.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          setIsPWAInstalled(true);
+          setDeferredPrompt(null);
+          (window as any).__DEFERRED_PWA_PROMPT__ = null;
+          (window as any).__PWA_INSTALLED__ = true;
+          addNotification("Application WakatMarket installée avec succès !");
+        } else {
+          setShowPWAInstallModal(true);
+        }
+      } catch (err) {
+        console.warn("[PWA] Erreur lors du déclenchement du prompt natif:", err);
+        setShowPWAInstallModal(true);
+      }
+    } else {
+      setShowPWAInstallModal(true);
+    }
+  };
+
 
   // DB States
   const [users, setUsers] = useState<UserProfile[]>(() => db.getUsers());
@@ -2377,44 +2425,37 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick Active Actions (Scan, AI, Chat, Stats) */}
-          <div className="hidden lg:flex items-center gap-2">
-            <button
-              onClick={() => setShowScanner(!showScanner)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showScanner ? "bg-emerald-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-scanner-toggle"
-            >
-              <Scan className="w-4 h-4" /> Scanner Code-barres
-            </button>
-            <button
-              onClick={() => setShowAICopilot(!showAICopilot)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showAICopilot ? "bg-indigo-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-ai-toggle"
-            >
-              <Sparkles className="w-4 h-4 text-amber-500" /> IA Forecasting
-            </button>
+          {/* Clean Primary Navigation & Tool Triggers */}
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Quick Support & FAQ IA shortcut in Header */}
             <button
               onClick={() => setShowSupportModal(true)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showSupportModal ? "bg-emerald-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-support-toggle"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
+              title="Centre de Support & Guide IA"
+              id="header-support-btn"
             >
-              <HelpCircle className="w-4 h-4 text-emerald-500" /> Support
+              <HelpCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden md:inline">Support & IA</span>
             </button>
-            <button
-              onClick={() => setShowReports(!showReports)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showReports ? "bg-rose-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-reports-toggle"
-            >
-              <BarChart2 className="w-4 h-4" /> Rapports & Analytique
-            </button>
+
+            {/* Mobile Money Payments validation for merchants */}
+            {currentUser && currentUser.role !== "Admin" && currentUser.role !== "Client Final" && currentUser.role !== "Chauffeur / Livreur" && (
+              <button
+                onClick={() => setShowPaiementsAValider(!showPaiementsAValider)}
+                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                  showPaiementsAValider
+                    ? "bg-amber-600 text-white border-transparent"
+                    : "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 hover:bg-amber-100"
+                }`}
+                id="header-paiements-toggle"
+                title="Validation des paiements Mobile Money"
+              >
+                <Smartphone className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="hidden xl:inline">Paiements</span>
+              </button>
+            )}
+
+            {/* Pitch Deck */}
             <button
               onClick={() => {
                 setShowPitchDeck(!showPitchDeck);
@@ -2423,286 +2464,34 @@ export default function App() {
                 setShowReports(false);
                 setShowChat(false);
               }}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showPitchDeck ? "bg-amber-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                showPitchDeck
+                  ? "bg-amber-600 text-white border-transparent"
+                  : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
               }`}
               id="header-pitchdeck-toggle"
+              title="Présentation Stratégique Pitch Deck"
             >
-              <Presentation className="w-4 h-4 text-amber-500 animate-pulse" /> Pitch Deck
+              <Presentation className="w-4 h-4 text-amber-500 animate-pulse" />
+              <span className="hidden xl:inline">Pitch Deck</span>
             </button>
-            <button
-              onClick={() => setShowChat(!showChat)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showChat ? "bg-blue-600 text-white border-transparent" : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-chat-toggle"
-            >
-              <MessageSquare className="w-4 h-4" /> Messagerie
-            </button>
-            <button
-              onClick={() => setShowPaiementsAValider(!showPaiementsAValider)}
-              className={`p-2 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showPaiementsAValider ? "bg-amber-600 text-white border-transparent" : "bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 hover:bg-amber-100"
-              }`}
-              id="header-paiements-toggle"
-              title="Validation des paiements Mobile Money (Orange Money, Moov Money, Wave)"
-            >
-              <Smartphone className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Paiements Mobile Money
-            </button>
-          </div>
 
-          {/* Right Header Operations */}
-          <div className="flex items-center gap-2.5">
-
-            {/* Real-time Synchronization Status Badge / Spinner */}
-            <div className="flex items-center">
-              {!syncStatus.isOnline ? (
-                <button
-                  onClick={() => {
-                    addNotification("Tentative de reconnexion et synchronisation...");
-                    syncService.triggerSync();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-semibold cursor-pointer hover:bg-amber-100 transition shadow-xs"
-                  title="Vous êtes actuellement en mode hors ligne. Vos modifications sont enregistrées localement et seront synchronisées au retour de la connexion."
-                  id="header-sync-offline-badge"
-                >
-                  <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span className="hidden sm:inline">Hors ligne</span>
-                  {syncStatus.pendingCount > 0 && (
-                    <span className="bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
-                      {syncStatus.pendingCount}
-                    </span>
-                  )}
-                </button>
-              ) : syncStatus.isSyncing ? (
-                <button
-                  onClick={() => syncService.triggerSync()}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-100 transition shadow-xs"
-                  title="Synchronisation vers Supabase en cours..."
-                  id="header-sync-syncing-badge"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  <span className="hidden sm:inline">Synchro...</span>
-                  <span className="bg-indigo-200 dark:bg-indigo-800/80 px-1.5 py-0.5 rounded-md text-[10px]">
-                    {syncStatus.pendingCount}
-                  </span>
-                </button>
-              ) : syncStatus.failedCount > 0 ? (
-                <button 
-                  onClick={() => {
-                    addNotification("Nouvelle tentative de synchronisation des éléments échoués...");
-                    syncService.retryFailedOperations();
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-semibold hover:bg-rose-100 transition cursor-pointer shadow-xs animate-pulse"
-                  title="Certaines modifications n'ont pas pu être synchronisées. Cliquez pour ré-essayer."
-                  id="header-sync-failed-badge"
-                >
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                  <span className="hidden sm:inline">Erreur Synchro</span>
-                  <span className="bg-rose-200 dark:bg-rose-900/60 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                    {syncStatus.failedCount}
-                  </span>
-                </button>
-              ) : syncStatus.pendingCount > 0 ? (
-                <button 
-                  onClick={() => syncService.triggerSync()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold hover:bg-indigo-100 transition cursor-pointer"
-                  title="Cliquer pour forcer la synchronisation vers le Cloud"
-                  id="header-sync-pending-badge"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
-                  <span className="hidden sm:inline">En attente</span>
-                  <span className="bg-indigo-200 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
-                    {syncStatus.pendingCount}
-                  </span>
-                </button>
-              ) : (
-                <button 
-                  onClick={() => {
-                    addNotification("Vérification de la synchronisation avec Supabase...");
-                    syncService.triggerSync();
-                  }}
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-[11px] font-semibold hover:bg-emerald-100/60 transition cursor-pointer"
-                  title="Toutes les données locales sont synchronisées avec le Cloud. Cliquez pour rafraîchir."
-                  id="header-sync-ok-badge"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="hidden xl:inline">En ligne & Synchronisé</span>
-                  <span className="xl:hidden">Synchro OK</span>
-                </button>
-              )}
-            </div>
-            {/* Mobile Outils Menu Dropdown Button */}
-            <div className="relative lg:hidden">
+            {/* Direct Messaging */}
+            {currentUser && (
               <button
-                onClick={() => setShowMobileToolsMenu(!showMobileToolsMenu)}
-                className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-                id="mobile-tools-menu-btn"
-                title="Menu Outils"
+                onClick={() => setShowChat(!showChat)}
+                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                  showChat
+                    ? "bg-blue-600 text-white border-transparent"
+                    : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
+                }`}
+                id="header-chat-toggle"
+                title="Messagerie B2B Directe"
               >
-                <LayoutGrid className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden xs:inline">Menu Outils</span>
+                <MessageSquare className="w-4 h-4 text-blue-500" />
+                <span className="hidden lg:inline">Messagerie</span>
               </button>
-
-              {showMobileToolsMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-2xl p-2 z-50 animate-fadeIn">
-                  <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-800 font-extrabold text-[10px] uppercase text-zinc-400">
-                    Outils & Services Mobiles
-                  </div>
-                  <div className="py-1 space-y-1">
-                    <button
-                      onClick={() => { setShowScanner(!showScanner); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showScanner ? "bg-emerald-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <Scan className="w-4 h-4 text-emerald-500" />
-                      <span>Scanner Code-barres</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowAICopilot(!showAICopilot); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showAICopilot ? "bg-indigo-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>IA Forecasting</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowPaiementsAValider(!showPaiementsAValider); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showPaiementsAValider ? "bg-amber-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <Smartphone className="w-4 h-4 text-amber-500" />
-                      <span>Paiements Mobile Money</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowSupportModal(true); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showSupportModal ? "bg-emerald-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <HelpCircle className="w-4 h-4 text-emerald-500" />
-                      <span>Support & FAQ IA</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowReports(!showReports); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showReports ? "bg-rose-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <BarChart2 className="w-4 h-4 text-rose-500" />
-                      <span>Rapports & Analytique</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowPitchDeck(!showPitchDeck);
-                        setShowScanner(false);
-                        setShowAICopilot(false);
-                        setShowReports(false);
-                        setShowChat(false);
-                        setShowMobileToolsMenu(false);
-                      }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showPitchDeck ? "bg-amber-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <Presentation className="w-4 h-4 text-amber-500" />
-                      <span>Pitch Deck</span>
-                    </button>
-                    <button
-                      onClick={() => { setShowChat(!showChat); setShowMobileToolsMenu(false); }}
-                      className={`w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer ${
-                        showChat ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200"
-                      }`}
-                    >
-                      <MessageSquare className="w-4 h-4 text-blue-500" />
-                      <span>Messagerie</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowMobileToolsMenu(false);
-                        if (deferredPrompt) {
-                          deferredPrompt.prompt();
-                          deferredPrompt.userChoice.then((choice: any) => {
-                            if (choice.outcome === "accepted") {
-                              setIsPWAInstalled(true);
-                              setDeferredPrompt(null);
-                            } else {
-                              setShowPWAInstallModal(true);
-                            }
-                          }).catch(() => {
-                            setShowPWAInstallModal(true);
-                          });
-                        } else {
-                          setShowPWAInstallModal(true);
-                        }
-                      }}
-                      className="w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100"
-                    >
-                      <Globe className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>Installer l'application (PWA)</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* PWA Install Trigger Button (Desktop & Mobile interactive) */}
-            <button
-              onClick={() => {
-                if (deferredPrompt) {
-                  deferredPrompt.prompt();
-                  deferredPrompt.userChoice.then((choice: any) => {
-                    if (choice.outcome === "accepted") {
-                      setIsPWAInstalled(true);
-                      setDeferredPrompt(null);
-                    } else {
-                      setShowPWAInstallModal(true);
-                    }
-                  }).catch(() => {
-                    setShowPWAInstallModal(true);
-                  });
-                } else {
-                  setShowPWAInstallModal(true);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 text-[11px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-2.5 py-1.5 rounded-xl font-bold cursor-pointer transition shadow-xs active:scale-95"
-              title="Installer WakatMarket sur smartphone ou ordinateur pour une utilisation plein écran et hors-ligne"
-              id="header-pwa-install-btn"
-            >
-              <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="hidden sm:inline">PWA Installable (Hors-ligne OK)</span>
-              <span className="sm:hidden">Installer PWA</span>
-            </button>
-
-            {/* Theme Toggle */}
-            <button
-              onClick={() => {
-                if (autoSystemTheme) setAutoSystemTheme(false);
-                setDarkMode(!darkMode);
-              }}
-              className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 cursor-pointer"
-              id="theme-toggle-btn"
-              title="Basculer Mode Clair / Sombre"
-            >
-              {darkMode ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
-            </button>
-
-            {/* Auto System Theme Sync Toggle */}
-            <button
-              onClick={() => setAutoSystemTheme(!autoSystemTheme)}
-              title={autoSystemTheme ? "Synchronisation auto système activée" : "Activer la synchro auto système"}
-              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
-                autoSystemTheme 
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' 
-                  : 'bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-750 text-zinc-600 dark:text-zinc-400'
-              }`}
-            >
-              <Laptop className="w-3.5 h-3.5" /> 
-              <span className="hidden md:inline">Sync Système</span>
-            </button>
+            )}
 
             {/* Notifications Alert Bell */}
             <div className="relative flex items-center gap-1.5">
@@ -2724,7 +2513,7 @@ export default function App() {
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 relative cursor-pointer"
                 id="notifications-bell-btn"
-                title="Notifications Push Système"
+                title="Notifications Système"
               >
                 <Bell className="w-4.5 h-4.5" />
                 {realNotifications.some((n) => !n.read) && (
@@ -2734,7 +2523,7 @@ export default function App() {
               
               {/* Push Notifications Drawer */}
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden py-2 z-50 animate-[fadeIn_0.2s_ease]">
+                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden py-2 z-50 animate-[fadeIn_0.2s_ease]">
                   <div className="px-4 py-2 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
                     <span className="text-xs font-bold text-zinc-950 dark:text-white">Notifications</span>
                     <button
@@ -2827,21 +2616,61 @@ export default function App() {
               )}
             </div>
 
-            {/* Diagnostic Button */}
+            {/* Compact Header User Profile Pill */}
+            {currentUser && (
+              <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700/80 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+                <img
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  referrerPolicy="no-referrer"
+                  className="w-7 h-7 rounded-full object-cover border border-emerald-500/40 shrink-0"
+                />
+                <div className="hidden sm:block text-left leading-tight">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-zinc-900 dark:text-white truncate max-w-[120px]">
+                      {currentUser.companyName || currentUser.name}
+                    </span>
+                    <span className="text-[8px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold px-1.5 py-0.2 rounded-full uppercase">
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] text-zinc-500 dark:text-zinc-400 font-mono">
+                    Solde : <strong className="text-emerald-600 dark:text-emerald-400">{formatCFA(currentUser.balance ?? 0)}</strong>
+                  </p>
+                </div>
+                <div className="flex items-center gap-0.5 border-l border-zinc-200 dark:border-zinc-700 pl-1.5">
+                  <button
+                    onClick={handleOpenProfileEdit}
+                    className="p-1 text-zinc-500 hover:text-emerald-600 dark:text-zinc-400 dark:hover:text-emerald-400 rounded-md transition cursor-pointer"
+                    title="Modifier le profil"
+                  >
+                    <UserCog className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleClearMyCatalog}
+                    className="p-1 text-zinc-500 hover:text-rose-600 dark:text-zinc-400 dark:hover:text-rose-400 rounded-md transition cursor-pointer"
+                    title="Vider mon stock"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Theme Toggle */}
             <button
-              onClick={() => setShowDiagnostic(!showDiagnostic)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
-                showDiagnostic 
-                  ? "bg-emerald-600 text-white" 
-                  : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-100"
-              }`}
-              title="Audit & Diagnostic de la persistance serveur"
-              id="diagnostic-btn"
+              onClick={() => {
+                if (autoSystemTheme) setAutoSystemTheme(false);
+                setDarkMode(!darkMode);
+              }}
+              className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 cursor-pointer"
+              id="theme-toggle-btn"
+              title="Basculer Mode Clair / Sombre"
             >
-              <ShieldCheck className="w-4 h-4" /> Diagnostic
+              {darkMode ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
             </button>
 
-            {/* Auth Simulation button */}
+            {/* Auth button */}
             <button
               onClick={async () => {
                 if (isRealUserAuthenticated) {
@@ -2861,56 +2690,6 @@ export default function App() {
           </div>
         </div>
       </header>
-
-      {/* Mobile Sticky Quick Menu Strip (Horizontal Swipeable Pill Bar) */}
-      <div className="lg:hidden bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 px-3 py-2 overflow-x-auto scrollbar-none shadow-xs sticky top-16 z-30 flex items-center gap-2">
-        <button
-          onClick={() => setShowScanner(!showScanner)}
-          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
-            showScanner ? "bg-emerald-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-          }`}
-        >
-          <Scan className="w-3.5 h-3.5" /> Scanner
-        </button>
-        <button
-          onClick={() => setShowAICopilot(!showAICopilot)}
-          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
-            showAICopilot ? "bg-indigo-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> IA Forecasting
-        </button>
-        <button
-          onClick={() => setShowReports(!showReports)}
-          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
-            showReports ? "bg-rose-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-          }`}
-        >
-          <BarChart2 className="w-3.5 h-3.5" /> Rapports & Analytique
-        </button>
-        <button
-          onClick={() => {
-            setShowPitchDeck(!showPitchDeck);
-            setShowScanner(false);
-            setShowAICopilot(false);
-            setShowReports(false);
-            setShowChat(false);
-          }}
-          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
-            showPitchDeck ? "bg-amber-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-          }`}
-        >
-          <Presentation className="w-3.5 h-3.5 text-amber-500 animate-pulse" /> Pitch Deck
-        </button>
-        <button
-          onClick={() => setShowChat(!showChat)}
-          className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-bold shrink-0 transition cursor-pointer ${
-            showChat ? "bg-blue-600 text-white border-transparent shadow-sm" : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200"
-          }`}
-        >
-          <MessageSquare className="w-3.5 h-3.5" /> Messagerie
-        </button>
-      </div>
 
       {/* Offline Banner */}
       {!isOnline && (
@@ -3236,54 +3015,25 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Active User Header Widget */}
-            {currentUser && (
-              <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs transition-colors">
-                <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
-                  <img
-                    src={currentUser.avatar}
-                    alt={currentUser.name}
-                    referrerPolicy="no-referrer"
-                    className="w-14 h-14 rounded-full object-cover border-2 border-emerald-500/30 shadow-md"
-                  />
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap justify-center md:justify-start">
-                      <h2 className="font-bold text-zinc-950 dark:text-white text-base">
-                        {currentUser.companyName || currentUser.name}
-                      </h2>
-                      <span className="text-[9px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        {currentUser.role}
-                      </span>
-                      <button
-                        onClick={handleOpenProfileEdit}
-                        className="text-[10px] bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 transition cursor-pointer"
-                        title="Modifier le profil"
-                      >
-                        <UserCog className="w-3 h-3" /> Modifier
-                      </button>
-                      <button
-                        onClick={handleClearMyCatalog}
-                        className="text-[10px] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold px-2 py-0.5 rounded-md flex items-center gap-1 transition cursor-pointer border border-rose-200/50 dark:border-rose-900/30"
-                        title="Effacer tout mon catalogue pour le renseigner manuellement"
-                      >
-                        <Trash2 className="w-3 h-3" /> Vider mon stock
-                      </button>
-                    </div>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Hiérarchie Géographique : <span className="font-semibold text-zinc-700 dark:text-zinc-300">{currentUser.country} - {currentUser.region}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Local Balances or Stats */}
-                <div className="text-center md:text-right bg-zinc-50 dark:bg-zinc-850 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800/60 min-w-[150px]">
-                  <span className="text-[10px] text-zinc-400 uppercase font-semibold">Solde de Transaction</span>
-                  <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
-                    {currentUser.balance !== undefined ? formatCFA(currentUser.balance) : "—"}
-                  </p>
-                </div>
-              </div>
-            )}
+            {/* Centralized Quick Actions Bar (Support, PWA Install, Sync, AI, Scanner, Reports) */}
+            <QuickActionsBar
+              syncStatus={syncStatus}
+              onTriggerSync={() => {
+                addNotification("Synchronisation des données en cours...");
+                syncService.triggerSync();
+              }}
+              onOpenSyncSystemModal={() => setShowDiagnostic(true)}
+              isPWAInstalled={isPWAInstalled}
+              onTriggerPWAInstall={triggerPWAInstall}
+              showScanner={showScanner}
+              onToggleScanner={() => setShowScanner(!showScanner)}
+              showAICopilot={showAICopilot}
+              onToggleAICopilot={() => setShowAICopilot(!showAICopilot)}
+              showReports={showReports}
+              onToggleReports={() => setShowReports(!showReports)}
+              onOpenSupport={() => setShowSupportModal(true)}
+              userRole={currentUser?.role}
+            />
 
             {/* Dynamic Modals / Expandable Utility Drawers (Scan, AI, Chat, Reports) */}
             <AnimatePresence>

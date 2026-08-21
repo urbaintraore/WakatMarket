@@ -7,6 +7,24 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 console.log("[WAKATMARKET] SUPABASE-ALIGNMENT-V1");
 
+// Global PWA prompt capture immediately before any component lifecycle mounts
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e: any) => {
+    // Prevent standard minibar from appearing automatically
+    e.preventDefault();
+    console.log("[PWA] Événement 'beforeinstallprompt' capturé au démarrage global.");
+    (window as any).__DEFERRED_PWA_PROMPT__ = e;
+    window.dispatchEvent(new CustomEvent("pwa-prompt-ready", { detail: e }));
+  });
+
+  window.addEventListener("appinstalled", () => {
+    console.log("[PWA] Événement 'appinstalled' confirmé par le système.");
+    (window as any).__PWA_INSTALLED__ = true;
+    (window as any).__DEFERRED_PWA_PROMPT__ = null;
+    window.dispatchEvent(new CustomEvent("pwa-installed"));
+  });
+}
+
 // Register Service Worker for PWA Offline Capability & Installability
 if (typeof window !== "undefined" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -30,4 +48,5 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
 

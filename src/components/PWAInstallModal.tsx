@@ -57,17 +57,23 @@ export function PWAInstallModal({
     // Check if app is already running standalone
     const isAppStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true;
+      (window.navigator as any).standalone === true ||
+      (window as any).__PWA_INSTALLED__ === true;
     setIsStandalone(isAppStandalone);
   }, []);
 
+  const effectivePrompt = deferredPrompt || (typeof window !== "undefined" ? (window as any).__DEFERRED_PWA_PROMPT__ : null);
+
   const handleNativeInstall = async () => {
-    if (deferredPrompt) {
+    const promptToUse = effectivePrompt;
+    if (promptToUse && typeof promptToUse.prompt === "function") {
       try {
-        deferredPrompt.prompt();
-        const choiceResult = await deferredPrompt.userChoice;
-        if (choiceResult.outcome === "accepted") {
+        await promptToUse.prompt();
+        const choiceResult = await promptToUse.userChoice;
+        if (choiceResult && choiceResult.outcome === "accepted") {
           setInstallSuccess(true);
+          (window as any).__PWA_INSTALLED__ = true;
+          (window as any).__DEFERRED_PWA_PROMPT__ = null;
           if (onPromptTriggered) onPromptTriggered();
         }
       } catch (err) {
@@ -75,6 +81,7 @@ export function PWAInstallModal({
       }
     }
   };
+
 
   if (!isOpen) return null;
 
@@ -128,7 +135,7 @@ export function PWAInstallModal({
             </div>
 
             {/* Direct 1-Click Install Button if supported by browser */}
-            {deferredPrompt && !installSuccess && (
+            {effectivePrompt && !installSuccess && (
               <div className="p-4 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div>
                   <p className="font-bold text-sm">Installation automatique disponible !</p>
