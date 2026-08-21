@@ -52,12 +52,16 @@ import ReportsModule from "./components/ReportsModule";
 import ChatModule from "./components/ChatModule";
 import PitchDeck from "./components/PitchDeck";
 import SupportModal from "./components/SupportModal";
+import { PWAInstallModal } from "./components/PWAInstallModal";
 import { PaiementsAValiderModule } from "./components/PaiementsAValiderModule";
 import { PreuvePaiementUploadModal } from "./components/PreuvePaiementUploadModal";
 import { NotificationBell } from "./components/NotificationBell";
 
 export default function App() {
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPWAInstalled, setIsPWAInstalled] = useState(false);
   const [confirmDeleteAction, setConfirmDeleteAction] = useState<{
     isOpen: boolean;
     title: string;
@@ -137,6 +141,32 @@ export default function App() {
       if (window.location.hash === "#diagnostic" || window.location.pathname === "/diagnostic") {
         setShowDiagnostic(true);
       }
+
+      // PWA Install prompt listener
+      const handleBeforeInstallPrompt = (e: Event) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+        console.log("[PWA] beforeinstallprompt captured and ready.");
+      };
+
+      const handleAppInstalled = () => {
+        setIsPWAInstalled(true);
+        setDeferredPrompt(null);
+        console.log("[PWA] App successfully installed!");
+        addNotification("Application WakatMarket installée avec succès !");
+      };
+
+      window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.addEventListener("appinstalled", handleAppInstalled);
+
+      if (window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone) {
+        setIsPWAInstalled(true);
+      }
+
+      return () => {
+        window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+        window.removeEventListener("appinstalled", handleAppInstalled);
+      };
     }
   }, []);
 
@@ -2590,15 +2620,62 @@ export default function App() {
                       <MessageSquare className="w-4 h-4 text-blue-500" />
                       <span>Messagerie</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        setShowMobileToolsMenu(false);
+                        if (deferredPrompt) {
+                          deferredPrompt.prompt();
+                          deferredPrompt.userChoice.then((choice: any) => {
+                            if (choice.outcome === "accepted") {
+                              setIsPWAInstalled(true);
+                              setDeferredPrompt(null);
+                            } else {
+                              setShowPWAInstallModal(true);
+                            }
+                          }).catch(() => {
+                            setShowPWAInstallModal(true);
+                          });
+                        } else {
+                          setShowPWAInstallModal(true);
+                        }
+                      }}
+                      className="w-full p-2.5 rounded-xl flex items-center gap-2.5 text-xs font-bold transition text-left cursor-pointer bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100"
+                    >
+                      <Globe className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span>Installer l'application (PWA)</span>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Simulated Online PWA bar */}
-            <span className="hidden sm:inline-flex items-center gap-1 text-[9px] bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full font-bold">
-              <Globe className="w-3 h-3 text-emerald-500" /> PWA Installable (Hors-ligne OK)
-            </span>
+            {/* PWA Install Trigger Button (Desktop & Mobile interactive) */}
+            <button
+              onClick={() => {
+                if (deferredPrompt) {
+                  deferredPrompt.prompt();
+                  deferredPrompt.userChoice.then((choice: any) => {
+                    if (choice.outcome === "accepted") {
+                      setIsPWAInstalled(true);
+                      setDeferredPrompt(null);
+                    } else {
+                      setShowPWAInstallModal(true);
+                    }
+                  }).catch(() => {
+                    setShowPWAInstallModal(true);
+                  });
+                } else {
+                  setShowPWAInstallModal(true);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-[11px] bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-2.5 py-1.5 rounded-xl font-bold cursor-pointer transition shadow-xs active:scale-95"
+              title="Installer WakatMarket sur smartphone ou ordinateur pour une utilisation plein écran et hors-ligne"
+              id="header-pwa-install-btn"
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="hidden sm:inline">PWA Installable (Hors-ligne OK)</span>
+              <span className="sm:hidden">Installer PWA</span>
+            </button>
 
             {/* Theme Toggle */}
             <button
@@ -3591,6 +3668,14 @@ export default function App() {
           onClose={() => setShowSupportModal(false)}
           userRole={currentUser?.role}
           userName={currentUser?.name}
+        />
+
+        {/* PWA Direct and Guided Installation Modal */}
+        <PWAInstallModal
+          isOpen={showPWAInstallModal}
+          onClose={() => setShowPWAInstallModal(false)}
+          deferredPrompt={deferredPrompt}
+          onPromptTriggered={() => setDeferredPrompt(null)}
         />
 
         {/* Admin Password Challenge Reset Modal */}

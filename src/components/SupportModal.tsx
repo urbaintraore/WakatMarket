@@ -40,7 +40,7 @@ interface SupportModalProps {
 
 interface FAQItem {
   id: string;
-  category: "general" | "orders" | "roles" | "payments" | "offline";
+  category: "general" | "orders" | "roles" | "payments" | "offline" | "tools";
   categoryLabel: string;
   question: string;
   answer: string;
@@ -49,6 +49,60 @@ interface FAQItem {
 }
 
 const PLATFORM_DOCS_FAQ: FAQItem[] = [
+  {
+    id: "faq-synchro-ok",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du bouton / badge « Synchro OK » et que se passe-t-il s'il n'est pas vert ?",
+    answer: "• RÔLE PRINCIPAL :\nLe badge 'Synchro OK' (ou 'En ligne & Synchronisé') est le témoin d'intégrité en temps réel entre votre appareil et la base de données Cloud Supabase.\n1. Vert ('Synchro OK') : Confirme que vous êtes connecté à Internet et que 100% de vos modifications locales (produits créés, stocks modifiés, ventes comptoir, encaissements) sont sauvegardées sur le Cloud.\n2. Clic interactif : Cliquer sur le badge déclenche un test de connectivité immédiat et force un rafraîchissement avec le serveur.\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS AU VERT ?\nLa synchronisation est 100% automatique ; vous n'avez pas besoin de l'activer manuellement.\n- S'il affiche 'Hors ligne' 🟠 : Votre connexion Internet est coupée. Vos actions continuent d'être enregistrées localement sans aucun blocage et seront transmises automatiquement au retour du réseau.\n- S'il affiche 'Synchro...' 🔄 : Les données locales sont en cours d'envoi vers le serveur.\n- S'il affiche 'Erreur Synchro' 🔴 : Une opération a été interrompue. Cliquer sur le badge relance automatiquement l'envoi des opérations échouées.",
+    tags: ["Synchro OK", "Synchronisation", "Cloud", "Offline", "Supabase", "Statut"],
+    docRef: "Doc V1.2 - Ch.5.1 : Témoin d'état et Intégrité Cloud"
+  },
+  {
+    id: "faq-pwa-install",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du bouton « PWA Installable (Hors-ligne OK) » et que se passe-t-il s'il n'est pas activé ?",
+    answer: "• RÔLE PRINCIPAL :\nLe bouton 'PWA Installable (Hors-ligne OK)' permet d'installer WakatMarket directement sur votre smartphone (Android / iPhone) ou ordinateur comme une vraie application native sans passer par le Google Play Store ou l'App Store.\n- Crée une icône WakatMarket sur votre écran d'accueil.\n- Lance l'application en plein écran (sans barre d'adresse de navigateur).\n- Met en cache les ressources pour un démarrage ultra-rapide même sans aucun réseau (au marché ou en zone rurale).\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS INSTALLÉ ?\nL'application continue de fonctionner exactement de la même manière dans votre navigateur web classique (Chrome, Safari, Edge). Le mode hors-ligne et l'enregistrement local de vos ventes restent 100% actifs même sans installation.",
+    tags: ["PWA", "Installation", "Hors-ligne", "Mobile", "Android", "iPhone", "Application"],
+    docRef: "Doc V1.2 - Ch.5.2 : Progressive Web App & Cache Hors-ligne"
+  },
+  {
+    id: "faq-sync-system",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du bouton « Sync Système » et que se passe-t-il s'il n'est pas utilisé ?",
+    answer: "• RÔLE PRINCIPAL :\n'Sync Système' est le centre de contrôle et de diagnostic de la file d'attente de synchronisation (`SyncQueue`).\n1. Supervision : Visualiser toutes les opérations en attente d'envoi vers le serveur.\n2. Forçage manuel : Déclencher un envoi immédiat sans attendre le cycle automatique périodique.\n3. Gestion des erreurs : Inspecter la cause précise d'un échec éventuel et relancer la file en un clic.\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS UTILISÉ ?\nAucun problème ni perte de données ! Le moteur de synchronisation fonctionne en arrière-plan de manière autonome toutes les 20 secondes et à chaque détection de connexion. Vous n'avez jamais l'obligation d'ouvrir ce menu.",
+    tags: ["Sync Système", "File d'attente", "SyncQueue", "Diagnostic", "Maintenance"],
+    docRef: "Doc V1.2 - Ch.5.3 : Moteur de file d'attente distribuée"
+  },
+  {
+    id: "faq-ia-forecasting",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du module « IA Forecasting » et que se passe-t-il s'il n'est pas utilisé ?",
+    answer: "• RÔLE PRINCIPAL :\n'IA Forecasting' est le copilote d'intelligence artificielle de WakatMarket pour l'anticipation de la demande et la gestion prédictive des stocks.\n1. Prévision des ventes : Analyse la cadence d'écoulement de chaque produit pour estimer la date probable d'épuisement.\n2. Recommandations de réapprovisionnement : Calcule les quantités idéales à commander auprès de vos grossistes ou usines pour éviter les ruptures sans sur-stocker.\n3. Analyse des tendances : Détecte les produits en forte accélération ou en ralentissement saisonnier.\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS CONSULTÉ ?\nVous continuez à gérer vos approvisionnements et vos stocks de façon traditionnelle manuelle. Le reste de l'ERP fonctionne sans interruption.",
+    tags: ["IA Forecasting", "Intelligence Artificielle", "Prédictions", "Rupture", "Stocks", "Approvisionnement"],
+    docRef: "Doc V1.2 - Ch.9 : Moteur d'IA Prédictive & Forecasting"
+  },
+  {
+    id: "faq-rapport-analytique",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du « Rapport Analytique » et que permet-il de piloter ?",
+    answer: "• RÔLE PRINCIPAL :\nLe module 'Rapports & Analytique' est votre tableau de bord financier et décisionnel pour mesurer la rentabilité de votre commerce :\n1. Chiffre d'Affaires (CA) & Marges : Suivi des ventes globales, des bénéfices nets et de l'évolution journalière/mensuelle.\n2. Suivi des créances et ardoises : Montant total dû par vos acheteurs à crédit et alertes sur les échéances dépassées.\n3. Top Produits : Identification des articles générant le plus de volume ou de marge.\n4. Export de bilans : Téléchargement des récapitulatifs pour la comptabilité ou la gestion fiscale.\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS CONSULTÉ ?\nToutes vos ventes et entrées financières restent fidèlement enregistrées dans le système. Ce module sert d'outil d'analyse stratégique pour les gérants et chefs d'entreprise.",
+    tags: ["Rapport Analytique", "Chiffre d'Affaires", "Marges", "Finances", "Statistiques", "Bilan"],
+    docRef: "Doc V1.2 - Ch.10 : Module d'Analytique & Reporting Financier"
+  },
+  {
+    id: "faq-scanner-barcodes",
+    category: "tools",
+    categoryLabel: "Outils & Système",
+    question: "Quel est le rôle du « Scanner Code-barres » et comment fonctionne-t-il ?",
+    answer: "• RÔLE PRINCIPAL :\nLe 'Scanner Code-barres' permet de capturer les codes EAN-13, QR codes ou références articles à l'aide de la caméra de votre smartphone/PC ou d'une douchette optique USB/Bluetooth.\n1. Vente express au comptoir (POS) : Scanner un article l'ajoute instantanément au panier sans aucune saisie manuelle.\n2. Inventaire et réception de stock : Permet de compter ou d'incrémenter le stock d'un produit en un seul bip.\n3. Recherche immédiate : Affiche la fiche technique, le prix et le stock disponible du produit scanné.\n\n• QUE SE PASSE-T-IL S'IL N'EST PAS UTILISÉ ?\nVous pouvez tout à fait rechercher vos articles manuellement par leur nom ou référence dans le catalogue ou la barre de recherche rapide.",
+    tags: ["Scanner Code-barres", "Scan", "Caméra", "POS", "Vente Comptoir", "Inventaire"],
+    docRef: "Doc V1.2 - Ch.6 : Périphériques & Matériel POS"
+  },
   {
     id: "faq-1",
     category: "general",
@@ -93,15 +147,6 @@ const PLATFORM_DOCS_FAQ: FAQItem[] = [
     answer: "WakatMarket intègre un moteur de synchronisation autonome PWA. Si vous perdez la connexion :\n1. Le système bascule automatiquement en mode Offline.\n2. Vous pouvez continuer à enregistrer vos ventes au comptoir (POS) et ajuster vos stocks locaux.\n3. Vos transactions sont stockées dans la file d'attente sécurisée locale (`SyncQueue`).\n4. Dès le rétablissement de la connexion, les données sont automatiquement synchronisées avec le serveur.",
     tags: ["Offline", "Sync", "File d'attente", "PWA"],
     docRef: "Doc V1.2 - Ch.5 : Moteur de resynchronisation distribué"
-  },
-  {
-    id: "faq-6",
-    category: "orders",
-    categoryLabel: "Commandes & Stocks",
-    question: "Comment utiliser le scanner de code-barres pour les inventaires et ventes ?",
-    answer: "Cliquez sur le bouton 'Scanner Code-barres' dans la barre d'en-tête supérieure. Vous pouvez utiliser la caméra de votre smartphone/PC ou un lecteur optique. Le scanner recherche instantanément le produit dans la base de données WakatMarket pour remplir le panier de vente ou incrémenter l'inventaire.",
-    tags: ["Code-barres", "Scanner", "POS"],
-    docRef: "Doc V1.2 - Ch.6 : Périphériques & Matériel POS"
   },
   {
     id: "faq-7",
@@ -162,13 +207,31 @@ export default function SupportModal({ isOpen, onClose, userRole, userName }: Su
       let generatedText = "";
       let matchedSources = ["Documentation Officielle WakatMarket v1.2", "Manuel des Opérations ERP B2B/B2C"];
 
-      if (query.includes("commande") || query.includes("acheter") || query.includes("panier")) {
+      if (query.includes("synchro ok") || query.includes("synchro") || (query.includes("badge") && query.includes("vert"))) {
+        generatedText = `Selon la documentation WakatMarket (Section Intégrité & Synchronisation Cloud) :\n\n• Le badge 'Synchro OK' (ou 'En ligne & Synchronisé') est le témoin d'intégrité en temps réel avec Supabase.\n• Vert : Tout est sauvegardé sur le Cloud sans aucune perte.\n• S'il n'est pas vert : Aucun souci ! En mode 'Hors ligne' ou 'Synchro...', toutes vos opérations sont conservées localement dans IndexedDB et envoyées automatiquement dès que la connexion revient.`;
+        matchedSources.push("Guide Technique : Témoin d'état et Intégrité Cloud");
+      } else if (query.includes("pwa") || query.includes("install") || query.includes("application") || query.includes("telephone")) {
+        generatedText = `Selon la documentation WakatMarket (Section PWA & Installation Mobile) :\n\n• Le bouton 'PWA Installable' permet d'installer WakatMarket sur smartphone (Android/iOS) ou PC comme une vraie application native sans passer par le store.\n• Il crée une icône sur votre écran d'accueil et garantit une utilisation fluide en plein écran même à 100% hors-ligne.\n• Si vous ne l'installez pas, l'application fonctionne tout aussi bien dans le navigateur web classique avec toutes ses capacités locales.`;
+        matchedSources.push("Guide d'Installation PWA Mobile & Offline");
+      } else if (query.includes("sync système") || query.includes("sync systeme") || query.includes("file d'attente") || query.includes("queue")) {
+        generatedText = `Selon la documentation WakatMarket (Section Gestion de File d'Attente SyncQueue) :\n\n• 'Sync Système' permet d'inspecter les opérations en cours de synchronisation et de forcer manuellement un envoi ou de relancer des échecs.\n• Si non utilisé : La synchronisation s'exécute automatiquement en tâche de fond de manière autonome sans intervention requise.`;
+        matchedSources.push("Manuel ERP : File d'attente distribuée SyncQueue");
+      } else if (query.includes("forecasting") || query.includes("ia") || query.includes("prévision") || query.includes("prevision") || query.includes("rupture")) {
+        generatedText = `Selon la documentation WakatMarket (Section IA Prédictive & Forecasting) :\n\n• 'IA Forecasting' analyse vos tendances de vente historiques pour anticiper les ruptures de stock.\n• Il recommande les quantités optimales et dates clés de réapprovisionnement auprès de vos grossistes ou usines.\n• Si non consulté, vous continuez à gérer vos réapprovisionnements manuellement.`;
+        matchedSources.push("Module d'Intelligence Artificielle & Prédiction des Ventes");
+      } else if (query.includes("rapport") || query.includes("analytique") || query.includes("statistique") || query.includes("chiffre d'affaire") || query.includes("ca")) {
+        generatedText = `Selon la documentation WakatMarket (Section Reporting & Analytique Financière) :\n\n• Le 'Rapport Analytique' présente votre Chiffre d'Affaires, marges brutes, ardoises/créances clients et articles les plus rentables.\n• Il permet l'exportation des bilans pour la comptabilité et la prise de décisions stratégiques.`;
+        matchedSources.push("Guide Financier : Tableau de bord de pilotage");
+      } else if (query.includes("scanner") || query.includes("code-barres") || query.includes("code barre") || query.includes("scan")) {
+        generatedText = `Selon la documentation WakatMarket (Section Périphériques & POS) :\n\n• Le 'Scanner Code-barres' utilise la caméra de votre smartphone ou un lecteur optique pour ajouter instantanément des articles au panier POS ou ajuster l'inventaire en un seul scan.\n• Si non utilisé, la recherche textuelle manuelle par nom ou catégorie reste toujours disponible.`;
+        matchedSources.push("Guide Matériel : Scanner optique & Caméra de caisse");
+      } else if (query.includes("commande") || query.includes("acheter") || query.includes("panier")) {
         generatedText = `Selon la documentation WakatMarket (Section Commandes B2B/B2C) :\n\n• Pour passer une commande d'approvisionnement B2B, rendez-vous sur l'onglet 'Approvisionnement', sélectionnez votre fournisseur agréé, puis ajoutez les références par cartons ou palettes.\n• Le système calcule automatiquement le prix selon votre grille tarifaire négociée.\n• Les commandes enregistrées déclenchent un suivi en temps réel avec notification instantanée.`;
         matchedSources.push("Guide Pratique : Passer et traiter une commande B2B");
       } else if (query.includes("credit") || query.includes("crédit") || query.includes("dette") || query.includes("payer") || query.includes("echeance")) {
         generatedText = `Selon la documentation WakatMarket (Section Gestion Financière) :\n\n• Le paiement à crédit est accordé par les fournisseurs selon une limite mensuelle définie.\n• Les remboursements partiels ou totaux s'effectuent directement depuis l'onglet 'Finances & Créances'.\n• Chaque versement met à jour le solde restant et libère le plafond d'encours de l'acheteur.`;
         matchedSources.push("Politique des Crédits & Encours B2B");
-      } else if (query.includes("offline") || query.includes("connexion") || query.includes("internet") || query.includes("sync")) {
+      } else if (query.includes("offline") || query.includes("connexion") || query.includes("internet")) {
         generatedText = `Selon la documentation WakatMarket (Section Architecture PWA & Offline) :\n\n• WakatMarket fonctionne à 100% sans connexion Internet continue.\n• Toutes vos ventes au comptoir (POS) et entrées/sorties de stock sont mémorisées localement.\n• Dès que votre appareil retrouve le réseau, la synchronisation sécurisée s'exécute automatiquement en arrière-plan sans perte de données.`;
         matchedSources.push("Protocole de Synchronisation Distribuée");
       } else if (query.includes("livraison") || query.includes("livreur") || query.includes("otp") || query.includes("code")) {
@@ -320,6 +383,7 @@ export default function SupportModal({ isOpen, onClose, userRole, userName }: Su
               <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-xs font-semibold">
                 {[
                   { id: "all", label: "Tout", icon: BookOpen },
+                  { id: "tools", label: "Outils & Système", icon: Zap },
                   { id: "general", label: "Général", icon: HelpCircle },
                   { id: "orders", label: "Commandes", icon: ShoppingCart },
                   { id: "roles", label: "Rôles", icon: Building2 },

@@ -7,6 +7,20 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 console.log("[WAKATMARKET] SUPABASE-ALIGNMENT-V1");
 
+// Register Service Worker for PWA Offline Capability & Installability
+if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => {
+        console.log("[PWA Service Worker] Enregistré avec succès:", reg.scope);
+      })
+      .catch((err) => {
+        console.warn("[PWA Service Worker] Erreur enregistrement:", err);
+      });
+  });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
