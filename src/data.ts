@@ -408,31 +408,31 @@ class ERPStorage {
   }
 
   saveUsers(users: UserProfile[]): void {
-    // Ne pas persister dans localStorage, Firestore est la source de vérité
+    this.set("wakat_offline_users_cache", users);
   }
 
   getProducts(): Product[] {
-    return [];
+    return this.get("wakat_offline_products_cache", []);
   }
 
   saveProducts(products: Product[]): void {
-    // Ne pas persister dans localStorage, Firestore est la source de vérité
+    this.set("wakat_offline_products_cache", products);
   }
 
   getInventory(): InventoryItem[] {
-    return [];
+    return this.get("wakat_offline_inventory_cache", []);
   }
 
   saveInventory(inventory: InventoryItem[]): void {
-    // Ne pas persister dans localStorage, Firestore est la source de vérité
+    this.set("wakat_offline_inventory_cache", inventory);
   }
 
   getOrders(): Order[] {
-    return [];
+    return this.get("wakat_offline_orders_cache", []);
   }
 
   saveOrders(orders: Order[]): void {
-    // Ne pas persister dans localStorage, Firestore est la source de vérité
+    this.set("wakat_offline_orders_cache", orders);
   }
 
   getMessages(): ChatMessage[] {

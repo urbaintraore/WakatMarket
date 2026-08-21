@@ -27,6 +27,7 @@ import { venteService } from "./services/venteService";
 import { connectionService } from "./services/connectionService";
 import { relationService } from "./services/relationService";
 import { syncService } from "./services/syncService";
+import { offlineStorage } from "./services/offlineStorage";
 import { supabaseConfigError } from "./supabase";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -68,15 +69,19 @@ export default function App() {
   const [orderForPaymentProof, setOrderForPaymentProof] = useState<Order | null>(null);
   const [selectedCountryFilter, setSelectedCountryFilter] = useState<string>("ALL");
   const [syncStatus, setSyncStatus] = useState<{
+    isOnline: boolean;
     isSyncing: boolean;
     pendingCount: number;
+    failedCount: number;
     totalCount: number;
     progress: number;
-    currentTask?: string | null;
+    lastError?: string;
   }>({
+    isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
     isSyncing: false,
-    pendingCount: db.getSyncQueue().filter((t: any) => t.status === 'pending').length,
-    totalCount: db.getSyncQueue().length,
+    pendingCount: 0,
+    failedCount: 0,
+    totalCount: 0,
     progress: 100
   });
   // Theme state
@@ -772,62 +777,23 @@ export default function App() {
     db.savePayments(list);
   };
 
-  // Real-time Sync Status listener
+  // Real-time Sync Status & Queue Subscription
   useEffect(() => {
-    const handleSyncUpdate = (e: CustomEvent) => {
-      if (e.detail) {
-        setSyncStatus({
-          isSyncing: !!e.detail.isSyncing,
-          pendingCount: e.detail.pendingCount ?? 0,
-          totalCount: e.detail.totalCount ?? 0,
-          progress: e.detail.progress ?? 100,
-          currentTask: e.detail.currentTask
-        });
-        if (e.detail.queue) {
-          setSyncQueue(e.detail.queue);
-        }
-      }
-    };
-
-    window.addEventListener('wakat_sync_status_updated' as any, handleSyncUpdate as any);
-    return () => {
-      window.removeEventListener('wakat_sync_status_updated' as any, handleSyncUpdate as any);
-    };
+    const unsubscribe = syncService.subscribe((status, queue) => {
+      setIsOnline(status.isOnline);
+      setSyncStatus({
+        isOnline: status.isOnline,
+        isSyncing: status.isSyncing,
+        pendingCount: status.pendingCount,
+        failedCount: status.failedCount,
+        totalCount: queue.length,
+        progress: status.isSyncing ? 65 : 100,
+        lastError: status.lastError
+      });
+      setSyncQueue(queue);
+    });
+    return () => unsubscribe();
   }, []);
-
-  // Online/Offline Monitor
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      syncService.processQueue();
-    };
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  // Periodic sync check
-  useEffect(() => {
-    if (isOnline) {
-      const interval = setInterval(() => {
-        syncService.processQueue();
-        const currentQ = db.getSyncQueue();
-        setSyncQueue(currentQ);
-        setSyncStatus(prev => ({
-          ...prev,
-          pendingCount: currentQ.filter((t: any) => t.status === 'pending').length,
-          totalCount: currentQ.length
-        }));
-      }, 20000);
-      return () => clearInterval(interval);
-    }
-  }, [isOnline]);
 
   const [toasts, setToasts] = useState<{ id: string; text: string; time: string }[]>([]);
   const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
@@ -1216,7 +1182,7 @@ export default function App() {
     addNotification(`Taux de commission mis à jour à ${rate}%`);
   };
 
-  // Manufacturer catalogs creation
+  // Manufacturer catalogs creation (Offline-First Resilient)
   const handleCreateProduct = async (
     p: Omit<Product, "id" | "creatorId">, 
     initialStock: number, 
@@ -1252,40 +1218,29 @@ export default function App() {
       quantiteMinimum: quantiteMinimum !== undefined ? quantiteMinimum : 1
     };
 
-    // Vérification de sécurité de l'identifiant produit
-    if (newInvItem.productId !== newProd.id) {
-      console.error("[Inventory Sync Validation Error] newInvItem.productId !== newProd.id", {
-        invProductId: newInvItem.productId,
-        prodId: newProd.id
-      });
-      addNotification("Erreur interne : incohérence d'identifiant produit.");
-      return;
-    }
+    // 1. Instant local persistence & React state update (No freeze/lag for user)
+    const updatedProducts = [...products.filter(x => x.id !== newProd.id), newProd];
+    const updatedInventory = [...inventory.filter(x => x.id !== newInvItem.id), newInvItem];
+    setProducts(updatedProducts);
+    setInventory(updatedInventory);
+    db.saveProducts(updatedProducts);
+    db.saveInventory(updatedInventory);
+    await offlineStorage.setItem("products", newProd);
+    await offlineStorage.setItem("inventory", newInvItem);
 
-    let productSaved = false;
+    // 2. Enqueue in SyncQueue with dependency order: Product first, then Inventory
     try {
-      // 1. Enregistrement du produit dans Supabase (table products)
-      await productService.createProduct(newProd);
-      productSaved = true;
-      console.log(`[SYNC TRANSACTION] Étape 1/2 validée : Produit ${newProd.id} enregistré dans products`);
+      const productOp = await syncService.enqueue("product", newProd.id, "CREATE", newProd);
+      await syncService.enqueue("inventory", newInvItem.id, "CREATE", newInvItem, productOp.id);
 
-      // 2. Enregistrement du stock dans Supabase (table inventory)
-      await inventoryService.updateInventoryItem(newInvItem);
-      console.log(`[SYNC TRANSACTION] Étape 2/2 validée : Inventaire ${newInvItem.id} enregistré dans inventory`);
-
-      // 3. Mise à jour de l'état React local uniquement après confirmation complète
-      setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
-      setInventory(prev => [...prev.filter(x => x.id !== newInvItem.id), newInvItem]);
-      addNotification(`Produit et stock synchronisés avec succès : ${p.name}`);
-    } catch (err: any) {
-      console.error("[Erreur de synchronisation Supabase Produit/Stock]:", err);
-      if (productSaved) {
-        // Le produit est enregistré mais pas le stock
-        setProducts(prev => [...prev.filter(x => x.id !== newProd.id), newProd]);
-        addNotification(`Attention : Produit enregistré mais stock non synchronisé (${err?.message || "Erreur inventory"}). Veuillez rééditer le stock.`);
+      if (navigator.onLine) {
+        addNotification(`Produit "${p.name}" enregistré. Synchronisation en cours vers le Cloud...`);
       } else {
-        addNotification(`Échec de création du produit : ${err?.message || "Erreur Supabase"}.`);
+        addNotification(`Produit "${p.name}" enregistré hors ligne. Il sera synchronisé dès le retour d'Internet.`);
       }
+    } catch (err) {
+      console.error("[Sync Queue Enqueue Error]:", err);
+      addNotification(`Produit enregistré localement.`);
     }
   };
 
@@ -1409,13 +1364,10 @@ export default function App() {
       });
       if (changedItem) {
         setInventory(updated);
-        try {
-          await inventoryService.updateInventoryItem(changedItem);
-          addNotification("Stock mis à jour et synchronisé sur le Cloud.");
-        } catch (err) {
-          console.error("Erreur Supabase lors de la mise à jour du stock:", err);
-          addNotification("Stock mis à jour localement (Échec sync. cloud).");
-        }
+        db.saveInventory(updated);
+        await offlineStorage.setItem("inventory", changedItem);
+        await syncService.enqueue("inventory", changedItem.id, "UPDATE", changedItem);
+        addNotification("Stock mis à jour et en cours de synchronisation.");
       }
     } else {
       const newItem: InventoryItem = {
@@ -1430,14 +1382,12 @@ export default function App() {
         quantiteMinimum: quantiteMinimum || 1,
         expirationDate: expirationDate
       };
-      setInventory([...inventory, newItem]);
-      try {
-        await inventoryService.updateInventoryItem(newItem);
-        addNotification(`Nouveau produit ajouté et synchronisé sur le Cloud.`);
-      } catch (err) {
-        console.error("Erreur Supabase lors de l'ajout du stock:", err);
-        addNotification("Produit ajouté localement (Échec sync. cloud).");
-      }
+      const updated = [...inventory, newItem];
+      setInventory(updated);
+      db.saveInventory(updated);
+      await offlineStorage.setItem("inventory", newItem);
+      await syncService.enqueue("inventory", newItem.id, "CREATE", newItem);
+      addNotification("Article ajouté et en cours de synchronisation.");
     }
   };
 
@@ -1449,54 +1399,50 @@ export default function App() {
   ) => {
     if (!currentUser) return;
 
-      if (productData && Object.keys(productData).length > 0) {
-        const updatedProducts = products.map((p) => {
-          if (p.id === productId) {
-            return { ...p, ...productData };
-          }
-          return p;
-        });
-        setProducts(updatedProducts);
-      }
-      
-    try {
-      if (productData && Object.keys(productData).length > 0) {
-        await productService.createOrUpdateProduct({ id: productId, ...productData } as any);
-      }
-
-      if (inventoryItemId && inventoryData) {
-        const targetItem = inventory.find((i) => i.id === inventoryItemId);
-        if (targetItem) {
-          const oldStock = targetItem.stock;
-          const newStock = inventoryData.stock !== undefined ? inventoryData.stock : oldStock;
-          const delta = newStock - oldStock;
-          if (delta !== 0) {
-            recordStockMovement(
-              targetItem.productId,
-              delta > 0 ? "IN" : "OUT",
-              Math.abs(delta),
-              "Modification via page d'édition de stock"
-            );
-          }
-          const updatedInventory = inventory.map((i) => {
-            if (i.id === inventoryItemId) {
-              return { ...i, ...inventoryData };
-            }
-            return i;
-          });
-          setInventory(updatedInventory);
-          await inventoryService.updateInventoryItem({ ...targetItem, ...inventoryData });
+    if (productData && Object.keys(productData).length > 0) {
+      const updatedProducts = products.map((p) => {
+        if (p.id === productId) {
+          return { ...p, ...productData };
         }
-      }
-
-      addNotification("Produit et stock mis à jour et synchronisés sur le Cloud !");
-    } catch (err) {
-      if (err && err.code === 'PGRST204') { /* suppress */ } else { console.error("Erreur Supabase lors de la mise à jour produit/stock:", err); }
-      addNotification("Produit et stock mis à jour localement (Échec sync. cloud).");
+        return p;
+      });
+      setProducts(updatedProducts);
+      db.saveProducts(updatedProducts);
+      const mergedProd = updatedProducts.find(p => p.id === productId);
+      if (mergedProd) await offlineStorage.setItem("products", mergedProd);
+      await syncService.enqueue("product", productId, "UPDATE", { id: productId, ...productData });
     }
+
+    if (inventoryItemId && inventoryData) {
+      const targetItem = inventory.find((i) => i.id === inventoryItemId);
+      if (targetItem) {
+        const oldStock = targetItem.stock;
+        const newStock = inventoryData.stock !== undefined ? inventoryData.stock : oldStock;
+        const delta = newStock - oldStock;
+        if (delta !== 0) {
+          recordStockMovement(
+            targetItem.productId,
+            delta > 0 ? "IN" : "OUT",
+            Math.abs(delta),
+            "Modification via page d'édition de stock"
+          );
+        }
+        const updatedInventory = inventory.map((i) => {
+          if (i.id === inventoryItemId) {
+            return { ...i, ...inventoryData };
+          }
+          return i;
+        });
+        setInventory(updatedInventory);
+        db.saveInventory(updatedInventory);
+        const mergedInv = updatedInventory.find(i => i.id === inventoryItemId);
+        if (mergedInv) await offlineStorage.setItem("inventory", mergedInv);
+        await syncService.enqueue("inventory", inventoryItemId, "UPDATE", { ...targetItem, ...inventoryData });
+      }
+    }
+
+    addNotification("Produit et stock mis à jour (synchronisation en cours).");
   };
-
-
 
   const handleDeleteInventoryItem = async (itemId: string, productId?: string, skipConfirm: boolean = false) => {
     const doDelete = async () => {
@@ -1504,11 +1450,13 @@ export default function App() {
       const targetItemId = itemToDelete ? itemToDelete.id : itemId;
       const targetProdId = productId || itemToDelete?.productId || itemId;
 
-      try {
-        if (targetItemId) await inventoryService.deleteInventoryItem(targetItemId);
-        if (targetProdId) await productService.deleteProduct(targetProdId);
-      } catch (err) {
-        console.warn("Error deleting inventory item via service:", err);
+      if (targetItemId) {
+        await syncService.enqueue("inventory", targetItemId, "DELETE", { id: targetItemId });
+        await offlineStorage.removeItem("inventory", targetItemId);
+      }
+      if (targetProdId) {
+        await syncService.enqueue("product", targetProdId, "DELETE", { id: targetProdId });
+        await offlineStorage.removeItem("products", targetProdId);
       }
 
       const updatedInventory = inventory.filter((item) => item.id !== targetItemId && item.productId !== targetProdId);
@@ -2478,38 +2426,80 @@ export default function App() {
 
             {/* Real-time Synchronization Status Badge / Spinner */}
             <div className="flex items-center">
-              {syncStatus.isSyncing ? (
+              {!syncStatus.isOnline ? (
                 <button
-                  onClick={() => syncService.processQueue()}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-amber-100 transition shadow-xs"
-                  title="Traitement de la file de synchronisation en cours..."
+                  onClick={() => {
+                    addNotification("Tentative de reconnexion et synchronisation...");
+                    syncService.triggerSync();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-semibold cursor-pointer hover:bg-amber-100 transition shadow-xs"
+                  title="Vous êtes actuellement en mode hors ligne. Vos modifications sont enregistrées localement et seront synchronisées au retour de la connexion."
+                  id="header-sync-offline-badge"
                 >
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400 shrink-0" />
+                  <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="hidden sm:inline">Hors ligne</span>
+                  {syncStatus.pendingCount > 0 && (
+                    <span className="bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 px-1.5 py-0.2 rounded-full text-[10px] font-bold">
+                      {syncStatus.pendingCount}
+                    </span>
+                  )}
+                </button>
+              ) : syncStatus.isSyncing ? (
+                <button
+                  onClick={() => syncService.triggerSync()}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 rounded-xl text-xs font-bold cursor-pointer hover:bg-indigo-100 transition shadow-xs"
+                  title="Synchronisation vers Supabase en cours..."
+                  id="header-sync-syncing-badge"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400 shrink-0" />
                   <span className="hidden sm:inline">Synchro...</span>
-                  <span className="bg-amber-200 dark:bg-amber-800/80 px-1.5 py-0.5 rounded-md text-[10px]">
-                    {syncStatus.progress}%
+                  <span className="bg-indigo-200 dark:bg-indigo-800/80 px-1.5 py-0.5 rounded-md text-[10px]">
+                    {syncStatus.pendingCount}
+                  </span>
+                </button>
+              ) : syncStatus.failedCount > 0 ? (
+                <button 
+                  onClick={() => {
+                    addNotification("Nouvelle tentative de synchronisation des éléments échoués...");
+                    syncService.retryFailedOperations();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-semibold hover:bg-rose-100 transition cursor-pointer shadow-xs animate-pulse"
+                  title="Certaines modifications n'ont pas pu être synchronisées. Cliquez pour ré-essayer."
+                  id="header-sync-failed-badge"
+                >
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                  <span className="hidden sm:inline">Erreur Synchro</span>
+                  <span className="bg-rose-200 dark:bg-rose-900/60 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
+                    {syncStatus.failedCount}
                   </span>
                 </button>
               ) : syncStatus.pendingCount > 0 ? (
                 <button 
-                  onClick={() => syncService.processQueue()}
+                  onClick={() => syncService.triggerSync()}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-semibold hover:bg-indigo-100 transition cursor-pointer"
-                  title="Cliquer pour forcer la synchronisation"
+                  title="Cliquer pour forcer la synchronisation vers le Cloud"
+                  id="header-sync-pending-badge"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
-                  <span className="hidden sm:inline">Synchro</span>
+                  <span className="hidden sm:inline">En attente</span>
                   <span className="bg-indigo-200 dark:bg-indigo-900/60 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
                     {syncStatus.pendingCount}
                   </span>
                 </button>
               ) : (
-                <div 
-                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-[11px] font-semibold"
-                  title="Toutes les opérations sont synchronisées"
+                <button 
+                  onClick={() => {
+                    addNotification("Vérification de la synchronisation avec Supabase...");
+                    syncService.triggerSync();
+                  }}
+                  className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 rounded-xl text-[11px] font-semibold hover:bg-emerald-100/60 transition cursor-pointer"
+                  title="Toutes les données locales sont synchronisées avec le Cloud. Cliquez pour rafraîchir."
+                  id="header-sync-ok-badge"
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="hidden xl:inline">Synchro OK</span>
-                </div>
+                  <span className="hidden xl:inline">En ligne & Synchronisé</span>
+                  <span className="xl:hidden">Synchro OK</span>
+                </button>
               )}
             </div>
             {/* Mobile Outils Menu Dropdown Button */}
