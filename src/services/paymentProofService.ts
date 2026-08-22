@@ -35,7 +35,7 @@ export interface RejetPaiementParams {
 export const paymentProofService = {
   /**
    * 1. Téléverse la capture d'écran vers Supabase Storage (MonBucket)
-   * et met à jour le statut du paiement dans Supabase PostgreSQL
+   * et envoie une notification au vendeur
    */
   async uploadPreuvePaiement({
     venteId,
@@ -60,20 +60,6 @@ export const paymentProofService = {
     }
     const downloadUrl = res.publicUrl;
 
-    // Mise à jour de la commande dans PostgreSQL
-    const updateData = {
-      statut_paiement: "preuve_soumise",
-      payment_proof_url: downloadUrl,
-      payment_proof_storage_path: storagePath,
-      updated_at: new Date().toISOString()
-    };
-
-    try {
-      await supabase.from("orders").update(updateData).eq("id", venteId);
-    } catch (e) {
-      console.warn("Notice update order proof:", e);
-    }
-
     // Notifier le vendeur
     if (vendeurId) {
       try {
@@ -82,15 +68,8 @@ export const paymentProofService = {
           id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
           user_id: vendeurId,
           title: "Preuve de paiement soumise",
-          type: "preuve_paiement_a_valider",
           read: false,
-          metadata: {
-            venteId,
-            orderId: venteId,
-            expediteurId: acheteurId,
-            preuvePaiementUrl: downloadUrl
-          },
-          message: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Veuillez la vérifier.`
+          message: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Voir: ${downloadUrl}`
         });
       } catch (notifErr) {
         console.warn("Notice notif creation:", notifErr);
@@ -122,17 +101,9 @@ export const paymentProofService = {
       throw new Error("Supabase n'est pas initialisé.");
     }
 
-    // 1. Mise à jour de la commande dans Supabase PostgreSQL
-    const updatePayload = {
-      statut_paiement: "valide",
-      payment_status: "PAID",
-      amount_paid: totalAmount,
-      status: OrderStatus.CONFIRMED,
-      updated_at: new Date().toISOString()
-    };
-
+    // 1. Mise à jour de la commande dans Supabase PostgreSQL (champ 'status')
     try {
-      await supabase.from("orders").update(updatePayload).eq("id", venteId);
+      await supabase.from("orders").update({ status: OrderStatus.CONFIRMED }).eq("id", venteId);
     } catch (e) {
       console.warn("Notice update order validation:", e);
     }
@@ -171,14 +142,7 @@ export const paymentProofService = {
           id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
           user_id: acheteurId,
           title: "Paiement validé",
-          type: "paiement_valide",
           read: false,
-          metadata: {
-            venteId,
-            orderId: venteId,
-            expediteurId: vendeurId,
-            factureUrl
-          },
           message: `Votre paiement de ${totalAmount.toLocaleString("fr-FR")} FCFA a été validé avec succès par ${sellerLabel}. Votre facture officielle est prête.`
         });
       } catch (notifErr) {
@@ -209,14 +173,8 @@ export const paymentProofService = {
 
     const cleanComment = commentaire.trim() || "Preuve non conforme ou montant incorrect.";
 
-    const updatePayload = {
-      statut_paiement: "rejete",
-      rejection_reason: cleanComment,
-      updated_at: new Date().toISOString()
-    };
-
     try {
-      await supabase.from("orders").update(updatePayload).eq("id", venteId);
+      await supabase.from("orders").update({ status: OrderStatus.CANCELLED }).eq("id", venteId);
     } catch (e) {
       console.warn("Notice update order rejection:", e);
     }
@@ -229,14 +187,7 @@ export const paymentProofService = {
           id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
           user_id: acheteurId,
           title: "Preuve de paiement rejetée",
-          type: "paiement_rejete",
           read: false,
-          metadata: {
-            venteId,
-            orderId: venteId,
-            expediteurId: vendeurId,
-            commentaire: cleanComment
-          },
           message: `${sellerLabel} a rejeté votre preuve de paiement. Motif : "${cleanComment}". Veuillez vérifier votre transaction et soumettre une nouvelle capture.`
         });
       } catch (notifErr) {
@@ -251,3 +202,4 @@ export const paymentProofService = {
     return { success: true };
   }
 };
+

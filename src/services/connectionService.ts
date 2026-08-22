@@ -32,14 +32,12 @@ export const connectionService = {
       updatedAt: nowIso
     };
 
-    // 1. Sauvegarder dans 'relations'
+    // 1. Sauvegarder dans 'relations' (grossiste_id, client_id, statut)
     const { error: relError } = await supabase.from("relations").upsert({
       id: connectionId,
-      sender_id: sender.id,
-      receiver_id: receiver.id,
-      status: initialStatus === "active" ? "ACTIVE" : "PENDING",
-      notes: notes || null,
-      updated_at: nowIso
+      grossiste_id: sender.id,
+      client_id: receiver.id,
+      statut: initialStatus === "active" ? "ACTIF" : "PENDING"
     });
 
     if (relError) {
@@ -54,9 +52,7 @@ export const connectionService = {
           id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           user_id: receiver.id,
           title: "Demande de connexion d'affaires",
-          type: "demande_connexion",
           read: false,
-          metadata: { relationId: connectionId, senderId: sender.id },
           message: `${sender.companyName || sender.name} (${sender.role}) souhaite vous ajouter comme partenaire d'affaires.`
         });
       } catch (notifErr) {
@@ -72,11 +68,10 @@ export const connectionService = {
    */
   async acceptConnection(connectionId: string, _currentUserId?: string): Promise<void> {
     if (!supabase) return;
-    const nowIso = new Date().toISOString();
 
     const { error } = await supabase
       .from("relations")
-      .update({ status: "ACTIVE", updated_at: nowIso })
+      .update({ statut: "ACTIF" })
       .eq("id", connectionId);
 
     if (error) {
@@ -90,11 +85,10 @@ export const connectionService = {
    */
   async rejectConnection(connectionId: string): Promise<void> {
     if (!supabase) return;
-    const nowIso = new Date().toISOString();
 
     const { error } = await supabase
       .from("relations")
-      .update({ status: "BLOCKED", updated_at: nowIso })
+      .update({ statut: "BLOCKED" })
       .eq("id", connectionId);
 
     if (error) {
@@ -147,7 +141,7 @@ export const connectionService = {
       const { data, error } = await supabase
         .from("relations")
         .select("*")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+        .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
       if (error) {
         console.warn("Erreur fetch connections Supabase:", error.message);
@@ -156,16 +150,16 @@ export const connectionService = {
 
       const list: Connection[] = (data || []).map((row: any) => ({
         id: row.id,
-        senderId: row.sender_id,
-        receiverId: row.receiver_id,
-        status: (row.status === "ACTIVE" ? "active" : row.status === "BLOCKED" ? "bloque" : "en_attente") as any,
+        senderId: row.grossiste_id,
+        receiverId: row.client_id,
+        status: (row.statut === "ACTIF" ? "active" : row.statut === "BLOCKED" ? "bloque" : "en_attente") as any,
         senderName: "Partenaire",
         senderRole: UserRole.WHOLESALER,
         receiverName: "Partenaire",
         receiverRole: UserRole.RETAILER,
-        notes: row.notes || "",
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
+        notes: "",
+        createdAt: row.created_at || new Date().toISOString(),
+        updatedAt: row.created_at || new Date().toISOString()
       }));
 
       callback(list);
@@ -210,17 +204,14 @@ export const connectionService = {
 
       const list = (data || []).map((row: any) => ({
         id: row.id,
-        relationId: row.metadata?.relationId,
-        orderId: row.metadata?.orderId || row.metadata?.venteId,
-        type: row.type || "general",
-        contenu: row.message,
-        message: row.message,
-        title: row.title,
+        type: "general",
+        contenu: row.message || row.title,
+        message: row.message || row.title,
+        title: row.title || row.message,
         lu: Boolean(row.read),
         read: Boolean(row.read),
-        dateCreation: row.created_at,
-        timestamp: row.created_at,
-        metadata: row.metadata || {}
+        dateCreation: row.created_at || new Date().toISOString(),
+        timestamp: row.created_at || new Date().toISOString(),
       }));
 
       callback(list);
@@ -259,3 +250,4 @@ export const connectionService = {
     }
   }
 };
+

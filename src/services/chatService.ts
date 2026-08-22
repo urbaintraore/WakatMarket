@@ -12,7 +12,6 @@ export const chatService = {
     try {
       await supabase.from("conversations").upsert({
         id: convId,
-        type: "PRIVATE",
         participants: [currentUserId, otherUserId],
         updated_at: new Date().toISOString()
       });
@@ -30,8 +29,8 @@ export const chatService = {
     creatorId: string,
     name: string,
     participantIds: string[],
-    description?: string,
-    image?: string
+    _description?: string,
+    _image?: string
   ): Promise<string> {
     const convId = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     if (!supabase) return convId;
@@ -39,13 +38,8 @@ export const chatService = {
     const allParticipants = Array.from(new Set([creatorId, ...participantIds]));
     await supabase.from("conversations").insert({
       id: convId,
-      type: "GROUP",
-      group_name: name,
-      group_description: description || "",
-      group_image: image || "",
-      created_by: creatorId,
       participants: allParticipants,
-      created_at: new Date().toISOString(),
+      last_message: `Groupe ${name} créé`,
       updated_at: new Date().toISOString()
     });
 
@@ -60,26 +54,22 @@ export const chatService = {
     senderId: string,
     typeOrContent: MessageType | string,
     contentOrType: string | MessageType = "",
-    metadata?: Record<string, any>,
+    _metadata?: Record<string, any>,
     _receiverOrParticipants?: string | string[]
   ): Promise<string> {
     if (!supabase) {
       throw new Error("Supabase n'est pas initialisé.");
     }
 
-    let finalType: MessageType = MessageType.TEXT;
     let finalContent = "";
 
     const allTypes = Object.values(MessageType) as string[];
     if (allTypes.includes(typeOrContent as string)) {
-      finalType = typeOrContent as MessageType;
       finalContent = typeof contentOrType === "string" ? contentOrType : String(contentOrType || "");
     } else if (allTypes.includes(contentOrType as string)) {
       finalContent = String(typeOrContent || "");
-      finalType = contentOrType as MessageType;
     } else {
       finalContent = String(typeOrContent || "");
-      finalType = MessageType.TEXT;
     }
 
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -89,10 +79,8 @@ export const chatService = {
       id: messageId,
       conversation_id: conversationId,
       sender_id: senderId,
-      content: finalContent,
-      type: finalType || MessageType.TEXT,
-      status: MessageStatus.SENT,
-      metadata: metadata || {},
+      sender_name: "Expéditeur",
+      text: finalContent,
       created_at: nowIso
     };
 
@@ -102,10 +90,10 @@ export const chatService = {
       throw error;
     }
 
-    // Mettre à jour la date de mise à jour de la conversation
+    // Mettre à jour last_message dans la conversation
     await supabase
       .from("conversations")
-      .update({ updated_at: nowIso })
+      .update({ last_message: finalContent, updated_at: nowIso })
       .eq("id", conversationId);
 
     return messageId;
@@ -166,11 +154,11 @@ export const chatService = {
         id: row.id,
         conversationId: row.conversation_id,
         senderId: row.sender_id,
-        content: row.content,
-        type: row.type || MessageType.TEXT,
-        status: (row.status as MessageStatus) || MessageStatus.DELIVERED,
-        timestamp: row.created_at,
-        metadata: row.metadata || {}
+        content: row.text || "",
+        type: MessageType.TEXT,
+        status: MessageStatus.DELIVERED,
+        timestamp: row.created_at || new Date().toISOString(),
+        metadata: {}
       }));
 
       callback(list);
@@ -215,16 +203,13 @@ export const chatService = {
 
       const list: Conversation[] = (data || []).map((row: any) => ({
         id: row.id,
-        type: row.type || "PRIVATE",
+        type: "PRIVATE",
         participants: row.participants || [],
-        groupName: row.group_name,
-        groupDescription: row.group_description,
-        groupImage: row.group_image,
-        createdBy: row.created_by,
+        groupName: "Discussion",
         participantDetails: {},
         unreadCount: {},
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
+        createdAt: row.created_at || new Date().toISOString(),
+        updatedAt: row.updated_at || new Date().toISOString()
       }));
 
       callback(list);
@@ -260,7 +245,6 @@ export const chatService = {
    * Marquer une conversation comme lue
    */
   async markConversationAsRead(_conversationId: string, _userId: string): Promise<void> {
-    // Read state management
     return;
   },
 
@@ -272,10 +256,11 @@ export const chatService = {
     try {
       await supabase
         .from("messages")
-        .update({ content: transcription })
+        .update({ text: transcription })
         .eq("id", messageId);
     } catch (e) {
       console.warn("Notice save transcription:", e);
     }
   }
 };
+

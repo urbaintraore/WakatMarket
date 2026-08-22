@@ -1,5 +1,6 @@
 import { Product } from "../types";
 import { supabase, uploadToSupabaseStorage, formatStorageUrl, supabaseConfigError } from "../supabase";
+import { productToDb, productFromDb } from "./dbMappers";
 
 export interface ProductUploadResult {
   publicUrl: string;
@@ -8,28 +9,7 @@ export interface ProductUploadResult {
 }
 
 function mapRowToProduct(row: any): Product {
-  const imageUrl = formatStorageUrl(row.image_url || row.image);
-  return {
-    id: row.id,
-    name: row.name || "",
-    description: row.description || "",
-    category: row.category || "",
-    subCategory: row.sub_category || "",
-    brand: row.brand || "",
-    unit: row.unit || "Pièce",
-    weight: row.weight ? Number(row.weight) : 0,
-    volume: row.volume ? Number(row.volume) : 0,
-    image: imageUrl,
-    imageUrl: imageUrl,
-    barcode: "",
-    qrCode: row.qr_code || "",
-    expirationDate: row.expiration_date || undefined,
-    creatorId: row.creator_id || "",
-    prixGros: row.prix_gros ? Number(row.prix_gros) : (row.base_price ? Number(row.base_price) : undefined),
-    prixDetail: row.prix_detail ? Number(row.prix_detail) : undefined,
-    quantiteMinimum: row.quantite_minimum ? Number(row.quantite_minimum) : 1,
-    typeVente: row.type_vente || "BOTH"
-  };
+  return productFromDb(row);
 }
 
 async function base64ToFile(base64: string, filename: string): Promise<File> {
@@ -126,7 +106,6 @@ export const productService = {
     }
 
     let finalImageUrl = product.imageUrl || product.image || "";
-    let storagePath: string | null = (product as any).imagePath || null;
 
     // 1. Si l'image est en base64, l'uploader sur Supabase Storage (MonBucket)
     if (finalImageUrl.startsWith("data:image")) {
@@ -134,28 +113,17 @@ export const productService = {
         const file = await base64ToFile(finalImageUrl, `prod_${product.id}.jpg`);
         const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
         finalImageUrl = uploadRes.publicUrl;
-        storagePath = uploadRes.storagePath;
       } catch (uploadError) {
         console.warn("Échec de l'upload de l'image sur Supabase Storage, utilisation du Base64 en fallback:", uploadError);
-        // On conserve finalImageUrl comme base64
       }
     }
 
-    // 2. Persister directement dans la table PostgreSQL 'products'
-    const record = {
-      id: product.id,
-      name: product.name,
-      description: product.description || "",
-      category: product.category || "Alimentation",
-      brand: product.brand || null,
-      unit: product.unit || "Pièce",
-      creator_id: product.creatorId || null,
-      prix_gros: product.prixGros || null,
-      prix_detail: product.prixDetail || null,
-      image: finalImageUrl || null,
-      barcode: product.barcode || null,
-      expiration_date: product.expirationDate || null
-    };
+    // 2. Persister directement dans la table PostgreSQL 'products' via mapper centralisé
+    const record = productToDb({
+      ...product,
+      image: finalImageUrl,
+      imageUrl: finalImageUrl,
+    });
 
     const { data, error } = await supabase
       .from("products")
@@ -186,21 +154,10 @@ export const productService = {
    */
   async updateProduct(id: string, updates: Partial<Product>): Promise<void> {
     if (!supabase) return;
-    const dbUpdates: Record<string, any> = {};
+    const dbUpdates = productToDb(updates);
+    delete dbUpdates.id;
 
-    if (updates.name !== undefined) dbUpdates.name = updates.name;
-    if (updates.description !== undefined) dbUpdates.description = updates.description;
-    if (updates.category !== undefined) dbUpdates.category = updates.category;
-    if (updates.brand !== undefined) dbUpdates.brand = updates.brand;
-    if (updates.unit !== undefined) dbUpdates.unit = updates.unit;
-    if (updates.creatorId !== undefined) dbUpdates.creator_id = updates.creatorId;
-    if (updates.prixGros !== undefined) dbUpdates.prix_gros = updates.prixGros;
-    if (updates.prixDetail !== undefined) dbUpdates.prix_detail = updates.prixDetail;
-    if (updates.barcode !== undefined) dbUpdates.barcode = updates.barcode;
-    if (updates.expirationDate !== undefined) dbUpdates.expiration_date = updates.expirationDate;
-    if (updates.image !== undefined || updates.imageUrl !== undefined) {
-      dbUpdates.image = formatStorageUrl(updates.imageUrl || updates.image);
-    }
+    if (Object.keys(dbUpdates).length === 0) return;
 
     const { error } = await supabase.from("products").update(dbUpdates).eq("id", id);
     if (error) {
@@ -228,3 +185,4 @@ export const productService = {
     return this.createProduct(product);
   }
 };
+

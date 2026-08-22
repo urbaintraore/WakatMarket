@@ -147,24 +147,9 @@ export const billingService = {
         } catch (stErr) {
           console.warn("Erreur upload facture Supabase Storage:", stErr);
         }
-
-        // 5. Enregistrement des métadonnées dans PostgreSQL (table invoices / orders)
-        try {
-          await supabase.from("invoices").insert({
-            id: `inv-${Date.now()}`,
-            invoice_number: numeroFacture,
-            order_id: data.venteId,
-            seller_id: data.vendeurId,
-            buyer_id: data.acheteurId || null,
-            total_amount: data.total,
-            pdf_url: urlPDF,
-            created_at: new Date().toISOString()
-          });
-        } catch (dbErr) {
-          console.warn("Notice insertion invoice Supabase:", dbErr);
-        }
       }
 
+      // 5. PDF téléversé dans Supabase Storage
       return urlPDF || URL.createObjectURL(pdfBlob);
     } catch (error) {
       console.error("Erreur lors de la génération de la facture:", error);

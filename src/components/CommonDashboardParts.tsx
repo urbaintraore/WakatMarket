@@ -2183,14 +2183,15 @@ interface ExpirationAlertsBannerProps {
   }>;
 }
 
-export const ExpirationAlertsBanner: React.FC<ExpirationAlertsBannerProps> = ({ alerts }) => {
+export function ExpirationAlertsBanner({ alerts }: ExpirationAlertsBannerProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
-  if (!alerts || alerts.length === 0 || !isOpen) return null;
+  const safeAlerts = alerts || [];
+  if (safeAlerts.length === 0 || !isOpen) return null;
 
-  const expiredCount = alerts.filter(a => a.isExpired).length;
-  const expiringSoonCount = alerts.filter(a => !a.isExpired).length;
+  const expiredCount = safeAlerts.filter(a => a?.isExpired).length;
+  const expiringSoonCount = safeAlerts.filter(a => a && !a.isExpired).length;
 
   return (
     <>

@@ -71,7 +71,7 @@ export function PaiementsAValiderModule({
         const { data, error } = await supabase
           .from("orders")
           .select("*")
-          .eq("seller_id", currentId)
+          .or(`sender_id.eq.${currentId},receiver_id.eq.${currentId}`)
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -82,16 +82,18 @@ export function PaiementsAValiderModule({
 
         const formatted = (data || []).map((row: any) => ({
           id: row.id,
-          acheteurId: row.buyer_id,
-          acheteurNom: row.buyer_id,
-          total: row.total_amount,
-          totalAmount: row.total_amount,
-          statutPaiement: row.statut_paiement || (row.payment_status === "PAID" ? "valide" : "en_attente_preuve"),
-          paymentStatus: row.payment_status,
-          preuvePaiementUrl: row.payment_proof_url,
-          paymentMethod: row.payment_method || "Mobile Money",
-          commentaireRejet: row.rejection_reason,
-          lignes: row.items || [],
+          acheteurId: row.sender_id,
+          acheteurNom: row.sender_name || row.sender_id,
+          vendeurId: row.receiver_id,
+          vendeurNom: row.receiver_name || row.receiver_id,
+          total: Number(row.total || 0),
+          totalAmount: Number(row.total || 0),
+          statutPaiement: row.status === "PAID" || row.status === "CONFIRMED" ? "valide" : "en_attente_preuve",
+          paymentStatus: row.status,
+          preuvePaiementUrl: undefined,
+          paymentMethod: "Mobile Money",
+          commentaireRejet: undefined,
+          lignes: typeof row.items === "string" ? JSON.parse(row.items || "[]") : (row.items || []),
           createdAt: row.created_at
         }));
 
@@ -107,10 +109,10 @@ export function PaiementsAValiderModule({
 
     const uniqueId = Math.random().toString(36).substring(7);
     const channel = supabase
-      .channel(`public:orders:seller:${currentId}:${uniqueId}`)
+      .channel(`public:orders:user:${currentId}:${uniqueId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders", filter: `seller_id=eq.${currentId}` },
+        { event: "*", schema: "public", table: "orders" },
         () => {
           fetchSales();
         }

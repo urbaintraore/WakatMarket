@@ -1,5 +1,6 @@
 import { supabase } from "../supabase";
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou } from "../types";
+import { profileToDb } from "./dbMappers";
 
 export interface UserProfileData {
   uid: string;
@@ -48,23 +49,21 @@ export const userService = {
       normRole = UserRole.SEMI_WHOLESALER;
     }
 
-    const fullName = `${user.prénom || ""} ${user.nom || ""}`.trim() || user.email.split("@")[0];
+    const companyOrFullName = (user.companyName || user.nomDEntreprise || `${user.prénom || ""} ${user.nom || ""}`).trim();
 
-    const profileRecord = {
+    const profileRecord = profileToDb({
       id: user.uid,
       email: user.email.trim().toLowerCase(),
-      name: fullName,
+      name: companyOrFullName,
+      companyName: companyOrFullName,
       phone: user.téléphone || user.phone || "",
       role: normRole,
-      company_name: user.companyName || user.nomDEntreprise || "",
       address: [user.quartier, user.ville, user.pays].filter(Boolean).join(", ") || user.address || "",
-      rccm: user.rccm || "",
-      ifu: user.ifu || "",
-      logo_url: user.logoUrl || "",
-      balance: user.balance || 0,
-      credit_limit: user.creditLimit || 0,
-      updated_at: new Date().toISOString()
-    };
+      region: user.ville,
+      country: user.pays,
+      avatar: user.logoUrl,
+      creditLimit: user.creditLimit || 0,
+    });
 
     try {
       const { error } = await supabase.from("profiles").upsert(profileRecord);
@@ -99,34 +98,33 @@ export const userService = {
       let normRole = normalizeUserRole(data.role);
       if (data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") {
         normRole = UserRole.ADMIN;
-      } else if (isBonkoungou(data.email, data.company_name, data.name)) {
+      } else if (isBonkoungou(data.email, data.nom, data.prenom)) {
         normRole = UserRole.SEMI_WHOLESALER;
       }
 
-      const nameParts = (data.name || "").split(" ");
-      const prénom = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : data.name || "";
-      const nom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+      const fullName = [data.nom, data.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
 
       const userProfile: UserProfileData = {
         uid: data.id,
         id: data.id,
-        nom: nom || data.name || "Utilisateur",
-        prénom: prénom || "",
-        email: data.email,
-        téléphone: data.phone || "",
-        phone: data.phone || "",
+        nom: data.nom || fullName,
+        prénom: data.prenom || "",
+        email: data.email || "",
+        téléphone: data.telephone || "",
+        phone: data.telephone || "",
         rôle: normRole,
         role: normRole,
         dateCréation: data.created_at || new Date().toISOString(),
         statut: "ACTIF",
-        companyName: data.company_name || "",
-        nomDEntreprise: data.company_name || "",
+        companyName: fullName,
+        nomDEntreprise: fullName,
         address: data.address || "",
-        rccm: data.rccm || "",
-        ifu: data.ifu || "",
-        logoUrl: data.logo_url || "",
-        balance: Number(data.balance || 0),
-        creditLimit: Number(data.credit_limit || 0)
+        ville: data.ville || "",
+        quartier: data.quartier || "",
+        pays: data.pays || "Burkina Faso",
+        logoUrl: data.avatar || "",
+        balance: 0,
+        creditLimit: Number(data.limite_credit || 0)
       };
 
       return userProfile;
@@ -162,28 +160,20 @@ export const userService = {
   async updateUser(uid: string, fields: Partial<UserProfileData>): Promise<void> {
     if (!supabase || !uid) return;
 
-    const updates: Record<string, any> = {
-      updated_at: new Date().toISOString()
-    };
+    const updates: Record<string, any> = {};
 
-    if (fields.nom || fields.prénom) {
-      updates.name = `${fields.prénom || ""} ${fields.nom || ""}`.trim();
-    }
-    if (fields.téléphone || fields.phone) {
-      updates.phone = fields.téléphone || fields.phone;
-    }
-    if (fields.companyName || fields.nomDEntreprise) {
-      updates.company_name = fields.companyName || fields.nomDEntreprise;
-    }
-    if (fields.rôle || fields.role) {
-      updates.role = normalizeUserRole(fields.rôle || fields.role);
-    }
-    if (fields.address) updates.address = fields.address;
-    if (fields.rccm) updates.rccm = fields.rccm;
-    if (fields.ifu) updates.ifu = fields.ifu;
-    if (fields.logoUrl) updates.logo_url = fields.logoUrl;
-    if (fields.balance !== undefined) updates.balance = fields.balance;
-    if (fields.creditLimit !== undefined) updates.credit_limit = fields.creditLimit;
+    if (fields.nom !== undefined) updates.nom = fields.nom;
+    if (fields.prénom !== undefined) updates.prenom = fields.prénom;
+    if (fields.téléphone || fields.phone) updates.telephone = fields.téléphone || fields.phone;
+    if (fields.rôle || fields.role) updates.role = normalizeUserRole(fields.rôle || fields.role);
+    if (fields.address !== undefined) updates.address = fields.address;
+    if (fields.ville !== undefined) updates.ville = fields.ville;
+    if (fields.quartier !== undefined) updates.quartier = fields.quartier;
+    if (fields.pays !== undefined) updates.pays = fields.pays;
+    if (fields.logoUrl !== undefined) updates.avatar = fields.logoUrl;
+    if (fields.creditLimit !== undefined) updates.limite_credit = fields.creditLimit;
+
+    if (Object.keys(updates).length === 0) return;
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
     if (error) {
@@ -224,33 +214,32 @@ export const userService = {
         let normRole = normalizeUserRole(row.role);
         if (row.email === "urbain.traore@yahoo.fr" || row.email === "urbain.traoreurb@gmail.com") {
           normRole = UserRole.ADMIN;
-        } else if (isBonkoungou(row.email, row.company_name, row.name)) {
+        } else if (isBonkoungou(row.email, row.nom, row.prenom)) {
           normRole = UserRole.SEMI_WHOLESALER;
         }
-        const nameParts = (row.name || "").split(" ");
-        const prénom = nameParts.length > 1 ? nameParts.slice(0, -1).join(" ") : row.name || "";
-        const nom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : "";
+        const fullName = [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
 
         return {
           uid: row.id,
           id: row.id,
-          nom: nom || row.name || "Utilisateur",
-          prénom: prénom || "",
-          email: row.email,
-          téléphone: row.phone || "",
-          phone: row.phone || "",
+          nom: row.nom || fullName,
+          prénom: row.prenom || "",
+          email: row.email || "",
+          téléphone: row.telephone || "",
+          phone: row.telephone || "",
           rôle: normRole,
           role: normRole,
           dateCréation: row.created_at,
           statut: "ACTIF",
-          companyName: row.company_name || "",
-          nomDEntreprise: row.company_name || "",
+          companyName: fullName,
+          nomDEntreprise: fullName,
           address: row.address || "",
-          rccm: row.rccm || "",
-          ifu: row.ifu || "",
-          logoUrl: row.logo_url || "",
-          balance: Number(row.balance || 0),
-          creditLimit: Number(row.credit_limit || 0)
+          ville: row.ville || "",
+          quartier: row.quartier || "",
+          pays: row.pays || "Burkina Faso",
+          logoUrl: row.avatar || "",
+          balance: 0,
+          creditLimit: Number(row.limite_credit || 0)
         };
       });
     } catch (e) {
@@ -292,3 +281,4 @@ export const userService = {
     return this.subscribeToUsers(callback);
   }
 };
+

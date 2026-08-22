@@ -1,5 +1,12 @@
 import { supabase } from "../supabase";
 import { offlineStorage } from "./offlineStorage";
+import {
+  productToDb,
+  inventoryToDb,
+  orderToDb,
+  profileToDb,
+  relationToDb
+} from "./dbMappers";
 
 export type EntityType = "product" | "inventory" | "order" | "profile" | "relation" | "payment" | "lightClient";
 export type OperationType = "CREATE" | "UPDATE" | "DELETE";
@@ -229,15 +236,11 @@ class SyncService {
 
     this.isSyncing = true;
     this.notifyListeners();
-    console.log(`[Sync Engine] Démarrage de la synchronisation de ${this.queue.length} opération(s)...`);
+    console.log(`[SYNC START] Démarrage de la synchronisation de ${this.queue.length} opération(s)...`);
 
     try {
-      // Créer une copie ordonnée :
-      // 1. Les dépendances d'abord (e.g. PRODUCT avant INVENTORY)
-      // 2. Ordre chronologique
       const completedOpIds = new Set<string>();
 
-      // Boucle tant qu'il y a des opérations 'pending' prêtes à être exécutées
       let hasProgress = true;
       while (hasProgress) {
         hasProgress = false;
@@ -245,10 +248,10 @@ class SyncService {
         const candidateOps = this.queue.filter((op) => {
           if (op.status !== "pending") return false;
           if (op.dependsOn && !completedOpIds.has(op.dependsOn)) {
-            // Vérifier si la dépendance est encore dans la file
             const depExistsInQueue = this.queue.some((other) => other.id === op.dependsOn);
             if (depExistsInQueue) {
-              return false; // Attendre que la dépendance soit terminée
+              console.log(`[SYNC DEPENDENCY BLOCKED] Opération ${op.id} attend la dépendance ${op.dependsOn}`);
+              return false;
             }
           }
           return true;
@@ -260,14 +263,13 @@ class SyncService {
           op.status = "syncing";
           this.notifyListeners();
 
-          console.log(`[Sync Engine] Exécution de l'opération ${op.id} (${op.operation} ${op.entity} #${op.entityId})...`);
+          console.log(`[SYNC OPERATION] Exécution: ${op.operation} ${op.entity} (ID: ${op.entityId}, OpID: ${op.id})`);
 
           const success = await this.executeOperation(op);
 
           if (success) {
-            console.log(`[Sync Engine] Opération ${op.id} synchronisée avec SUCCÈS sur Supabase.`);
+            console.log(`[SYNC SUCCESS] Opération ${op.id} synchronisée avec succès.`);
             completedOpIds.add(op.id);
-            // Supprimer de la file locale
             this.queue = this.queue.filter((item) => item.id !== op.id);
             await offlineStorage.removeItem("sync_queue", op.id);
             hasProgress = true;
@@ -275,7 +277,7 @@ class SyncService {
           } else {
             op.status = "failed";
             op.retryCount += 1;
-            console.warn(`[Sync Engine] Échec de l'opération ${op.id} (Tentative ${op.retryCount}/${op.maxRetries || 5})`);
+            console.warn(`[SYNC FAILED] Échec opération ${op.id} (Essai ${op.retryCount}/${op.maxRetries || 5})`);
             await offlineStorage.setItem("sync_queue", op);
           }
 
@@ -283,12 +285,12 @@ class SyncService {
         }
       }
     } catch (e: any) {
-      console.error("[Sync Engine] Erreur globale de synchronisation:", e);
+      console.error("[SYNC FAILED] Erreur globale de synchronisation:", e);
       this.lastError = e.message || String(e);
     } finally {
       this.isSyncing = false;
       this.notifyListeners();
-      console.log(`[Sync Engine] Fin du cycle de synchronisation. Opérations restantes : ${this.queue.length}`);
+      console.log(`[SYNC END] Fin du cycle de synchronisation. Opérations restantes : ${this.queue.length}`);
     }
   }
 
@@ -314,8 +316,8 @@ class SyncService {
         case "relation":
           return await this.syncRelation(op);
         default:
-          console.warn(`[Sync Engine] Entité non supportée pour le moment : ${op.entity}`);
-          return true; // Ne pas bloquer la file pour les entités secondaires
+          console.warn(`[SYNC OPERATION] Entité non supportée ignorée : ${op.entity}`);
+          return true;
       }
     } catch (e: any) {
       op.lastError = {
@@ -324,7 +326,7 @@ class SyncService {
         details: e.details,
         timestamp: new Date().toISOString()
       };
-      console.error("[Sync Error]", {
+      console.error("[SYNC FAILED]", {
         operationId: op.id,
         entity: op.entity,
         entityId: op.entityId,
@@ -335,7 +337,7 @@ class SyncService {
     }
   }
 
-  // --- Synchroniseurs par table Supabase ---
+  // --- Synchroniseurs par table Supabase via dbMappers ---
 
   private async syncProduct(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
@@ -345,30 +347,7 @@ class SyncService {
       return true;
     }
 
-    // CREATE ou UPDATE
-    const record = {
-      id: payload.id,
-      name: payload.name,
-      description: payload.description || "",
-      category: payload.category || "Général",
-      sub_category: payload.subCategory || null,
-      brand: payload.brand || "Générique",
-      unit: payload.unit || "Unité",
-      weight: payload.weight ? Number(payload.weight) : 0,
-      volume: payload.volume ? Number(payload.volume) : 0,
-      creator_id: payload.creatorId || payload.creator_id,
-      prix_gros: payload.prixGros !== undefined ? Number(payload.prixGros) : null,
-      prix_detail: payload.prixDetail !== undefined ? Number(payload.prixDetail) : null,
-      base_price: payload.basePrice !== undefined ? Number(payload.basePrice) : null,
-      image: payload.image || "",
-      image_url: payload.imageUrl || null,
-      barcode: payload.barcode || null,
-      qr_code: payload.qrCode || null,
-      expiration_date: payload.expirationDate || null,
-      quantite_minimum: payload.quantiteMinimum ? Number(payload.quantiteMinimum) : 1,
-      updated_at: new Date().toISOString()
-    };
-
+    const record = productToDb(payload);
     const { error } = await supabase.from("products").upsert(record);
     if (error) throw error;
     return true;
@@ -382,21 +361,7 @@ class SyncService {
       return true;
     }
 
-    // Le schéma confirmé Supabase de public.inventory utilise 'stock'
-    const record = {
-      id: payload.id,
-      product_id: payload.productId || payload.product_id,
-      owner_id: payload.ownerId || payload.owner_id,
-      stock: Number(payload.stock ?? payload.quantity ?? 0),
-      threshold: Number(payload.threshold || 5),
-      price: Number(payload.price || 0),
-      prix_gros: payload.prixGros !== undefined ? Number(payload.prixGros) : null,
-      prix_detail: payload.prixDetail !== undefined ? Number(payload.prixDetail) : null,
-      quantite_minimum: payload.quantiteMinimum !== undefined ? Number(payload.quantiteMinimum) : 1,
-      expiration_date: payload.expirationDate || null,
-      updated_at: new Date().toISOString()
-    };
-
+    const record = inventoryToDb(payload);
     const { error } = await supabase.from("inventory").upsert(record);
     if (error) throw error;
     return true;
@@ -410,16 +375,7 @@ class SyncService {
       return true;
     }
 
-    const record = {
-      id: payload.id,
-      sender_id: payload.senderId || payload.sender_id,
-      receiver_id: payload.receiverId || payload.receiver_id,
-      status: payload.status,
-      total: Number(payload.totalAmount ?? payload.total ?? 0),
-      items: payload.items,
-      created_at: payload.createdAt || new Date().toISOString()
-    };
-
+    const record = orderToDb(payload);
     const { error } = await supabase.from("orders").upsert(record);
     if (error) throw error;
     return true;
@@ -427,16 +383,7 @@ class SyncService {
 
   private async syncProfile(op: SyncOperation): Promise<boolean> {
     const { payload } = op;
-    const record: any = {
-      id: payload.id
-    };
-    if (payload.email) record.email = payload.email;
-    if (payload.name) record.nom = payload.name;
-    if (payload.phone) record.telephone = payload.phone;
-    if (payload.role) record.role = payload.role;
-    if (payload.address) record.address = payload.address;
-    if (payload.avatar) record.avatar = payload.avatar;
-
+    const record = profileToDb(payload);
     const { error } = await supabase.from("profiles").upsert(record);
     if (error) throw error;
     return true;
@@ -450,15 +397,7 @@ class SyncService {
       return true;
     }
 
-    const record = {
-      id: payload.id,
-      sender_id: payload.senderId || payload.sender_id,
-      receiver_id: payload.receiverId || payload.receiver_id,
-      statut: payload.status || payload.statut || "PENDING",
-      notes: payload.notes || null,
-      updated_at: new Date().toISOString()
-    };
-
+    const record = relationToDb(payload);
     const { error } = await supabase.from("relations").upsert(record);
     if (error) throw error;
     return true;
@@ -479,3 +418,4 @@ class SyncService {
 }
 
 export const syncService = new SyncService();
+

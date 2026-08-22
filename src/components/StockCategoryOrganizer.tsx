@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Product, InventoryItem, UserRole } from "../types";
 import { formatCFA } from "../data";
-import { PriceHistoryChart } from "./RoleDashboards";
+import { PriceHistoryChart } from "./PriceHistoryChart";
 
 interface StockCategoryOrganizerProps {
   inventory: InventoryItem[];

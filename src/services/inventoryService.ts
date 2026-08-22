@@ -1,5 +1,6 @@
 import { InventoryItem, Product } from "../types";
 import { supabase } from "../supabase";
+import { inventoryToDb, inventoryFromDb } from "./dbMappers";
 
 export interface ExpirationAlert {
   id: string;
@@ -14,19 +15,7 @@ export interface ExpirationAlert {
 }
 
 function mapRowToInventoryItem(row: any): InventoryItem {
-  return {
-    id: row.id,
-    productId: row.product_id || row.productId,
-    ownerId: row.owner_id || row.ownerId,
-    stock: Number(row.quantity ?? row.stock ?? 0),
-    threshold: Number(row.low_stock_threshold ?? row.threshold ?? 5),
-    price: Number(row.price ?? 0),
-    prixGros: row.prix_gros ? Number(row.prix_gros) : undefined,
-    prixDetail: row.prix_detail ? Number(row.prix_detail) : undefined,
-    quantiteMinimum: row.quantite_minimum ? Number(row.quantite_minimum) : 1,
-    expirationDate: row.expiration_date || undefined,
-    updatedAt: row.updated_at || undefined
-  };
+  return inventoryFromDb(row);
 }
 
 export const inventoryService = {
@@ -134,19 +123,7 @@ export const inventoryService = {
       throw new Error("Supabase n'est pas initialisé.");
     }
 
-    const record = {
-      id: item.id,
-      product_id: item.productId,
-      owner_id: item.ownerId,
-      stock: Number(item.stock || 0),
-      threshold: Number(item.threshold || 5),
-      price: Number(item.price || 0),
-      prix_gros: item.prixGros !== undefined ? Number(item.prixGros) : null,
-      prix_detail: item.prixDetail !== undefined ? Number(item.prixDetail) : null,
-      quantite_minimum: item.quantiteMinimum !== undefined ? Number(item.quantiteMinimum) : 1,
-      expiration_date: item.expirationDate || null,
-      updated_at: new Date().toISOString()
-    };
+    const record = inventoryToDb(item);
 
     const { data, error } = await supabase
       .from("inventory")
@@ -237,3 +214,4 @@ export const inventoryService = {
     return alerts;
   }
 };
+

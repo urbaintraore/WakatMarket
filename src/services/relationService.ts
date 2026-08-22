@@ -20,7 +20,7 @@ export const relationService = {
     const { data: users, error: searchError } = await supabase
       .from("profiles")
       .select("*")
-      .or(`email.ilike.${cleanIdentifiant},phone.ilike.${cleanIdentifiant},id.eq.${cleanIdentifiant}`);
+      .or(`email.ilike.${cleanIdentifiant},telephone.ilike.${cleanIdentifiant},id.eq.${cleanIdentifiant}`);
 
     if (searchError || !users || users.length === 0) {
       throw new Error(`Aucun utilisateur trouvé avec l'identifiant "${destinataireIdentifiant}".`);
@@ -33,19 +33,16 @@ export const relationService = {
 
     const relationId = [demandeur.id, destinataireRow.id].sort().join("_");
     const demandeurNom = demandeur.companyName || demandeur.name;
-    const destinataireNom = destinataireRow.company_name || destinataireRow.name;
-    const nowIso = new Date().toISOString();
+    const destinataireNom = [destinataireRow.nom, destinataireRow.prenom].filter(Boolean).join(" ").trim() || "Partenaire";
 
-    // 2. Insérer ou mettre à jour la relation dans 'relations'
+    // 2. Insérer ou mettre à jour la relation dans 'relations' (grossiste_id, client_id, statut)
     const { error: relError } = await supabase
       .from("relations")
       .upsert({
         id: relationId,
-        sender_id: demandeur.id,
-        receiver_id: destinataireRow.id,
-        status: "ACTIVE",
-        notes: notes || null,
-        updated_at: nowIso
+        grossiste_id: demandeur.id,
+        client_id: destinataireRow.id,
+        statut: "ACTIF"
       });
 
     if (relError) {
@@ -60,9 +57,7 @@ export const relationService = {
         user_id: destinataireRow.id,
         title: "Nouveau partenaire d'affaires",
         message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
-        type: "connexion_acceptee",
-        read: false,
-        metadata: { relationId, senderId: demandeur.id }
+        read: false
       });
     } catch (notifErr) {
       console.warn("Notice insertion notification:", notifErr);
@@ -83,7 +78,7 @@ export const relationService = {
     if (!supabase) return;
     const { error } = await supabase
       .from("relations")
-      .update({ status: "ACTIVE", updated_at: new Date().toISOString() })
+      .update({ statut: "ACTIF" })
       .eq("id", relationId);
 
     if (error) {
@@ -99,7 +94,7 @@ export const relationService = {
     if (!supabase) return;
     const { error } = await supabase
       .from("relations")
-      .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
+      .update({ statut: "BLOCKED" })
       .eq("id", relationId);
 
     if (error) {
@@ -115,7 +110,7 @@ export const relationService = {
     if (!supabase) return;
     const { error } = await supabase
       .from("relations")
-      .update({ status: "BLOCKED", updated_at: new Date().toISOString() })
+      .update({ statut: "BLOCKED" })
       .eq("id", relationId);
 
     if (error) {
@@ -150,7 +145,7 @@ export const relationService = {
       const { data, error } = await supabase
         .from("relations")
         .select("*")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+        .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
       if (error) {
         console.warn("Erreur lecture relations Supabase:", error.message);
@@ -159,16 +154,16 @@ export const relationService = {
 
       const mapped: Relation[] = (data || []).map((row: any) => ({
         id: row.id,
-        demandeurId: row.sender_id,
-        destinataireId: row.receiver_id,
-        statut: (row.status === "ACTIVE" ? "actif" : row.status === "BLOCKED" ? "refuse" : "en_attente") as any,
-        dateCreation: row.created_at,
-        dateReponse: row.updated_at,
-        participants: [row.sender_id, row.receiver_id],
-        notes: row.notes || "",
-        demandeurNom: row.sender_id === userId ? "Moi" : "Partenaire",
+        demandeurId: row.grossiste_id,
+        destinataireId: row.client_id,
+        statut: (row.statut === "ACTIF" ? "actif" : row.statut === "BLOCKED" ? "refuse" : "en_attente") as any,
+        dateCreation: row.created_at || new Date().toISOString(),
+        dateReponse: row.created_at || new Date().toISOString(),
+        participants: [row.grossiste_id, row.client_id],
+        notes: "",
+        demandeurNom: row.grossiste_id === userId ? "Moi" : "Partenaire",
         demandeurRole: UserRole.WHOLESALER,
-        destinataireNom: row.receiver_id === userId ? "Moi" : "Partenaire",
+        destinataireNom: row.client_id === userId ? "Moi" : "Partenaire",
         destinataireRole: UserRole.RETAILER
       }));
       callback(mapped);
@@ -213,13 +208,9 @@ export const relationService = {
 
       const mapped: PartnerNotificationItem[] = (data || []).map((n: any) => ({
         id: n.id,
-        type: n.type || "connexion_acceptee",
-        relationId: n.metadata?.relationId,
-        venteId: n.metadata?.venteId,
-        orderId: n.metadata?.orderId,
-        expediteurId: n.metadata?.senderId,
+        type: "connexion_acceptee",
         lu: n.read || false,
-        dateCreation: n.created_at,
+        dateCreation: n.created_at || new Date().toISOString(),
         contenu: n.message || n.title
       }));
       callback(mapped);
@@ -270,3 +261,4 @@ export const relationService = {
     return this.ecouterNotifications(userId, callback);
   }
 };
+

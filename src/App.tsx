@@ -234,10 +234,17 @@ export default function App() {
 
   // Active User session simulation
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    // Default to Admin or first active user on launch
     const list = db.getUsers();
-    return list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
+    const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
+    const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
+    return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
   });
+
+  useEffect(() => {
+    if (currentUser?.id && typeof localStorage !== "undefined") {
+      localStorage.setItem("wakat_active_user_id", currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   useEffect(() => {
     setIsRealUserAuthenticated(!!supabaseUser && !!dbUser);
@@ -555,9 +562,15 @@ export default function App() {
       setIsAuthScreen(false);
     } else {
       setIsRealUserAuthenticated(false);
-      // Clear currentUser on logout and show auth screen
-      setCurrentUser(null);
-      setIsAuthScreen(true);
+      // Maintenir ou restaurer un profil démo actif pour que l'application s'affiche immédiatement
+      setCurrentUser((prev) => {
+        if (prev) return prev;
+        const list = db.getUsers();
+        const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
+        const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
+        return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
+      });
+      setIsAuthScreen(false);
     }
   }, [supabaseUser, dbUser]);
 
@@ -2616,7 +2629,7 @@ export default function App() {
               )}
             </div>
 
-            {/* Compact Header User Profile Pill */}
+            {/* Compact Header User Profile Pill & Quick Role Selector */}
             {currentUser && (
               <div className="flex items-center gap-2 bg-zinc-50 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700/80 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
                 <img
@@ -2630,14 +2643,38 @@ export default function App() {
                     <span className="font-bold text-zinc-900 dark:text-white truncate max-w-[120px]">
                       {currentUser.companyName || currentUser.name}
                     </span>
-                    <span className="text-[8px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold px-1.5 py-0.2 rounded-full uppercase">
-                      {currentUser.role}
-                    </span>
                   </div>
                   <p className="text-[9.5px] text-zinc-500 dark:text-zinc-400 font-mono">
                     Solde : <strong className="text-emerald-600 dark:text-emerald-400">{formatCFA(currentUser.balance ?? 0)}</strong>
                   </p>
                 </div>
+                
+                {/* Role Switcher Select */}
+                <select
+                  value={currentUser.role}
+                  onChange={(e) => {
+                    const selectedRole = e.target.value as UserRole;
+                    const list = db.getUsers();
+                    const targetUser = list.find((u) => u.role === selectedRole) || {
+                      ...currentUser,
+                      role: selectedRole,
+                      companyName: `${currentUser.name} (${selectedRole})`
+                    };
+                    setCurrentUser(targetUser);
+                    localStorage.setItem("wakat_active_user_id", targetUser.id);
+                  }}
+                  className="bg-emerald-50 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold text-[10px] px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800 cursor-pointer focus:outline-none"
+                  title="Changer de rôle pour tester les vues ERP"
+                >
+                  <option value={UserRole.ADMIN}>👑 Admin</option>
+                  <option value={UserRole.MANUFACTURER}>🏭 Fabricant</option>
+                  <option value={UserRole.WHOLESALER}>📦 Grossiste</option>
+                  <option value={UserRole.SEMI_WHOLESALER}>🏬 Demi-Gros</option>
+                  <option value={UserRole.RETAILER}>🏪 Détaillant</option>
+                  <option value={UserRole.CLIENT}>🛒 Client</option>
+                  <option value={UserRole.DRIVER_R2C}>🚚 Livreur</option>
+                </select>
+
                 <div className="flex items-center gap-0.5 border-l border-zinc-200 dark:border-zinc-700 pl-1.5">
                   <button
                     onClick={handleOpenProfileEdit}
@@ -2709,15 +2746,26 @@ export default function App() {
       {/* Main ERP Canvas Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {(!currentUser || isAuthScreen) ? (
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 max-w-lg mx-auto space-y-4">
+        {isAuthScreen ? (
+          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 max-w-lg mx-auto space-y-4 shadow-xl">
             <div className="flex justify-between items-center pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
                 <KeyRound className="w-4 h-4 text-emerald-600" /> WakatMarket - Portail de Connexion
               </h4>
-              {currentUser && (
-                <button onClick={() => setIsAuthScreen(false)} className="text-zinc-500 hover:text-zinc-950 font-bold cursor-pointer">✕</button>
-              )}
+              <button 
+                onClick={() => {
+                  if (!currentUser) {
+                    const list = db.getUsers();
+                    const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
+                    if (defaultUser) setCurrentUser(defaultUser);
+                  }
+                  setIsAuthScreen(false);
+                }} 
+                className="text-zinc-500 hover:text-zinc-950 dark:hover:text-white font-bold cursor-pointer text-sm p-1"
+                title="Fermer et accéder à la plateforme"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Config Info Banner */}
@@ -2996,6 +3044,59 @@ export default function App() {
                 </button>
               </form>
             )}
+
+            {/* Direct Access & Demo Switcher */}
+            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentUser) {
+                    const list = db.getUsers();
+                    const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
+                    if (defaultUser) setCurrentUser(defaultUser);
+                  }
+                  setIsAuthScreen(false);
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20"
+              >
+                <Compass className="w-4 h-4 text-emerald-100" />
+                Accéder directement au Tableau de Bord ERP (Mode Démo)
+              </button>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5 text-center">
+                  Tester un rôle spécifique (1 Clic) :
+                </p>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {[
+                    { label: "Admin", role: UserRole.ADMIN },
+                    { label: "Grossiste", role: UserRole.WHOLESALER },
+                    { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
+                    { label: "Détaillant", role: UserRole.RETAILER },
+                    { label: "Fabricant", role: UserRole.MANUFACTURER },
+                    { label: "Livreur", role: UserRole.DRIVER_R2C },
+                    { label: "Client", role: UserRole.CLIENT }
+                  ].map((btn) => (
+                    <button
+                      key={btn.role}
+                      type="button"
+                      onClick={() => {
+                        const list = db.getUsers();
+                        const found = list.find((u) => u.role === btn.role) || list[0];
+                        if (found) {
+                          setCurrentUser(found);
+                          localStorage.setItem("wakat_active_user_id", found.id);
+                        }
+                        setIsAuthScreen(false);
+                      }}
+                      className="px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold transition cursor-pointer"
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
 
             {/* Option to Disconnect User if signed in */}
             {supabaseUser && (

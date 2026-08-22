@@ -1,42 +1,9 @@
 import { Order, OrderStatus } from "../types";
 import { supabase } from "../supabase";
+import { orderToDb, orderFromDb } from "./dbMappers";
 
 function mapRowToOrder(row: any): Order {
-  let parsedItems = [];
-  if (Array.isArray(row.items)) {
-    parsedItems = row.items;
-  } else if (typeof row.items === "string") {
-    try {
-      parsedItems = JSON.parse(row.items);
-    } catch (e) {
-      parsedItems = [];
-    }
-  }
-
-  return {
-    id: row.id,
-    orderType: row.order_type || "B2B_W2R",
-    senderId: row.buyer_id || row.sender_id || row.senderId || "",
-    receiverId: row.seller_id || row.receiver_id || row.receiverId || "",
-    items: parsedItems,
-    totalAmount: Number(row.total_amount || 0),
-    amountPaid: Number(row.amount_paid || 0),
-    paymentStatus: row.payment_status || "PENDING",
-    status: (row.status as OrderStatus) || OrderStatus.PENDING,
-    clientId: row.client_id || undefined,
-    createdAt: row.created_at || new Date().toISOString(),
-    updatedAt: row.updated_at || new Date().toISOString(),
-    shippingFee: Number(row.shipping_fee || 0),
-    distanceKm: Number(row.distance_km || 0),
-    estimatedTimeMins: Number(row.estimated_time_mins || 0),
-    paymentMethod: row.payment_method || "CASH",
-    deliveryAddress: row.delivery_address || "",
-    deliveryNotes: row.delivery_notes || "",
-    driverId: row.driver_id || undefined,
-    otpCode: row.otp_code || undefined,
-    preuvePaiementUrl: row.payment_proof_url || undefined,
-    statutPaiement: row.statut_paiement || undefined
-  };
+  return orderFromDb(row);
 }
 
 export const orderService = {
@@ -71,69 +38,32 @@ export const orderService = {
       throw new Error("Supabase n'est pas initialisé.");
     }
 
-    const orderRecord = {
-      id: order.id,
-      buyer_id: order.senderId,
-      seller_id: order.receiverId,
-      sender_id: order.senderId,
-      receiver_id: order.receiverId,
-      order_type: order.orderType || "B2B_W2R",
-      status: order.status || OrderStatus.PENDING,
-      total_amount: order.totalAmount || 0,
-      amount_paid: order.amountPaid || 0,
-      payment_status: order.paymentStatus || "PENDING",
-      payment_method: order.paymentMethod || "CASH",
-      delivery_address: order.deliveryAddress || "",
-      delivery_notes: order.deliveryNotes || "",
-      shipping_fee: order.shippingFee || 0,
-      items: order.items || [],
-      created_at: order.createdAt || new Date().toISOString(),
-      updated_at: order.updatedAt || new Date().toISOString()
-    };
+    const orderRecord = orderToDb(order);
 
     const { error } = await supabase.from("orders").upsert(orderRecord);
     if (error) {
       console.error("Erreur createOrder Supabase:", error);
       throw error;
     }
-
-    // Insérer également les lignes de commandes individuelles si disponibles
-    if (order.items && order.items.length > 0) {
-      const itemsToInsert = order.items.map((item, idx) => ({
-        id: `${order.id}-item-${idx}`,
-        order_id: order.id,
-        product_id: item.productId,
-        quantity: item.quantity,
-        unit_price: item.priceAtOrder,
-        subtotal: item.quantity * item.priceAtOrder
-      }));
-
-      try {
-        await supabase.from("order_items").upsert(itemsToInsert);
-      } catch (itemErr) {
-        console.warn("Notice insertion order_items:", itemErr);
-      }
-    }
   },
 
   /**
-   * Mettre à jour une commande
+   * Mettre à jour une commande (seul status ou total/items existent en DB)
    */
-  async updateOrder(orderId: string, fields: Partial<Order>): Promise<void> {
+  async updateOrder(orderId: string, fields: Partial<Order> & { total?: number }): Promise<void> {
     if (!supabase || !orderId) return;
 
-    const updates: Record<string, any> = {
-      updated_at: new Date().toISOString()
-    };
+    const updates: Record<string, any> = {};
 
     if (fields.status) updates.status = fields.status;
-    if (fields.paymentStatus) updates.payment_status = fields.paymentStatus;
-    if (fields.amountPaid !== undefined) updates.amount_paid = fields.amountPaid;
-    if (fields.driverId) updates.driver_id = fields.driverId;
-    if (fields.deliveryAddress) updates.delivery_address = fields.deliveryAddress;
-    if (fields.deliveryNotes) updates.delivery_notes = fields.deliveryNotes;
-    if (fields.preuvePaiementUrl) updates.payment_proof_url = fields.preuvePaiementUrl;
-    if (fields.statutPaiement) updates.statut_paiement = fields.statutPaiement;
+    if (fields.totalAmount !== undefined || fields.total !== undefined) {
+      updates.total = fields.totalAmount ?? fields.total;
+    }
+    if (fields.items !== undefined) {
+      updates.items = typeof fields.items === "string" ? fields.items : JSON.stringify(fields.items);
+    }
+
+    if (Object.keys(updates).length === 0) return;
 
     const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
     if (error) {
@@ -167,3 +97,4 @@ export const orderService = {
     };
   }
 };
+
