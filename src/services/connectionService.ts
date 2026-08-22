@@ -33,15 +33,26 @@ export const connectionService = {
     };
 
     // 1. Sauvegarder dans 'relations' (grossiste_id, client_id, statut)
-    const { error: relError } = await supabase.from("relations").upsert({
+    const isActif = String(initialStatus) === "active" || String(initialStatus) === "actif";
+    const payloadSent = {
       id: connectionId,
       grossiste_id: sender.id,
       client_id: receiver.id,
-      statut: initialStatus === "active" ? "ACTIF" : "PENDING"
-    });
+      statut: isActif ? "ACTIF" : "EN_ATTENTE"
+    };
+
+    const { error: relError } = await supabase.from("relations").upsert(payloadSent);
 
     if (relError) {
-      console.error("[Supabase Connection Sync Error]:", relError);
+      console.error("[Relations Supabase Error]", {
+        operation: "createConnectionRequest",
+        userId: sender.id,
+        payloadSent,
+        code: relError.code,
+        message: relError.message,
+        details: relError.details,
+        hint: relError.hint
+      });
       throw relError;
     }
 
@@ -75,7 +86,14 @@ export const connectionService = {
       .eq("id", connectionId);
 
     if (error) {
-      console.error("Erreur acceptation connexion Supabase:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "acceptConnection",
+        connectionId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -92,7 +110,14 @@ export const connectionService = {
       .eq("id", connectionId);
 
     if (error) {
-      console.error("Erreur rejet connexion Supabase:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "rejectConnection",
+        connectionId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -126,7 +151,14 @@ export const connectionService = {
       .eq("id", connectionId);
 
     if (error) {
-      console.error("Erreur suppression connexion Supabase:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "deleteConnection",
+        connectionId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -144,7 +176,14 @@ export const connectionService = {
         .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
       if (error) {
-        console.warn("Erreur fetch connections Supabase:", error.message);
+        console.error("[Relations Supabase Error]", {
+          operation: "subscribeToUserConnections (fetch)",
+          userId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         return;
       }
 
@@ -152,7 +191,7 @@ export const connectionService = {
         id: row.id,
         senderId: row.grossiste_id,
         receiverId: row.client_id,
-        status: (row.statut === "ACTIF" ? "active" : row.statut === "BLOCKED" ? "bloque" : "en_attente") as any,
+        status: (row.statut === "ACTIF" || row.statut === "actif" ? "active" : row.statut === "BLOCKED" || row.statut === "refuse" ? "bloque" : "en_attente") as any,
         senderName: "Partenaire",
         senderRole: UserRole.WHOLESALER,
         receiverName: "Partenaire",

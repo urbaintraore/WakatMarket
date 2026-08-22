@@ -36,17 +36,27 @@ export const relationService = {
     const destinataireNom = [destinataireRow.nom, destinataireRow.prenom].filter(Boolean).join(" ").trim() || "Partenaire";
 
     // 2. Insérer ou mettre à jour la relation dans 'relations' (grossiste_id, client_id, statut)
+    const payloadSent = {
+      id: relationId,
+      grossiste_id: demandeur.id,
+      client_id: destinataireRow.id,
+      statut: "ACTIF"
+    };
+
     const { error: relError } = await supabase
       .from("relations")
-      .upsert({
-        id: relationId,
-        grossiste_id: demandeur.id,
-        client_id: destinataireRow.id,
-        statut: "ACTIF"
-      });
+      .upsert(payloadSent);
 
     if (relError) {
-      console.error("[Supabase Relation Sync Error]:", relError);
+      console.error("[Relations Supabase Error]", {
+        operation: "envoyerDemandeConnexion",
+        userId: demandeur.id,
+        payloadSent,
+        code: relError.code,
+        message: relError.message,
+        details: relError.details,
+        hint: relError.hint
+      });
       throw relError;
     }
 
@@ -82,7 +92,14 @@ export const relationService = {
       .eq("id", relationId);
 
     if (error) {
-      console.error("Erreur accepter relation:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "accepterDemandeConnexion",
+        relationId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -98,7 +115,14 @@ export const relationService = {
       .eq("id", relationId);
 
     if (error) {
-      console.error("Erreur refuser relation:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "refuserDemandeConnexion",
+        relationId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -114,7 +138,14 @@ export const relationService = {
       .eq("id", relationId);
 
     if (error) {
-      console.error("Erreur bloquer relation:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "bloquerPartenaire",
+        relationId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -130,7 +161,14 @@ export const relationService = {
       .eq("id", relationId);
 
     if (error) {
-      console.error("Erreur suppression relation:", error);
+      console.error("[Relations Supabase Error]", {
+        operation: "supprimerRelation",
+        relationId,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
@@ -148,7 +186,14 @@ export const relationService = {
         .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
       if (error) {
-        console.warn("Erreur lecture relations Supabase:", error.message);
+        console.error("[Relations Supabase Error]", {
+          operation: "ecouterRelations (fetch)",
+          userId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         return;
       }
 
@@ -156,10 +201,10 @@ export const relationService = {
         id: row.id,
         demandeurId: row.grossiste_id,
         destinataireId: row.client_id,
-        statut: (row.statut === "ACTIF" ? "actif" : row.statut === "BLOCKED" ? "refuse" : "en_attente") as any,
+        statut: (row.statut === "ACTIF" || row.statut === "actif" ? "actif" : row.statut === "BLOCKED" || row.statut === "refuse" ? "refuse" : "en_attente") as any,
         dateCreation: row.created_at || new Date().toISOString(),
         dateReponse: row.created_at || new Date().toISOString(),
-        participants: [row.grossiste_id, row.client_id],
+        participants: [row.grossiste_id, row.client_id].filter(Boolean),
         notes: "",
         demandeurNom: row.grossiste_id === userId ? "Moi" : "Partenaire",
         demandeurRole: UserRole.WHOLESALER,

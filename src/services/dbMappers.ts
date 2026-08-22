@@ -46,23 +46,43 @@ export function profileFromDb(row: any): UserProfile {
 }
 
 // RELATIONS MAPPER
-export function relationToDb(rel: Partial<Relation> & { senderId?: string; receiverId?: string; grossiste_id?: string; client_id?: string; status?: string; statut?: string }): Record<string, any> {
+export function relationToDb(rel: Partial<Relation> & { senderId?: string; receiverId?: string; grossiste_id?: string; client_id?: string; status?: string; statut?: string; createdAt?: string; dateCreation?: string }): Record<string, any> {
   const dbRecord: Record<string, any> = {};
   if (rel.id !== undefined) dbRecord.id = rel.id;
-  dbRecord.grossiste_id = rel.grossiste_id || rel.senderId || rel.demandeurId || "";
-  dbRecord.client_id = rel.client_id || rel.receiverId || rel.destinataireId || "";
-  dbRecord.statut = rel.statut || rel.status || "ACTIF";
+  dbRecord.grossiste_id = rel.grossiste_id || rel.senderId || (rel as any).demandeurId || "";
+  dbRecord.client_id = rel.client_id || rel.receiverId || (rel as any).destinataireId || "";
+  
+  const rawStatut = rel.statut || rel.status || "ACTIF";
+  if (rawStatut === "active" || rawStatut === "actif" || rawStatut === "ACTIF") {
+    dbRecord.statut = "ACTIF";
+  } else if (rawStatut === "bloque" || rawStatut === "blocked" || rawStatut === "refuse" || rawStatut === "BLOCKED") {
+    dbRecord.statut = "BLOCKED";
+  } else {
+    dbRecord.statut = "EN_ATTENTE";
+  }
+
+  const createdAt = rel.createdAt || (rel as any).dateCreation || (rel as any).created_at;
+  if (createdAt) {
+    dbRecord.created_at = createdAt;
+  }
+
   return dbRecord;
 }
 
 export function relationFromDb(row: any): Relation {
+  const rawStatut = String(row.statut || row.status || "").toUpperCase();
+  const statutMapped = rawStatut === "ACTIF" || rawStatut === "ACTIVE" ? "actif" : (rawStatut === "BLOCKED" || rawStatut === "BLOQUE" || rawStatut === "REFUSE" ? "refuse" : "en_attente");
+
+  const senderId = row.grossiste_id || row.sender_id || "";
+  const receiverId = row.client_id || row.receiver_id || "";
+
   return {
     id: row.id,
-    demandeurId: row.grossiste_id || "",
-    destinataireId: row.client_id || "",
-    statut: row.statut === "actif" || row.statut === "ACTIF" ? "actif" : row.statut === "refuse" ? "refuse" : "en_attente",
+    demandeurId: senderId,
+    destinataireId: receiverId,
+    statut: statutMapped as any,
     dateCreation: row.created_at || new Date().toISOString(),
-    participants: [row.grossiste_id, row.client_id].filter(Boolean)
+    participants: [senderId, receiverId].filter(Boolean)
   };
 }
 

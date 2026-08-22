@@ -155,6 +155,27 @@ export const userService = {
   },
 
   /**
+   * Récupérer un utilisateur par numéro de téléphone dans la table profiles
+   */
+  async getUserByPhone(phone: string): Promise<UserProfileData | null> {
+    if (!supabase || !phone) return null;
+    const cleanPhone = phone.replace(/\s+/g, "").trim();
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .ilike("telephone", `%${cleanPhone}%`)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      return this.getUser(data.id);
+    } catch (e) {
+      console.error("Exception dans getUserByPhone:", e);
+      return null;
+    }
+  },
+
+  /**
    * Mettre à jour des champs d'un profil
    */
   async updateUser(uid: string, fields: Partial<UserProfileData>): Promise<void> {

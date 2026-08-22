@@ -393,13 +393,34 @@ class SyncService {
     const { operation, payload } = op;
     if (operation === "DELETE") {
       const { error } = await supabase.from("relations").delete().eq("id", op.entityId);
-      if (error) throw error;
+      if (error) {
+        console.error("[Relations Supabase Error]", {
+          operation: "syncRelation (DELETE)",
+          entityId: op.entityId,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
       return true;
     }
 
     const record = relationToDb(payload);
     const { error } = await supabase.from("relations").upsert(record);
-    if (error) throw error;
+    if (error) {
+      console.error("[Relations Supabase Error]", {
+        operation: "syncRelation (UPSERT)",
+        entityId: op.entityId,
+        payloadSent: record,
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+      throw error;
+    }
     return true;
   }
 
