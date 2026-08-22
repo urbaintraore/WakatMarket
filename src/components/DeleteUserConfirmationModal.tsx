@@ -80,7 +80,6 @@ export default function DeleteUserConfirmationModal({
       // Also clean up from Supabase table if directly available
       if (supabase) {
         await supabase.from("profiles").delete().eq("id", user.id);
-        await supabase.from("users").delete().eq("id", user.id);
       }
 
       setSuccess(true);

@@ -5,10 +5,11 @@ import {
   inventoryToDb,
   orderToDb,
   profileToDb,
-  relationToDb
+  relationToDb,
+  venteToDb
 } from "./dbMappers";
 
-export type EntityType = "product" | "inventory" | "order" | "profile" | "relation" | "payment" | "lightClient";
+export type EntityType = "product" | "inventory" | "order" | "vente" | "profile" | "relation" | "payment" | "lightClient";
 export type OperationType = "CREATE" | "UPDATE" | "DELETE";
 
 export interface SyncOperation {
@@ -181,9 +182,10 @@ class SyncService {
         status: "pending"
       };
       this.queue.push(op);
-      console.log(`[Offline Queue] Nouvelle opération enregistrée : ${operation} ${entity} #${entityId}`, {
+      console.log(`[SYNC QUEUE ADD] Opération enregistrée: ${operation} ${entity} #${entityId}`, {
         opId: op.id,
-        dependsOn
+        dependsOn,
+        payload
       });
     }
 
@@ -212,6 +214,7 @@ class SyncService {
       if (op.status === "failed") {
         op.status = "pending";
         op.retryCount = 0;
+        console.log(`[SYNC RETRY] Re-jeu manuel demandé pour l'opération ${op.id}`);
       }
     });
     await offlineStorage.setItems("sync_queue", this.queue);
@@ -263,12 +266,13 @@ class SyncService {
           op.status = "syncing";
           this.notifyListeners();
 
-          console.log(`[SYNC OPERATION] Exécution: ${op.operation} ${op.entity} (ID: ${op.entityId}, OpID: ${op.id})`);
+          console.log(`[SYNC ENTITY] ${op.entity} (${op.operation}) | OpID: ${op.id} | EntityID: ${op.entityId}`);
+          console.log(`[SYNC PAYLOAD]`, op.payload);
 
           const success = await this.executeOperation(op);
 
           if (success) {
-            console.log(`[SYNC SUCCESS] Opération ${op.id} synchronisée avec succès.`);
+            console.log(`[SYNC SUCCESS] Opération ${op.id} synchronisée avec succès avec Supabase.`);
             completedOpIds.add(op.id);
             this.queue = this.queue.filter((item) => item.id !== op.id);
             await offlineStorage.removeItem("sync_queue", op.id);
@@ -277,7 +281,8 @@ class SyncService {
           } else {
             op.status = "failed";
             op.retryCount += 1;
-            console.warn(`[SYNC FAILED] Échec opération ${op.id} (Essai ${op.retryCount}/${op.maxRetries || 5})`);
+            console.warn(`[SYNC FAILED] Échec opération ${op.id} (Tentative ${op.retryCount}/${op.maxRetries || 5})`);
+            console.log(`[SYNC RETRY] Programmation tentative suivante pour ${op.id}`);
             await offlineStorage.setItem("sync_queue", op);
           }
 
@@ -290,7 +295,7 @@ class SyncService {
     } finally {
       this.isSyncing = false;
       this.notifyListeners();
-      console.log(`[SYNC END] Fin du cycle de synchronisation. Opérations restantes : ${this.queue.length}`);
+      console.log(`[SYNC COMPLETE] Fin du cycle de synchronisation. Opérations restantes en file : ${this.queue.length}`);
     }
   }
 
@@ -311,6 +316,8 @@ class SyncService {
           return await this.syncInventory(op);
         case "order":
           return await this.syncOrder(op);
+        case "vente":
+          return await this.syncVente(op);
         case "profile":
           return await this.syncProfile(op);
         case "relation":
@@ -377,6 +384,20 @@ class SyncService {
 
     const record = orderToDb(payload);
     const { error } = await supabase.from("orders").upsert(record);
+    if (error) throw error;
+    return true;
+  }
+
+  private async syncVente(op: SyncOperation): Promise<boolean> {
+    const { operation, payload } = op;
+    if (operation === "DELETE") {
+      const { error } = await supabase.from("ventes").delete().eq("id", op.entityId);
+      if (error) throw error;
+      return true;
+    }
+
+    const record = venteToDb(payload);
+    const { error } = await supabase.from("ventes").upsert(record);
     if (error) throw error;
     return true;
   }

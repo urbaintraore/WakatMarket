@@ -169,6 +169,37 @@ export function inventoryFromDb(row: any): InventoryItem {
   };
 }
 
+// VENTES MAPPER
+export function venteToDb(v: any): Record<string, any> {
+  const dbRecord: Record<string, any> = {};
+  if (v.id !== undefined) dbRecord.id = v.id;
+  if (v.vendeurId !== undefined || v.vendeur_id !== undefined) dbRecord.vendeur_id = v.vendeurId || v.vendeur_id;
+  if (v.vendeurNom !== undefined || v.vendeur_nom !== undefined) dbRecord.vendeur_nom = v.vendeurNom || v.vendeur_nom || "Commerçant";
+  if (v.acheteurId !== undefined || v.acheteur_id !== undefined) dbRecord.acheteur_id = v.acheteurId || v.acheteur_id || "CLIENT_ANONYME";
+  if (v.acheteurNom !== undefined || v.acheteur_nom !== undefined) dbRecord.acheteur_nom = v.acheteurNom || v.acheteur_nom || "Client";
+  if (v.total !== undefined) dbRecord.total = v.total;
+  if (v.modePaiement !== undefined || v.mode_paiement !== undefined || v.paymentMethod !== undefined) {
+    dbRecord.mode_paiement = v.modePaiement || v.mode_paiement || v.paymentMethod || "CASH";
+  }
+  if (v.statut !== undefined) dbRecord.statut = v.statut || "COMPLETE";
+  if (v.createdAt !== undefined || v.created_at !== undefined) dbRecord.created_at = v.createdAt || v.created_at || new Date().toISOString();
+  return dbRecord;
+}
+
+export function venteFromDb(row: any): any {
+  return {
+    id: row.id,
+    vendeurId: row.vendeur_id || "",
+    vendeurNom: row.vendeur_nom || "",
+    acheteurId: row.acheteur_id || "",
+    acheteurNom: row.acheteur_nom || "",
+    total: row.total || 0,
+    modePaiement: row.mode_paiement || "CASH",
+    statut: row.statut || "COMPLETE",
+    createdAt: row.created_at || new Date().toISOString()
+  };
+}
+
 // ORDERS MAPPER
 export function orderToDb(o: Partial<Order> & { senderName?: string; receiverName?: string; total?: number }): Record<string, any> {
   const dbRecord: Record<string, any> = {};

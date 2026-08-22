@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { syncService } from "./syncService";
 
 export interface LigneVenteDirecte {
   produitId: string;
@@ -24,31 +25,26 @@ export interface VenteDirecteData {
 
 export const venteService = {
   /**
-   * Enregistre une vente directe dans PostgreSQL (table ventes / orders)
+   * Enregistre une vente directe dans PostgreSQL (table ventes) selon le schéma officiel
    */
   async enregistrerVenteHorsLigneDirecte(data: VenteDirecteData): Promise<string> {
     const venteId = data.venteId || `vnt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const nowIso = new Date().toISOString();
 
-    if (supabase) {
-      try {
-        await supabase.from("ventes").upsert({
-          id: venteId,
-          vendeur_id: data.vendeurId,
-          vendeur_nom: data.vendeurNom || "Commerçant",
-          acheteur_id: data.acheteurId || "CLIENT_ANONYME",
-          acheteur_nom: data.acheteurNom || "Client",
-          type_vente: data.typeVente || "DETAIL",
-          lignes: data.lignes || [],
-          total: data.total,
-          amount_paid: data.amountPaid !== undefined ? data.amountPaid : data.total,
-          payment_method: data.paymentMethod || "CASH",
-          created_at: nowIso
-        });
-      } catch (err) {
-        console.warn("Notice vente direct Supabase:", err);
-      }
-    }
+    const ventePayload = {
+      id: venteId,
+      vendeur_id: data.vendeurId,
+      vendeur_nom: data.vendeurNom || "Commerçant",
+      acheteur_id: data.acheteurId || "CLIENT_ANONYME",
+      acheteur_nom: data.acheteurNom || "Client",
+      total: data.total,
+      mode_paiement: data.paymentMethod || "CASH",
+      statut: "COMPLETE",
+      created_at: nowIso
+    };
+
+    // 1. Enfiler dans la SyncQueue persistante pour supporter l'Offline-First
+    await syncService.enqueue("vente", venteId, "CREATE", ventePayload);
 
     return venteId;
   }

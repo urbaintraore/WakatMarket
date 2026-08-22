@@ -66,9 +66,29 @@ export const userService = {
     });
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      console.log("[AUTH SESSION]", session ? "EXISTS" : "NONE");
+      console.log("[AUTH USER]", authUser?.id || "NONE");
+      console.log("[PROFILE TARGET ID]", user.uid);
+      console.log("[CURRENT USER ID]", authUser?.id || "NONE");
+
+      if (!session) {
+        console.warn("[AUTH NOTICE] Pas de session Supabase active - Ecriture directe profiles ignorée.");
+        return;
+      }
+
       const { error } = await supabase.from("profiles").upsert(profileRecord);
       if (error) {
-        console.warn("Notice: Enregistrement dans table profiles Supabase:", error.message);
+        console.warn("[403 / AUTH ERROR DIAGNOSTIC] Erreur écriture profiles Supabase:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hasSession: !!session,
+          targetUid: user.uid,
+          authUid: authUser?.id
+        });
       }
     } catch (err) {
       console.warn("Notice: Exception lors de l'enregistrement du profil Supabase:", err);
@@ -196,9 +216,29 @@ export const userService = {
 
     if (Object.keys(updates).length === 0) return;
 
+    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
+    console.log("[AUTH SESSION]", session ? "EXISTS" : "NONE");
+    console.log("[AUTH USER]", authUser?.id || "NONE");
+    console.log("[PROFILE TARGET ID]", uid);
+    console.log("[CURRENT USER ID]", authUser?.id || "NONE");
+
+    if (!session) {
+      console.warn("[AUTH NOTICE] Pas de session Supabase active - Mise à jour du profil ignorée.");
+      return;
+    }
+
     const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
     if (error) {
-      console.error("Erreur update profil Supabase:", error);
+      console.error("[403 / AUTH ERROR DIAGNOSTIC] Erreur update profil Supabase:", {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hasSession: !!session,
+        targetUid: uid,
+        authUid: authUser?.id
+      });
       throw error;
     }
   },
