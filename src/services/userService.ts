@@ -229,6 +229,14 @@ export const userService = {
       return;
     }
 
+    if (authUser && authUser.id !== uid) {
+      console.warn(`[SECURITY AUDIT] Action sur profil distant: L'utilisateur authentifié (${authUser.id}) modifie le profil target (${uid}).`);
+    }
+
+    if (updates.role) {
+      console.warn(`[SECURITY AUDIT] Modification du rôle demandée pour le profil ${uid} : ${updates.role}`);
+    }
+
     const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
     if (error) {
       console.error("[403 / AUTH ERROR DIAGNOSTIC] Erreur update profil Supabase:", {

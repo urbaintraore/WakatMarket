@@ -2649,31 +2649,10 @@ export default function App() {
                   </p>
                 </div>
                 
-                {/* Role Switcher Select */}
-                <select
-                  value={currentUser.role}
-                  onChange={(e) => {
-                    const selectedRole = e.target.value as UserRole;
-                    const list = db.getUsers();
-                    const targetUser = list.find((u) => u.role === selectedRole) || {
-                      ...currentUser,
-                      role: selectedRole,
-                      companyName: `${currentUser.name} (${selectedRole})`
-                    };
-                    setCurrentUser(targetUser);
-                    localStorage.setItem("wakat_active_user_id", targetUser.id);
-                  }}
-                  className="bg-emerald-50 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold text-[10px] px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800 cursor-pointer focus:outline-none"
-                  title="Changer de rôle pour tester les vues ERP"
-                >
-                  <option value={UserRole.ADMIN}>👑 Admin</option>
-                  <option value={UserRole.MANUFACTURER}>🏭 Fabricant</option>
-                  <option value={UserRole.WHOLESALER}>📦 Grossiste</option>
-                  <option value={UserRole.SEMI_WHOLESALER}>🏬 Demi-Gros</option>
-                  <option value={UserRole.RETAILER}>🏪 Détaillant</option>
-                  <option value={UserRole.CLIENT}>🛒 Client</option>
-                  <option value={UserRole.DRIVER_R2C}>🚚 Livreur</option>
-                </select>
+                {/* Role Badge (Static - Profile switching dropdown removed for security) */}
+                <span className="bg-emerald-50 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-extrabold text-[10px] px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800">
+                  {currentUser.role}
+                </span>
 
                 <div className="flex items-center gap-0.5 border-l border-zinc-200 dark:border-zinc-700 pl-1.5">
                   <button

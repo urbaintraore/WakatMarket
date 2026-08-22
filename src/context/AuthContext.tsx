@@ -280,10 +280,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = async (fields: Partial<SupabaseUser>) => {
     const targetUid = supabaseUser?.id || dbUser?.uid;
     if (!targetUid) throw new Error("Aucun utilisateur connecté.");
+
+    // Sécurité: Détection et filtrage des tentatives de modification non autorisées de champs sensibles
+    const sensitiveKeys = ["role", "rôle", "id", "uid", "email", "statut", "solde_compte", "balance"];
+    const attemptedSensitiveFields = sensitiveKeys.filter((key) => key in fields);
+
+    if (attemptedSensitiveFields.length > 0) {
+      console.warn(
+        `[SECURITY ALERT] Tentative de modification non autorisée détectée sur un ou plusieurs champs sensibles (${attemptedSensitiveFields.join(", ")}) pour l'utilisateur ${targetUid}:`,
+        {
+          attemptedFields: attemptedSensitiveFields,
+          userId: targetUid,
+          payload: fields
+        }
+      );
+    }
+
+    // Extraction et élimination stricte des champs sensibles
+    const { role, rôle, id, uid, email, statut, ...safeFields } = fields as any;
+
     setError(null);
     try {
-      await userService.updateUser(targetUid, fields);
-      setDbUser((prev) => (prev ? { ...prev, ...fields } : ({ uid: targetUid, ...fields } as SupabaseUser)));
+      await userService.updateUser(targetUid, safeFields);
+      setDbUser((prev) => (prev ? { ...prev, ...safeFields } : ({ uid: targetUid, ...safeFields } as SupabaseUser)));
     } catch (err: any) {
       setError(err.message || "Erreur de mise à jour du profil.");
       throw err;
