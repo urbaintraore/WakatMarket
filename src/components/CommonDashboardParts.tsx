@@ -437,9 +437,9 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase text-zinc-500">1. Profil recherché (Règles appliquées)</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {allowedRoles.map(r => (
+              {allowedRoles.map((r, idx) => (
                 <button
-                  key={r.role}
+                  key={`${r.role}_${idx}`}
                   type="button"
                   onClick={() => {
                     setSelectedRole(r.role);
@@ -487,11 +487,11 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                 </div>
               ) : (
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {filteredUsers.map(u => {
+                  {filteredUsers.map((u, idx) => {
                     const isSelected = selectedTargetUser?.id === u.id;
                     return (
                       <div 
-                        key={u.id}
+                        key={`${u.id}_${idx}`}
                         onClick={() => setSelectedTargetUser(u)}
                         className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition ${
                           isSelected 
@@ -781,11 +781,11 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
         <div className="space-y-6 animate-fade-in">
           {/* Traditional local client debts & entries */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {clients.map(client => {
+            {clients.map((client, idx) => {
               const debt = calculateDebt(client.id);
               return (
                 <div 
-                  key={client.id} 
+                  key={`${client.id}_${idx}`} 
                   className={`p-5 rounded-2xl border transition cursor-pointer ${
                     selectedClientId === client.id 
                     ? 'bg-zinc-50 dark:bg-zinc-900 border-emerald-500 ring-2 ring-emerald-500/20' 
@@ -1993,16 +1993,16 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           <option value="">-- Choisir un fournisseur --</option>
           {addressBookSuppliers.length > 0 && (
             <optgroup label="📍 Carnet d'adresses & Partenaires">
-              {addressBookSuppliers.map(s => (
-                <option key={s.id} value={s.id}>
+              {addressBookSuppliers.map((s, idx) => (
+                <option key={`ab_${s.id}_${idx}`} value={s.id}>
                   {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.phone || s.email || s.region}
                 </option>
               ))}
             </optgroup>
           )}
           <optgroup label="🌐 Tous les Fournisseurs du réseau">
-            {allSuppliers.map(s => (
-              <option key={s.id} value={s.id}>
+            {allSuppliers.map((s, idx) => (
+              <option key={`all_${s.id}_${idx}`} value={s.id}>
                 [{s.role}] {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.region || 'National'}
               </option>
             ))}

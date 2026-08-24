@@ -549,12 +549,12 @@ export function BuyerDetailModal({
                         </td>
                       </tr>
                     ) : (
-                      filteredInvoices.map((order) => {
+                      filteredInvoices.map((order, idx) => {
                         const remaining = Math.max(0, order.totalAmount - order.amountPaid);
                         const isPaid = remaining === 0;
 
                         return (
-                          <tr key={order.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-950/50 transition-colors">
+                          <tr key={`inv_${order.id}_${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-950/50 transition-colors">
                             <td className="py-3 px-3.5 text-zinc-500 font-medium">
                               {new Date(order.createdAt).toLocaleDateString("fr-FR")}
                             </td>
@@ -628,10 +628,10 @@ export function BuyerDetailModal({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {unpaidInvoices.map((order) => {
+                  {unpaidInvoices.map((order, idx) => {
                     const remaining = order.totalAmount - order.amountPaid;
                     return (
-                      <div key={order.id} className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-3">
+                      <div key={`unpaid_${order.id}_${idx}`} className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-black text-zinc-900 dark:text-white">
                             Facture #{order.id.split('-').pop()?.toUpperCase()}
@@ -694,8 +694,8 @@ export function BuyerDetailModal({
                         </td>
                       </tr>
                     ) : (
-                      buyerPayments.map((p) => (
-                        <tr key={p.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-950/50 transition-colors">
+                      buyerPayments.map((p, idx) => (
+                        <tr key={`pay_${p.id}_${idx}`} className="hover:bg-zinc-50 dark:hover:bg-zinc-950/50 transition-colors">
                           <td className="py-3 px-3.5 text-zinc-500 font-medium">
                             {new Date(p.date).toLocaleString("fr-FR")}
                           </td>

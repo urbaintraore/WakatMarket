@@ -680,13 +680,13 @@ export function CaisseModule({
                 Le panier est encore vide.
               </div>
             ) : (
-              Object.keys(cart).map((prodId) => {
+              Object.keys(cart).map((prodId, idx) => {
                 const qty = cart[prodId] || 0;
                 const prod = products.find((p) => p.id === prodId);
                 const item = inventory.find((i) => i.productId === prodId);
                 const px = getProductPrice(item!);
                 return (
-                  <div key={prodId} className="flex justify-between items-start text-[11px] group">
+                  <div key={`cart_${prodId}_${idx}`} className="flex justify-between items-start text-[11px] group">
                     <div className="min-w-0 flex-1 pr-2">
                       <p className="font-bold text-zinc-800 dark:text-zinc-200 truncate">{prod?.name}</p>
                       <p className="text-[10px] text-zinc-400">
@@ -738,8 +738,8 @@ export function CaisseModule({
                   className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-emerald-500 transition font-bold"
                 >
                   <option value="">-- Choisissez dans "Mes Acheteurs" --</option>
-                  {dropdownBuyers.map((b) => (
-                    <option key={b.id} value={b.id}>
+                  {dropdownBuyers.map((b, idx) => (
+                    <option key={`buyer_${b.id}_${idx}`} value={b.id}>
                       {b.name} {b.companyName ? `(${b.companyName})` : ""} - {b.phone}
                     </option>
                   ))}

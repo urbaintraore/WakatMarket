@@ -500,7 +500,7 @@ export default function App() {
         if (cleanEmail) emailMap.set(cleanEmail, targetId);
         if (cleanCompany && cleanCompany !== "entreprise" && cleanCompany !== "sans entreprise") companyMap.set(cleanCompany, targetId);
       } else {
-        const idToUse = u.id || `user-${Date.now()}`;
+        const idToUse = u.id || `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
         u.id = idToUse;
         map.set(idToUse, u);
         if (u.id) idMap.set(u.id, idToUse);

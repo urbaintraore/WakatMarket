@@ -25,10 +25,48 @@ function isValidHttpUrl(stringUrl?: string | null): boolean {
 const resilientFetch: typeof fetch = async (input, init) => {
   let attempts = 0;
   const maxAttempts = 3;
+  let currentInit = init;
+
   while (attempts < maxAttempts) {
     try {
       attempts++;
-      return await fetch(input, init);
+      const response = await fetch(input, currentInit);
+
+      if (!response.ok) {
+        const cloned = response.clone();
+        try {
+          const bodyText = await cloned.text();
+          if (bodyText.includes("PGRST303") || bodyText.includes("JWT issued at future")) {
+            console.warn(`[Supabase Fetch] Token JWT issu du futur (PGRST303, essai ${attempts}/${maxAttempts}). Attente de synchronisation de l'horloge...`);
+            if (attempts < maxAttempts) {
+              await new Promise(res => setTimeout(res, 1500 * attempts));
+              continue;
+            } else {
+              console.warn("[Supabase Fetch] Suppression de la session obsolète et retentative sans en-tête d'autorisation...");
+              try {
+                for (let i = 0; i < localStorage.length; i++) {
+                  const key = localStorage.key(i);
+                  if (key && key.includes("sb-") && key.includes("-auth-token")) {
+                    localStorage.removeItem(key);
+                  }
+                }
+              } catch (e) {
+                // ignore storage error
+              }
+              if (currentInit && currentInit.headers) {
+                const headers = new Headers(currentInit.headers);
+                headers.delete("Authorization");
+                currentInit = { ...currentInit, headers };
+                return await fetch(input, currentInit);
+              }
+            }
+          }
+        } catch (e) {
+          // ignore clone reading error
+        }
+      }
+
+      return response;
     } catch (err: any) {
       const isFailedFetch =
         err?.name === 'TypeError' ||
@@ -42,7 +80,7 @@ const resilientFetch: typeof fetch = async (input, init) => {
       throw err;
     }
   }
-  return fetch(input, init);
+  return fetch(input, currentInit);
 };
 
 if (!supabaseUrl || !supabasePublishableKey) {

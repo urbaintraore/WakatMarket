@@ -2014,8 +2014,8 @@ export function WholesalerDashboard({
                     >
                       <option value="">-- Sélectionner un produit --</option>
                       <option value="__NEW__">➕ Créer / Saisir un nouveau produit</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name} ({p.unit || 'Unité'})</option>
+                      {products.map((p, idx) => (
+                        <option key={`wh_prod_${p.id}_${idx}`} value={p.id}>{p.name} ({p.unit || 'Unité'})</option>
                       ))}
                     </select>
                   </div>

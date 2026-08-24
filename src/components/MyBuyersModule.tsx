@@ -668,14 +668,14 @@ export function MyBuyersModule({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              {filteredBuyers.map((buyer) => {
+              {filteredBuyers.map((buyer, idx) => {
                 const stats = getBuyerStats(buyer.id);
                 const isExpanded = expandedBuyerId === buyer.id;
                 const subTab = activeSubTab[buyer.id] || "achats";
 
                 return (
                   <div 
-                    key={buyer.id} 
+                    key={`fbuyer_${buyer.id}_${idx}`} 
                     className={`bg-white dark:bg-zinc-900 border rounded-2xl transition-all overflow-hidden ${
                       isExpanded 
                         ? "border-emerald-500 shadow-md ring-1 ring-emerald-500/10" 
@@ -983,9 +983,9 @@ export function MyBuyersModule({
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                                    {stats.orders.map((order) => {
+                                    {stats.orders.map((order, idx) => {
                                       return (
-                                        <tr key={order.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-950/25 transition-colors">
+                                        <tr key={`buyer_order_${order.id}_${idx}`} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-950/25 transition-colors">
                                           <td className="py-3.5 px-4 font-semibold text-zinc-600 dark:text-zinc-400">
                                             {new Date(order.createdAt).toLocaleDateString("fr-FR")}
                                           </td>
@@ -1030,8 +1030,8 @@ export function MyBuyersModule({
                             {stats.payments.length === 0 ? (
                               <p className="text-zinc-400 italic text-center py-6 text-[11px]">Aucun règlement enregistré pour le moment.</p>
                             ) : (
-                              stats.payments.map((p) => (
-                                <div key={p.id} className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-3 rounded-xl flex justify-between items-center">
+                              stats.payments.map((p, idx) => (
+                                <div key={`buyer_pay_${p.id}_${idx}`} className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-3 rounded-xl flex justify-between items-center">
                                   <div className="flex items-center gap-2">
                                     <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                                     <div>
@@ -1122,7 +1122,7 @@ export function MyBuyersModule({
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4">
-              {debtFilteredBuyers.map((buyer) => {
+              {debtFilteredBuyers.map((buyer, idx) => {
                 const stats = getBuyerStats(buyer.id);
                 const limit = getBuyerCreditLimit(buyer);
                 const percent = limit > 0 ? Math.min(100, (stats.debt / limit) * 100) : 0;
@@ -1134,7 +1134,7 @@ export function MyBuyersModule({
 
                 return (
                   <div 
-                    key={buyer.id}
+                    key={`debt_buyer_${buyer.id}_${idx}`}
                     className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 space-y-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-750 transition"
                   >
                     {/* Header info of debtor partner */}
@@ -1229,10 +1229,10 @@ export function MyBuyersModule({
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-850">
-                              {unpaidInvoices.map((order) => {
+                              {unpaidInvoices.map((order, idx) => {
                                 const remainingAmount = order.totalAmount - order.amountPaid;
                                 return (
-                                  <tr key={order.id} className="hover:bg-zinc-100/30 dark:hover:bg-zinc-950/20 transition-colors">
+                                  <tr key={`unpaid_ord_${order.id}_${idx}`} className="hover:bg-zinc-100/30 dark:hover:bg-zinc-950/20 transition-colors">
                                     <td className="py-2.5 px-3 text-zinc-500 font-medium">
                                       {new Date(order.createdAt).toLocaleDateString("fr-FR")}
                                     </td>

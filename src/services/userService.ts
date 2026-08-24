@@ -102,14 +102,30 @@ export const userService = {
     if (!supabase || !uid) return null;
 
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", uid)
         .maybeSingle();
 
+      if (error && (error.code === "PGRST303" || error.message?.includes("JWT issued at future"))) {
+        console.warn("[JWT SKEW RECOVERY] PGRST303 détecté lors de la lecture du profil. Attente de synchronisation...");
+        await new Promise((res) => setTimeout(res, 1500));
+        const retryResult = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", uid)
+          .maybeSingle();
+        data = retryResult.data;
+        error = retryResult.error;
+      }
+
       if (error) {
-        console.error("Erreur lecture profil Supabase:", error);
+        if (error.code === "PGRST303" || error.message?.includes("JWT issued at future")) {
+          console.warn("Notice: Token JWT décalé pour le profil Supabase (PGRST303), utilisation du mode hors-ligne.");
+        } else {
+          console.error("Erreur lecture profil Supabase:", error);
+        }
         return null;
       }
 
