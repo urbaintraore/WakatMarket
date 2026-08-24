@@ -1,6 +1,7 @@
 import { Connection, Notification, UserProfile, UserRole } from "../types";
 import { supabase } from "../supabase";
 import { db } from "../data";
+import { syncService } from "./syncService";
 
 /**
  * Assure que les profils utilisateurs référencés existent dans le magasin local db.getUsers()
@@ -214,6 +215,13 @@ export const connectionService = {
     db.saveNotifications([newNotif, ...currentNotifs]);
     console.log("[ConnectionService] Local notification saved successfully to db.getNotifications()");
 
+    // Declencher les evenements UI pour les deux parties
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
+    }
+
     // E. Synchronisation Supabase avec logs ultra détaillés du payload et codes d'erreur
     if (supabase) {
       const payloadSent = {
@@ -277,6 +285,26 @@ export const connectionService = {
       console.log("[ConnectionService] Supabase client is not initialized. Using local storage mode only.");
     }
 
+    // F. Enfiler dans la SyncQueue pour garantir la réplication bidirectionnelle
+    try {
+      await syncService.enqueue("relation", relationId, "UPDATE", {
+        id: relationId,
+        grossiste_id: demandeur.id,
+        client_id: destinataireUser.id,
+        statut: "ACTIF",
+        senderId: demandeur.id,
+        receiverId: destinataireUser.id,
+        senderName: demandeurNom,
+        senderRole: demandeur.role,
+        receiverName: destinataireNom,
+        receiverRole: destinataireUser.role,
+        status: "active"
+      });
+      console.log(`[ConnectionService] Operation relation #${relationId} added to syncQueue`);
+    } catch (qErr) {
+      console.warn("[ConnectionService] syncQueue enqueue notice:", qErr);
+    }
+
     console.log("[ConnectionService.envoyerDemandeConnexion] <<< PARTNER ADDITION FLOW COMPLETED");
     console.log("=================================================================");
 
@@ -322,10 +350,118 @@ export const connectionService = {
     return this.createConnectionRequest(sender, receiver, notes, initialStatus);
   },
 
+  /**
+   * Diagnostic check that specifically validates if a relationship between two users is marked as 'active'
+   * (in the `statut` column) before the messaging UI allows a message to be sent.
+   * Performs check against the real Supabase schema (`grossiste_id`, `client_id`, `statut`).
+   */
+  async validateRelationshipActive(userAId: string, userBId: string): Promise<{
+    isActive: boolean;
+    statut: string;
+    grossisteId?: string;
+    clientId?: string;
+    relationId?: string;
+    details: string;
+  }> {
+    console.log("-----------------------------------------------------------------");
+    console.log(`[ConnectionService Diagnostic Check] Validating active relationship status between userA (${userAId}) and userB (${userBId})...`);
+
+    if (!userAId || !userBId) {
+      const msg = "Identifiants d'utilisateurs manquants pour la vérification de la relation.";
+      console.warn(`[ConnectionService Diagnostic Check] FAILED: ${msg}`);
+      return { isActive: false, statut: "INVALID", details: msg };
+    }
+
+    if (userAId === userBId) {
+      console.log(`[ConnectionService Diagnostic Check] Same user ID detected (${userAId}). Self-discussion validated as ACTIVE.`);
+      return { isActive: true, statut: "ACTIF", grossisteId: userAId, clientId: userBId, details: "Auto-discussion autorisée." };
+    }
+
+    // 1. Check against real Supabase schema 'relations' with columns grossiste_id, client_id, statut
+    if (supabase) {
+      try {
+        console.log(`[ConnectionService Diagnostic Check] Querying Supabase 'relations' table for grossiste_id/client_id = ${userAId} or ${userBId}`);
+        const { data, error } = await supabase
+          .from("relations")
+          .select("id, grossiste_id, client_id, statut, created_at")
+          .or(`grossiste_id.eq.${userAId},client_id.eq.${userAId}`);
+
+        if (error) {
+          console.warn("[ConnectionService Diagnostic Check] Supabase query error:", error.message, error.code, error.details);
+        } else if (data && data.length > 0) {
+          const match = data.find(
+            (r: any) =>
+              (r.grossiste_id === userAId && r.client_id === userBId) ||
+              (r.grossiste_id === userBId && r.client_id === userAId)
+          );
+
+          if (match) {
+            const rawStatut = String(match.statut || "").toUpperCase();
+            const isActif = rawStatut === "ACTIF" || rawStatut === "ACTIVE";
+            console.log(`[ConnectionService Diagnostic Check] Supabase relation row found! ID: ${match.id}, grossiste_id: ${match.grossiste_id}, client_id: ${match.client_id}, statut: '${match.statut}' (isActive=${isActif})`);
+
+            return {
+              isActive: isActif,
+              statut: match.statut || "ACTIF",
+              grossisteId: match.grossiste_id,
+              clientId: match.client_id,
+              relationId: match.id,
+              details: isActif
+                ? `Relation B2B active vérifiée dans Supabase entre ${match.grossiste_id} et ${match.client_id}.`
+                : `Relation B2B trouvée mais le statut 'statut' est '${match.statut}'.`
+            };
+          } else {
+            console.log(`[ConnectionService Diagnostic Check] No direct relation match found in Supabase results for pair (${userAId}, ${userBId}).`);
+          }
+        }
+      } catch (sbErr) {
+        console.warn("[ConnectionService Diagnostic Check] Exception querying Supabase relations table:", sbErr);
+      }
+    }
+
+    // 2. Check local DB as secondary fallback
+    const localConns = db.getConnections();
+    const localConn = localConns.find(
+      c => (c.senderId === userAId && c.receiverId === userBId) || (c.senderId === userBId && c.receiverId === userAId)
+    );
+
+    if (localConn) {
+      const isLocalActive = localConn.status === "active" || (localConn.status as string) === "actif";
+      console.log(`[ConnectionService Diagnostic Check] Local connection match found: id=${localConn.id}, status=${localConn.status} (isLocalActive=${isLocalActive})`);
+      return {
+        isActive: isLocalActive,
+        statut: isLocalActive ? "ACTIF" : "EN_ATTENTE",
+        relationId: localConn.id,
+        grossisteId: localConn.senderId,
+        clientId: localConn.receiverId,
+        details: isLocalActive
+          ? `Connexion locale active trouvée (#${localConn.id}).`
+          : `Connexion locale trouvée au statut '${localConn.status}'.`
+      };
+    }
+
+    console.log(`[ConnectionService Diagnostic Check] No relationship restriction found between ${userAId} and ${userBId}. Defaulting to ACTIVE for communication.`);
+    console.log("-----------------------------------------------------------------");
+    return {
+      isActive: true,
+      statut: "ACTIF",
+      details: "Messagerie autorisée."
+    };
+  },
+
   async acceptConnection(connectionId: string, _currentUserId?: string): Promise<void> {
+    console.log(`[ConnectionService.acceptConnection] Accepting connection #${connectionId}...`);
     const currentConns = db.getConnections();
     const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "active" as const, updatedAt: new Date().toISOString() } : c);
     db.saveConnections(updated);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
+    }
+
+    const conn = updated.find(c => c.id === connectionId);
 
     if (supabase) {
       try {
@@ -334,18 +470,55 @@ export const connectionService = {
         console.warn("Notice Supabase accept connection:", e);
       }
     }
+
+    if (conn) {
+      try {
+        await syncService.enqueue("relation", connectionId, "UPDATE", {
+          id: connectionId,
+          grossiste_id: conn.senderId,
+          client_id: conn.receiverId,
+          statut: "ACTIF",
+          status: "active"
+        });
+      } catch (e) {
+        console.warn("Notice syncQueue enqueue accept:", e);
+      }
+    }
   },
 
   async rejectConnection(connectionId: string, _currentUserId?: string): Promise<void> {
+    console.log(`[ConnectionService.rejectConnection] Rejecting connection #${connectionId}...`);
     const currentConns = db.getConnections();
     const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "refusée" as const, updatedAt: new Date().toISOString() } : c);
     db.saveConnections(updated);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
+    }
+
+    const conn = updated.find(c => c.id === connectionId);
 
     if (supabase) {
       try {
         await supabase.from("relations").update({ statut: "BLOCKED" }).eq("id", connectionId);
       } catch (e) {
         console.warn("Notice Supabase reject connection:", e);
+      }
+    }
+
+    if (conn) {
+      try {
+        await syncService.enqueue("relation", connectionId, "UPDATE", {
+          id: connectionId,
+          grossiste_id: conn.senderId,
+          client_id: conn.receiverId,
+          statut: "BLOCKED",
+          status: "refusée"
+        });
+      } catch (e) {
+        console.warn("Notice syncQueue enqueue reject:", e);
       }
     }
   },

@@ -1,5 +1,7 @@
 import { supabase } from "../supabase";
 import { offlineStorage } from "./offlineStorage";
+import { db } from "../data";
+import { Connection, UserRole } from "../types";
 import {
   productToDb,
   inventoryToDb,
@@ -442,6 +444,52 @@ class SyncService {
       });
       throw error;
     }
+
+    // Bidirectional local state update after Supabase confirmation
+    try {
+      const relationId = op.entityId || record.id;
+      const grossisteId = record.grossiste_id;
+      const clientId = record.client_id;
+      const isActif = record.statut === "ACTIF" || record.statut === "actif";
+
+      if (relationId && grossisteId && clientId) {
+        const localConns = db.getConnections();
+        const existingIdx = localConns.findIndex(c => c.id === relationId);
+        
+        const senderUser = db.getUsers().find(u => u.id === grossisteId);
+        const receiverUser = db.getUsers().find(u => u.id === clientId);
+
+        const updatedConn: Connection = {
+          id: relationId,
+          senderId: grossisteId,
+          receiverId: clientId,
+          status: isActif ? "active" : record.statut === "BLOCKED" ? "refusée" : "en_attente",
+          senderName: payload.senderName || senderUser?.companyName || senderUser?.name || "Partenaire Grossiste",
+          senderRole: payload.senderRole || senderUser?.role || UserRole.WHOLESALER,
+          receiverName: payload.receiverName || receiverUser?.companyName || receiverUser?.name || "Partenaire Client",
+          receiverRole: payload.receiverRole || receiverUser?.role || UserRole.RETAILER,
+          notes: payload.notes || "",
+          createdAt: payload.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        if (existingIdx >= 0) {
+          localConns[existingIdx] = { ...localConns[existingIdx], ...updatedConn };
+        } else {
+          localConns.push(updatedConn);
+        }
+        db.saveConnections(localConns);
+
+        console.log(`[SyncService.syncRelation] Bidirectional connection state updated locally for grossiste ${grossisteId} and client ${clientId}`);
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+        }
+      }
+    } catch (localErr) {
+      console.warn("[SyncService.syncRelation] Local connection update exception:", localErr);
+    }
+
     return true;
   }
 

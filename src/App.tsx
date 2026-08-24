@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole, isBonkoungou } from "./types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, MessageType, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole, isBonkoungou } from "./types";
 import {
   db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice, DEFAULT_PRODUCTS
 } from "./data";
@@ -26,6 +26,7 @@ import { orderService } from "./services/orderService";
 import { venteService } from "./services/venteService";
 import { connectionService } from "./services/connectionService";
 import { relationService } from "./services/relationService";
+import { chatService } from "./services/chatService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
 import { supabaseConfigError } from "./supabase";
@@ -2187,19 +2188,78 @@ export default function App() {
     addNotification(`Nouvel avis client enregistré pour ${orderId}`);
   };
 
-  // Direct chat send messaging
-  const handleSendMessage = (text: string, receiverId: string) => {
-    if (!currentUser) return;
-    const fresh: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: currentUser.id,
-      senderName: currentUser.companyName || currentUser.name,
-      senderRole: currentUser.role,
-      receiverId,
-      text,
-      timestamp: new Date().toISOString()
-    };
-    syncMessages([...messages, fresh]);
+  // Direct chat send messaging with grossiste_id, client_id mapping & diagnostic relationship check
+  const handleSendMessage = async (arg1: string, arg2: string) => {
+    if (!currentUser) {
+      console.warn("[App.handleSendMessage] Transmission aborted: currentUser is null");
+      return;
+    }
+
+    // Support both parameter order signatures: (text, receiverId) or (receiverId, text)
+    let receiverId = arg2;
+    let text = arg1;
+
+    const allUsers = db.getUsers();
+    if (allUsers.some(u => u.id === arg1) || arg1.startsWith("usr-") || arg1.startsWith("wholesaler") || arg1.startsWith("client") || arg1.includes("_")) {
+      receiverId = arg1;
+      text = arg2;
+    }
+
+    console.log("=================================================================");
+    console.log("[App.handleSendMessage] >>> MESSAGE TRANSMISSION ATTEMPT INITIATED");
+    console.log("[App.handleSendMessage] Active Session User (Sender):", {
+      id: currentUser.id,
+      name: currentUser.name,
+      companyName: currentUser.companyName,
+      role: currentUser.role
+    });
+    console.log("[App.handleSendMessage] Target Receiver ID:", receiverId);
+    console.log("[App.handleSendMessage] Message Content:", text);
+
+    const receiverUser = allUsers.find(u => u.id === receiverId);
+    console.log("[App.handleSendMessage] Target Receiver Profile:", receiverUser ? {
+      id: receiverUser.id,
+      name: receiverUser.name,
+      companyName: receiverUser.companyName,
+      role: receiverUser.role
+    } : "User profile not cached locally (proceeding with ID)");
+
+    // Determine grossiste_id and client_id B2B mapping
+    const grossisteId = (currentUser.role === UserRole.WHOLESALER || currentUser.role === UserRole.MANUFACTURER)
+      ? currentUser.id
+      : (receiverUser?.role === UserRole.WHOLESALER || receiverUser?.role === UserRole.MANUFACTURER ? receiverId : currentUser.id);
+
+    const clientId = grossisteId === currentUser.id ? receiverId : currentUser.id;
+
+    console.log(`[App.handleSendMessage] Session B2B Mappings -> grossiste_id: ${grossisteId}, client_id: ${clientId}`);
+
+    // Perform diagnostic relationship status check
+    const diag = await connectionService.validateRelationshipActive(currentUser.id, receiverId);
+    console.log("[App.handleSendMessage] Diagnostic Relationship Check Result:", diag);
+
+    if (!diag.isActive) {
+      console.warn(`[App.handleSendMessage] WARNING: Relationship between ${currentUser.id} and ${receiverId} status is '${diag.statut}'. Details: ${diag.details}`);
+    }
+
+    const conversationId = [grossisteId, clientId].sort().join("_");
+    console.log(`[App.handleSendMessage] Target Conversation ID: ${conversationId}`);
+
+    try {
+      const msgId = await chatService.sendMessage(
+        conversationId,
+        currentUser.id,
+        MessageType.TEXT,
+        text,
+        {},
+        [currentUser.id, receiverId]
+      );
+      console.log(`[App.handleSendMessage] SUCCESS: Message transmitted via chatService with ID: ${msgId}`);
+      setMessages(db.getMessages());
+    } catch (err) {
+      console.error("[App.handleSendMessage] ERROR transmitting message:", err);
+    }
+    console.log("[App.handleSendMessage] <<< MESSAGE TRANSMISSION ATTEMPT COMPLETED");
+    console.log("=================================================================");
   };
 
   // Handle barcode scanned success

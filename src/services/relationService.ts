@@ -9,69 +9,12 @@ export const relationService = {
    * avant d'autoriser la transmission de messages
    */
   async verifierRelationActive(userAId: string, userBId: string): Promise<{ isConnected: boolean; statut?: string; reason?: string }> {
-    if (!userAId || !userBId) {
-      return { isConnected: false, reason: "Identifiants d'utilisateurs invalides" };
-    }
-    if (userAId === userBId) {
-      return { isConnected: true, statut: "ACTIF" };
-    }
-
-    console.log(`[RelationService] Inspecting connection status using grossiste_id, client_id, statut between userA (${userAId}) and userB (${userBId})...`);
-
-    // 1. Vérification dans le magasin local
-    const localConns = db.getConnections();
-    const localConn = localConns.find(c =>
-      ((c.senderId === userAId && c.receiverId === userBId) || (c.senderId === userBId && c.receiverId === userAId))
-    );
-
-    if (localConn) {
-      const isLocalActive = localConn.status === "active" || (localConn.status as string) === "actif";
-      console.log(`[RelationService] Local connection match found: id=${localConn.id}, status=${localConn.status}`);
-      if (isLocalActive) {
-        return { isConnected: true, statut: "ACTIF" };
-      }
-    }
-
-    // 2. Vérification Supabase sur la table 'relations' avec grossiste_id, client_id, statut
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from("relations")
-          .select("id, grossiste_id, client_id, statut")
-          .or(`grossiste_id.eq.${userAId},client_id.eq.${userAId}`);
-
-        if (error) {
-          console.warn("[RelationService] Supabase connection query error:", error.message, error.code);
-        } else if (data && data.length > 0) {
-          const foundRelation = data.find(r =>
-            (r.grossiste_id === userAId && r.client_id === userBId) ||
-            (r.grossiste_id === userBId && r.client_id === userAId)
-          );
-
-          if (foundRelation) {
-            const isActif = foundRelation.statut === "ACTIF" || foundRelation.statut === "actif";
-            console.log(`[RelationService] Supabase relation verified. grossiste_id: ${foundRelation.grossiste_id}, client_id: ${foundRelation.client_id}, statut: ${foundRelation.statut}`);
-            return {
-              isConnected: isActif,
-              statut: foundRelation.statut,
-              reason: isActif ? undefined : `La relation a un statut non actif: ${foundRelation.statut}`
-            };
-          }
-        }
-      } catch (sbErr) {
-        console.warn("[RelationService] Exception during relation status inspection:", sbErr);
-      }
-    }
-
-    if (localConn) {
-      return {
-        isConnected: false,
-        statut: localConn.status,
-        reason: `La connexion est au statut: ${localConn.status}`
-      };
-    }
-
-    return { isConnected: true, statut: "ACTIF" };
+    const diag = await connectionService.validateRelationshipActive(userAId, userBId);
+    return {
+      isConnected: diag.isActive,
+      statut: diag.statut,
+      reason: diag.details
+    };
   },
 
   /**

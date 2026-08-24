@@ -2,7 +2,7 @@ import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types"
 import { supabase, uploadToSupabaseStorage } from "../supabase";
 import { db } from "../data";
 import { relationService } from "./relationService";
-import { ensureUsersExistLocally } from "./connectionService";
+import { connectionService, ensureUsersExistLocally } from "./connectionService";
 
 export const chatService = {
   /**
@@ -90,8 +90,11 @@ export const chatService = {
         ? _receiverOrParticipants.find(id => id !== senderId)
         : _receiverOrParticipants;
       if (receiverId) {
-        const statusCheck = await relationService.verifierRelationActive(senderId, receiverId);
-        console.log(`[ChatService] Connection status check (grossiste_id, client_id, statut) before message transmission:`, statusCheck);
+        const statusCheck = await connectionService.validateRelationshipActive(senderId, receiverId);
+        console.log(`[ChatService.sendMessage] Relationship Diagnostic Check (grossiste_id, client_id, statut):`, statusCheck);
+        if (!statusCheck.isActive) {
+          console.warn(`[ChatService.sendMessage] WARNING: Transmitting message to user ${receiverId} with non-active relationship status '${statusCheck.statut}'. Details: ${statusCheck.details}`);
+        }
       }
     }
 

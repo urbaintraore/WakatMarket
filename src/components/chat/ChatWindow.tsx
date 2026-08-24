@@ -3,6 +3,7 @@ import { ArrowLeft, Info, Phone, Video, Mic, MicOff, Volume2, VolumeX, PhoneOff,
 import { Conversation, ChatMessage, UserProfile, MessageType } from '../../types';
 import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
+import { connectionService } from '../../services/connectionService';
 import { db } from '../../data';
 import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
@@ -204,7 +205,26 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
   ) => {
     if (!currentUser) return;
     
-    console.log(`[ChatModule] Initiating send message: type=${type}, hasFile=${!!file}, content=${content}`);
+    console.log("=================================================================");
+    console.log(`[ChatWindow] >>> TRANSMITTING MESSAGE ATTEMPT INITIATED`);
+    console.log(`[ChatWindow] Sender ID: ${currentUser.id} (${currentUser.name})`);
+    console.log(`[ChatWindow] Target Conversation ID: ${conversation.id}`);
+    console.log(`[ChatWindow] Conversation Participants:`, conversation.participants);
+    console.log(`[ChatWindow] Message Type: ${type}, Has File: ${!!file}`);
+
+    const receiverId = Array.isArray(conversation.participants)
+      ? conversation.participants.find((p: string) => p !== currentUser.id)
+      : undefined;
+
+    if (receiverId) {
+      console.log(`[ChatWindow] Running diagnostic check for receiver ${receiverId}...`);
+      const diag = await connectionService.validateRelationshipActive(currentUser.id, receiverId);
+      console.log(`[ChatWindow] Diagnostic Check Result:`, diag);
+      if (!diag.isActive) {
+        console.warn(`[ChatWindow] WARNING: Non-active relationship status '${diag.statut}' detected. Details: ${diag.details}`);
+      }
+    }
+
     try {
       let finalContent = content;
       let mediaUrl;
