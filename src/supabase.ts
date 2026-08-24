@@ -14,17 +14,33 @@ export let supabaseConfigError: string | null = null;
 
 export function isNetworkError(err: any): boolean {
   if (!err) return false;
-  const msg = String(err?.message || err?.details || err?.error_description || err?.hint || err || '').toLowerCase();
+  if (typeof err === 'string') {
+    const s = err.toLowerCase();
+    return s.includes('failed to fetch') || s.includes('network') || s.includes('abort') || s.includes('load failed') || s.includes('timeout');
+  }
+  const rawMsg = [
+    err?.message,
+    err?.details,
+    err?.error_description,
+    err?.hint,
+    err?.error,
+    err?.statusText,
+    err?.name,
+    String(err)
+  ].filter(Boolean).join(' ').toLowerCase();
+
   return (
     err?.name === 'TypeError' ||
     err?.name === 'AbortError' ||
     err?.code === 'PGRST301' ||
-    msg.includes('failed to fetch') ||
-    msg.includes('network') ||
-    msg.includes('abort') ||
-    msg.includes('load failed') ||
-    msg.includes('timeout') ||
-    msg.includes('connection refused')
+    err?.code === '' ||
+    rawMsg.includes('failed to fetch') ||
+    rawMsg.includes('network') ||
+    rawMsg.includes('typeerror') ||
+    rawMsg.includes('abort') ||
+    rawMsg.includes('load failed') ||
+    rawMsg.includes('timeout') ||
+    rawMsg.includes('connection refused')
   );
 }
 
