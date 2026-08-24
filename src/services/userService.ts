@@ -1,4 +1,4 @@
-import { supabase } from "../supabase";
+import { supabase, isNetworkError } from "../supabase";
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou } from "../types";
 import { profileToDb } from "./dbMappers";
 
@@ -123,6 +123,8 @@ export const userService = {
       if (error) {
         if (error.code === "PGRST303" || error.message?.includes("JWT issued at future")) {
           console.warn("Notice: Token JWT décalé pour le profil Supabase (PGRST303), utilisation du mode hors-ligne.");
+        } else if (isNetworkError(error)) {
+          console.warn("[userService] Réseau Supabase indisponible pour getUser (mode hors-ligne).");
         } else {
           console.error("Erreur lecture profil Supabase:", error);
         }
@@ -291,7 +293,11 @@ export const userService = {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Erreur récupération profiles Supabase:", error);
+        if (isNetworkError(error)) {
+          console.warn("[userService] Réseau Supabase indisponible pour getAllUsers (mode hors-ligne actif).");
+        } else {
+          console.error("Erreur récupération profiles Supabase:", error);
+        }
         return [];
       }
 
@@ -328,7 +334,11 @@ export const userService = {
         };
       });
     } catch (e) {
-      console.error("Exception dans getAllUsers:", e);
+      if (isNetworkError(e)) {
+        console.warn("[userService] Exception réseau getAllUsers (mode hors-ligne):", (e as any)?.message || e);
+      } else {
+        console.error("Exception dans getAllUsers:", e);
+      }
       return [];
     }
   },

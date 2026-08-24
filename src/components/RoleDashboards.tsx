@@ -17,7 +17,7 @@ import { inventoryService } from "../services/inventoryService";
 import { venteService } from "../services/venteService";
 import { orderService } from "../services/orderService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
-import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner, ClaimsSummaryWidget, StockEvolutionBarChart, handleExportInventoryCSV } from "./CommonDashboardParts";
+import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner, ClaimsSummaryWidget, StockEvolutionBarChart, handleExportInventoryCSV, handleExportSalesCSV, SalesExportButton } from "./CommonDashboardParts";
 import { AccountingDashboard } from "./AccountingDashboard";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
@@ -30,6 +30,8 @@ import { StockCategoryOrganizer } from "./StockCategoryOrganizer";
 import { B2BProductComparator } from "./B2BProductComparator";
 import { StockForecastModule } from "./StockForecastModule";
 import { CustomizableDashboard } from "./CustomizableDashboard";
+import { AddressAutocomplete } from "./AddressAutocomplete";
+import { PriceRangeSlider } from "./PriceRangeSlider";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -1045,7 +1047,15 @@ export function ManufacturerDashboard({
       {activeTab === "orders" && (
         <div className="space-y-4">
           <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
-          <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes des Grossistes B2B</h4>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes des Grossistes B2B</h4>
+            <SalesExportButton
+              orders={myOrders}
+              products={products}
+              users={users}
+              currentUserId={currentUser.id}
+            />
+          </div>
           {myOrders.length === 0 ? (
             <div className="text-center py-8 text-zinc-400">Aucune commande reçue pour l'instant.</div>
           ) : (
@@ -1558,8 +1568,11 @@ export function WholesalerDashboard({
                 currentUser={currentUser}
                 products={products}
                 orders={orders}
+                inventory={inventory}
+                users={users}
                 payments={payments}
                 lightClients={lightClients}
+                onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
                   if (typeof window !== "undefined") {
@@ -1809,7 +1822,15 @@ export function WholesalerDashboard({
       {activeTab === "sales" && (
         <div className="space-y-8 animate-fade-in">
           <div className="space-y-4">
-            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes B2B Reçues</h4>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes B2B Reçues</h4>
+              <SalesExportButton
+                orders={incomingRetailerOrders}
+                products={products}
+                users={users}
+                currentUserId={currentUser.id}
+              />
+            </div>
             {incomingRetailerOrders.length === 0 ? (
               <div className="text-center py-8 text-zinc-400 bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">Aucune commande B2B en attente.</div>
             ) : (
@@ -2570,8 +2591,11 @@ export function RetailerDashboard({
                 currentUser={currentUser}
                 products={products}
                 orders={orders}
+                inventory={inventory}
+                users={users}
                 payments={payments}
                 lightClients={lightClients}
+                onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
                   if (typeof window !== "undefined") {
@@ -2896,7 +2920,15 @@ export function RetailerDashboard({
       {activeTab === "sales" && (
         <div className="space-y-6">
           <div className="space-y-4">
-            <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes Clients (B2C)</h4>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes Clients (B2C)</h4>
+              <SalesExportButton
+                orders={myB2COrders}
+                products={products}
+                users={users}
+                currentUserId={currentUser.id}
+              />
+            </div>
             {myB2COrders.length === 0 ? (
               <div className="text-center py-8 text-zinc-400 text-xs">Aucune commande client.</div>
             ) : (
@@ -3847,12 +3879,13 @@ export function ClientDashboard({
 
                 <div className="space-y-3 pt-3 border-t border-zinc-150">
                   <div>
-                    <label className="block text-[10px] font-bold text-zinc-500 uppercase">Adresse de livraison</label>
-                    <input
-                      type="text"
+                    <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Adresse de livraison (Auto-complétion)</label>
+                    <AddressAutocomplete
                       value={shippingAddress}
-                      onChange={(e) => setShippingAddress(e.target.value)}
-                      className="w-full mt-1 px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg text-xs text-zinc-950 dark:text-white"
+                      onChange={setShippingAddress}
+                      users={users}
+                      placeholder="Ex: Médina, Dakar ou Ouaga 2000..."
+                      id="client-checkout-shipping-address"
                     />
                   </div>
                   <div>

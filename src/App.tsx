@@ -29,7 +29,7 @@ import { relationService } from "./services/relationService";
 import { chatService } from "./services/chatService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
-import { supabaseConfigError } from "./supabase";
+import { supabaseConfigError, isNetworkError } from "./supabase";
 import { isAIStudioOrDevEnvironment } from "./utils/env";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -60,6 +60,7 @@ import { PreuvePaiementUploadModal } from "./components/PreuvePaiementUploadModa
 import { NotificationBell } from "./components/NotificationBell";
 import { QuickActionsBar } from "./components/QuickActionsBar";
 import { B2BProductComparator } from "./components/B2BProductComparator";
+import { AddressAutocomplete } from "./components/AddressAutocomplete";
 
 export default function App() {
   const [showComparator, setShowComparator] = useState(false);
@@ -629,7 +630,11 @@ export default function App() {
         setUsers(finalUsers);
         db.saveUsers(finalUsers);
       } catch (err) {
-        console.error("Erreur de chargement des utilisateurs :", err);
+        if (isNetworkError(err)) {
+          console.warn("[App] Synchronisation utilisateurs en mode hors-ligne.");
+        } else {
+          console.error("Erreur de chargement des utilisateurs :", err);
+        }
       }
     };
 
@@ -685,7 +690,11 @@ export default function App() {
             });
           }
         } catch (err) {
-          console.error("Error loading cloud data:", err);
+          if (isNetworkError(err)) {
+            console.warn("[App] Synchronisation données cloud en mode hors-ligne.");
+          } else {
+            console.error("Error loading cloud data:", err);
+          }
         }
       }
     };
@@ -3048,10 +3057,42 @@ export default function App() {
                   UserRole.MANUFACTURER,
                   UserRole.WHOLESALER,
                   UserRole.SEMI_WHOLESALER,
-                  UserRole.RETAILER
+                  UserRole.RETAILER,
+                  UserRole.CLIENT,
+                  UserRole.DRIVER_R2C,
+                  UserRole.DRIVER_W2R,
+                  UserRole.DRIVER_W2SG,
+                  UserRole.DRIVER_SG2R
                 ].includes(fbRôle) && (
                   <div className="space-y-3 p-3 bg-zinc-50 dark:bg-zinc-850/50 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                    <p className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">📍 Situation géographique de l'entreprise</p>
+                    <p className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">📍 Situation géographique & Adresse</p>
+                    
+                    <div>
+                      <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px] font-semibold">
+                        Recherche rapide d'adresse / Localisation (Auto-complétion)
+                      </label>
+                      <AddressAutocomplete
+                        value={fbQuartier ? `${fbQuartier}, ${fbVille} (${fbPays})` : ""}
+                        onChange={(val) => {
+                          setFbQuartier(val);
+                        }}
+                        onSelectSuggestion={(sug) => {
+                          setFbPays(sug.country);
+                          setFbVille(sug.city);
+                          if (sug.neighborhood) {
+                            setFbQuartier(sug.neighborhood);
+                          }
+                          if (sug.latitude && sug.longitude) {
+                            setFbLatitude(sug.latitude);
+                            setFbLongitude(sug.longitude);
+                          }
+                        }}
+                        users={users}
+                        placeholder="Ex: Tapez Ouaga 2000, Médina Dakar, Hamdallaye Bamako..."
+                        id="register-address-autocomplete"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px]">Pays</label>

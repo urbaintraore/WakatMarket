@@ -1,5 +1,5 @@
 import { Order, OrderStatus } from "../types";
-import { supabase } from "../supabase";
+import { supabase, isNetworkError } from "../supabase";
 import { orderToDb, orderFromDb } from "./dbMappers";
 
 function mapRowToOrder(row: any): Order {
@@ -19,13 +19,21 @@ export const orderService = {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Erreur getAllOrders Supabase:", error);
+        if (isNetworkError(error)) {
+          console.warn("[orderService] Réseau Supabase indisponible pour getAllOrders (mode hors-ligne).");
+        } else {
+          console.error("Erreur getAllOrders Supabase:", error);
+        }
         return [];
       }
 
       return (data || []).map(mapRowToOrder);
     } catch (err) {
-      console.error("Exception dans getAllOrders:", err);
+      if (isNetworkError(err)) {
+        console.warn("[orderService] Exception réseau getAllOrders (mode hors-ligne):", (err as any)?.message || err);
+      } else {
+        console.error("Exception dans getAllOrders:", err);
+      }
       return [];
     }
   },

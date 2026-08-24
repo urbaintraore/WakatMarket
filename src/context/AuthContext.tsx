@@ -3,6 +3,7 @@ import type { User } from "@supabase/supabase-js";
 import { authService, formatSupabaseAuthError } from "../services/authService";
 import { userService, SupabaseUser } from "../services/userService";
 import { UserRole, normalizeUserRole, isBonkoungou } from "../types";
+import { isNetworkError } from "../supabase";
 
 export interface AuthUserObject {
   uid: string;
@@ -110,7 +111,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setDbUser(profile);
         }
       } catch (err) {
-        console.error("Erreur lors de la récupération du profil Supabase:", err);
+        if (isNetworkError(err)) {
+          console.warn("[AuthContext] Synchronisation profil en mode hors-ligne.");
+        } else {
+          console.error("Erreur lors de la récupération du profil Supabase:", err);
+        }
       } finally {
         if (isMounted) {
           setLoading(false);

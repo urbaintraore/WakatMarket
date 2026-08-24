@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Layers, Package, Folder, Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
   TrendingUp, Trash2, Edit3, Plus, Download, AlertTriangle, CheckCircle2,
@@ -7,6 +7,7 @@ import {
 import { Product, InventoryItem, UserRole } from "../types";
 import { formatCFA } from "../data";
 import { PriceHistoryChart } from "./PriceHistoryChart";
+import { PriceRangeSlider } from "./PriceRangeSlider";
 
 interface StockCategoryOrganizerProps {
   inventory: InventoryItem[];
@@ -138,6 +139,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
   const [sortOption, setSortOption] = useState<"none" | "stock_asc" | "stock_desc" | "price_asc" | "price_desc" | "name_asc">("none");
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const [selectedProductForChart, setSelectedProductForChart] = useState<string | null>(null);
+  const [showPriceFilterSlider, setShowPriceFilterSlider] = useState(false);
 
   // Filter items owned by the current user
   const myInventory = useMemo(() => {
@@ -187,6 +189,30 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
       .filter((entry) => !!entry.product);
   }, [myInventory, products]);
 
+  // Price boundaries calculation
+  const { minProductPrice, maxProductPrice } = useMemo(() => {
+    if (enrichedItems.length === 0) return { minProductPrice: 0, maxProductPrice: 100000 };
+    const prices = enrichedItems.map((i) => i.price).filter((p) => p > 0);
+    if (prices.length === 0) return { minProductPrice: 0, maxProductPrice: 100000 };
+    return {
+      minProductPrice: Math.min(...prices),
+      maxProductPrice: Math.max(...prices),
+    };
+  }, [enrichedItems]);
+
+  const [priceFilterRange, setPriceFilterRange] = useState<{ min: number; max: number }>({
+    min: 0,
+    max: 500000,
+  });
+
+  // Adjust price filter range when items change if untouched
+  useEffect(() => {
+    setPriceFilterRange((prev) => ({
+      min: Math.min(prev.min, minProductPrice),
+      max: Math.max(prev.max, maxProductPrice),
+    }));
+  }, [minProductPrice, maxProductPrice]);
+
   // Categories extraction with stats
   const categoryStats = useMemo(() => {
     const map = new Map<
@@ -224,6 +250,11 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
 
       if (!matchesCategory) return false;
 
+      // Price range filter
+      if (item.price < priceFilterRange.min || item.price > priceFilterRange.max) {
+        return false;
+      }
+
       if (!searchQuery.trim()) return true;
 
       const q = searchQuery.toLowerCase().trim();
@@ -255,7 +286,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
     }
 
     return list;
-  }, [enrichedItems, selectedCategoryTab, searchQuery, sortOption]);
+  }, [enrichedItems, selectedCategoryTab, searchQuery, sortOption, priceFilterRange]);
 
   // Group items by category for the grouped layout
   const groupedByCategory = useMemo(() => {
@@ -428,6 +459,22 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-between sm:justify-end">
+            {/* Price Slider Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowPriceFilterSlider(!showPriceFilterSlider)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                showPriceFilterSlider || priceFilterRange.min > minProductPrice || priceFilterRange.max < maxProductPrice
+                  ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 shadow-xs"
+                  : "bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100"
+              }`}
+              title="Filtrer par tranche de prix"
+              id="toggle-price-range-slider"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Prix {priceFilterRange.min > minProductPrice || priceFilterRange.max < maxProductPrice ? `(${formatCFA(priceFilterRange.min)} - ${formatCFA(priceFilterRange.max)})` : ""}</span>
+            </button>
+
             {/* Sort selector */}
             <div className="flex items-center gap-1.5">
               <select
@@ -535,6 +582,22 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
             );
           })}
         </div>
+
+        {/* Price Range Slider Panel (Collapsible or activated) */}
+        {showPriceFilterSlider && (
+          <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in-50 duration-150">
+            <PriceRangeSlider
+              minPrice={minProductPrice}
+              maxPrice={maxProductPrice}
+              currentMin={priceFilterRange.min}
+              currentMax={priceFilterRange.max}
+              matchingCount={filteredAndSortedItems.length}
+              totalCount={enrichedItems.length}
+              onChange={({ min, max }) => setPriceFilterRange({ min, max })}
+              onReset={() => setPriceFilterRange({ min: minProductPrice, max: maxProductPrice })}
+            />
+          </div>
+        )}
 
         {/* Category grouped helper toggle buttons */}
         {viewMode === "category_grouped" && groupedByCategory.length > 1 && (

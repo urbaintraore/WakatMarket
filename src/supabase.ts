@@ -12,6 +12,22 @@ export type BucketName = "MonBucket" | "Chat";
 export let supabase: any = null;
 export let supabaseConfigError: string | null = null;
 
+export function isNetworkError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err?.message || err?.details || err?.error_description || err?.hint || err || '').toLowerCase();
+  return (
+    err?.name === 'TypeError' ||
+    err?.name === 'AbortError' ||
+    err?.code === 'PGRST301' ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network') ||
+    msg.includes('abort') ||
+    msg.includes('load failed') ||
+    msg.includes('timeout') ||
+    msg.includes('connection refused')
+  );
+}
+
 function isValidHttpUrl(stringUrl?: string | null): boolean {
   if (!stringUrl || typeof stringUrl !== 'string') return false;
   try {
@@ -24,7 +40,7 @@ function isValidHttpUrl(stringUrl?: string | null): boolean {
 
 const resilientFetch: typeof fetch = async (input, init) => {
   let attempts = 0;
-  const maxAttempts = 3;
+  const maxAttempts = 2;
   let currentInit = init;
 
   while (attempts < maxAttempts) {
@@ -39,7 +55,7 @@ const resilientFetch: typeof fetch = async (input, init) => {
           if (bodyText.includes("PGRST303") || bodyText.includes("JWT issued at future")) {
             console.warn(`[Supabase Fetch] Token JWT issu du futur (PGRST303, essai ${attempts}/${maxAttempts}). Attente de synchronisation de l'horloge...`);
             if (attempts < maxAttempts) {
-              await new Promise(res => setTimeout(res, 1500 * attempts));
+              await new Promise(res => setTimeout(res, 1000 * attempts));
               continue;
             } else {
               console.warn("[Supabase Fetch] Suppression de la session obsolète et retentative sans en-tête d'autorisation...");
@@ -68,13 +84,8 @@ const resilientFetch: typeof fetch = async (input, init) => {
 
       return response;
     } catch (err: any) {
-      const isFailedFetch =
-        err?.name === 'TypeError' ||
-        String(err?.message || '').toLowerCase().includes('failed to fetch') ||
-        String(err || '').toLowerCase().includes('failed to fetch');
-
-      if (isFailedFetch && attempts < maxAttempts) {
-        await new Promise(res => setTimeout(res, attempts * 400));
+      if (isNetworkError(err) && attempts < maxAttempts) {
+        await new Promise(res => setTimeout(res, attempts * 300));
         continue;
       }
       throw err;

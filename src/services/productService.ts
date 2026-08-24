@@ -1,5 +1,5 @@
 import { Product } from "../types";
-import { supabase, uploadToSupabaseStorage, formatStorageUrl, supabaseConfigError } from "../supabase";
+import { supabase, uploadToSupabaseStorage, formatStorageUrl, supabaseConfigError, isNetworkError } from "../supabase";
 import { productToDb, productFromDb } from "./dbMappers";
 
 export interface ProductUploadResult {
@@ -32,13 +32,21 @@ export const productService = {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Erreur getAllProducts Supabase:", error);
+        if (isNetworkError(error)) {
+          console.warn("[productService] Réseau Supabase indisponible pour getAllProducts (mode hors-ligne).");
+        } else {
+          console.error("Erreur getAllProducts Supabase:", error);
+        }
         return [];
       }
 
       return (data || []).map(mapRowToProduct);
     } catch (err) {
-      console.error("Exception dans getAllProducts:", err);
+      if (isNetworkError(err)) {
+        console.warn("[productService] Exception réseau getAllProducts (mode hors-ligne):", (err as any)?.message || err);
+      } else {
+        console.error("Exception dans getAllProducts:", err);
+      }
       return [];
     }
   },

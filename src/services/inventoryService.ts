@@ -1,5 +1,5 @@
 import { InventoryItem, Product } from "../types";
-import { supabase } from "../supabase";
+import { supabase, isNetworkError } from "../supabase";
 import { inventoryToDb, inventoryFromDb } from "./dbMappers";
 
 export interface ExpirationAlert {
@@ -31,13 +31,21 @@ export const inventoryService = {
         .order("updated_at", { ascending: false });
 
       if (error) {
-        console.error("Erreur getAllInventory Supabase:", error);
+        if (isNetworkError(error)) {
+          console.warn("[inventoryService] Réseau Supabase indisponible pour getAllInventory (mode hors-ligne).");
+        } else {
+          console.error("Erreur getAllInventory Supabase:", error);
+        }
         return [];
       }
 
       return (data || []).map(mapRowToInventoryItem);
     } catch (err) {
-      console.error("Exception dans getAllInventory:", err);
+      if (isNetworkError(err)) {
+        console.warn("[inventoryService] Exception réseau getAllInventory (mode hors-ligne):", (err as any)?.message || err);
+      } else {
+        console.error("Exception dans getAllInventory:", err);
+      }
       return [];
     }
   },
@@ -54,13 +62,21 @@ export const inventoryService = {
         .eq("owner_id", uid);
 
       if (error) {
-        console.error("Erreur getUserStock Supabase:", error);
+        if (isNetworkError(error)) {
+          console.warn("[inventoryService] Réseau Supabase indisponible pour getUserStock (mode hors-ligne).");
+        } else {
+          console.error("Erreur getUserStock Supabase:", error);
+        }
         return [];
       }
 
       return (data || []).map(mapRowToInventoryItem);
     } catch (err) {
-      console.error("Exception dans getUserStock:", err);
+      if (isNetworkError(err)) {
+        console.warn("[inventoryService] Exception réseau getUserStock (mode hors-ligne):", (err as any)?.message || err);
+      } else {
+        console.error("Exception dans getUserStock:", err);
+      }
       return [];
     }
   },

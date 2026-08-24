@@ -31,15 +31,35 @@ export const SyncStatusIndicator: React.FC<SyncStatusProps> = ({ isOnline, pendi
 };
 
 interface LowStockAlertsProps {
-  inventory: InventoryItem[];
-  products: Product[];
-  currentUserId: string;
+  inventory?: InventoryItem[];
+  products?: Product[];
+  currentUserId?: string;
+  orders?: Order[];
 }
 
-export const LowStockAlerts: React.FC<LowStockAlertsProps> = ({ inventory, products, currentUserId }) => {
-  const alerts = inventory.filter(i => {
-    if (i.ownerId !== currentUserId) return false;
-    const estSousSeuilFixe = i.stock <= (i.lowStockThreshold || i.threshold);
+export const LowStockAlerts: React.FC<LowStockAlertsProps> = ({ 
+  inventory = [], 
+  products = [], 
+  currentUserId = '' 
+}) => {
+  const safeInventory: InventoryItem[] = Array.isArray(inventory) && inventory.length > 0
+    ? inventory
+    : (products || []).map(p => ({
+        id: `inv-${p.id}`,
+        productId: p.id,
+        stock: p.stock ?? 0,
+        threshold: (p as any).minStockAlert || (p as any).lowStockThreshold || (p as any).seuilAlerte || 5,
+        lowStockThreshold: (p as any).minStockAlert || (p as any).lowStockThreshold || (p as any).seuilAlerte || 5,
+        ownerId: p.creatorId || currentUserId,
+        price: p.price ?? (p as any).prixDetail ?? 0,
+        category: p.category
+      }));
+
+  const alerts = safeInventory.filter(i => {
+    if (!i) return false;
+    if (currentUserId && i.ownerId && i.ownerId !== currentUserId) return false;
+    const thresh = i.lowStockThreshold || i.threshold || 5;
+    const estSousSeuilFixe = (i.stock ?? 0) <= thresh;
     const estSousSeuilJours = (i as any).joursRestants !== undefined && (i as any).joursRestants !== null && (i as any).joursRestants <= ((i as any).seuilAlerte || 5);
     return estSousSeuilFixe || estSousSeuilJours;
   });
@@ -1130,16 +1150,16 @@ export const SyncHistory: React.FC<SyncHistoryProps> = ({ queue }) => {
 };
 
 interface WeeklySalesChartProps {
-  orders: Order[];
-  currentUserId: string;
+  orders?: Order[];
+  currentUserId?: string;
 }
 
-export const WeeklySalesChart: React.FC<WeeklySalesChartProps> = ({ orders, currentUserId }) => {
+export const WeeklySalesChart: React.FC<WeeklySalesChartProps> = ({ orders = [], currentUserId = "" }) => {
   const [chartType, setChartType] = useState<'revenue' | 'count'>('revenue');
 
   const chartData = useMemo(() => {
     // Filter orders where receiverId is currentUserId (this actor is the supplier/seller)
-    const sellerOrders = orders.filter(o => o.receiverId === currentUserId);
+    const sellerOrders = (orders || []).filter(o => !currentUserId || o.receiverId === currentUserId);
     
     const daysData = [];
     const daysOfWeek = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
@@ -1152,7 +1172,7 @@ export const WeeklySalesChart: React.FC<WeeklySalesChartProps> = ({ orders, curr
       const dayLabel = `${dayName} ${d.getDate()}/${d.getMonth() + 1}`;
       
       const dayOrders = sellerOrders.filter(o => {
-        if (!o.createdAt) return false;
+        if (!o?.createdAt) return false;
         return o.createdAt.startsWith(dateString);
       });
       
@@ -1271,18 +1291,24 @@ export const WeeklySalesChart: React.FC<WeeklySalesChartProps> = ({ orders, curr
 // Analytical Module: Debt vs. Revenue Chart (Recharts)
 // ----------------------------------------------------------------------
 interface DebtVsRevenueChartProps {
-  orders: Order[];
-  payments: DebtPayment[];
-  currentUserId: string;
+  orders?: Order[];
+  payments?: DebtPayment[];
+  currentUserId?: string;
+  lightClients?: LightClient[];
 }
 
-export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({ orders, payments, currentUserId }) => {
+export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({ 
+  orders = [], 
+  payments = [], 
+  currentUserId = "",
+  lightClients = [] 
+}) => {
   const [viewType, setViewType] = useState<'monthly' | 'weekly'>('monthly');
 
   const chartData = useMemo(() => {
     // Sales of this user (currentUserId as supplier/receiver of orders)
-    const mySales = orders.filter(o => o.receiverId === currentUserId);
-    const myPayments = payments; 
+    const mySales = (orders || []).filter(o => !currentUserId || o.receiverId === currentUserId);
+    const myPayments = payments || []; 
 
     const periodsData = [];
 
@@ -1298,7 +1324,7 @@ export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({ orders, 
         
         // Filter sales in this specific month
         const periodSales = mySales.filter(o => {
-          if (!o.createdAt) return false;
+          if (!o?.createdAt) return false;
           const od = new Date(o.createdAt);
           return od.getFullYear() === year && od.getMonth() === monthIndex;
         });
@@ -2289,11 +2315,11 @@ export function ExpirationAlertsBanner({ alerts }: ExpirationAlertsBannerProps) 
 // Recharts 30-Day Sales & Stock Trends Component
 // ----------------------------------------------------------------------
 interface ThirtyDaySalesAndStockChartProps {
-  orders: Order[];
-  inventory: InventoryItem[];
-  products: Product[];
+  orders?: Order[];
+  inventory?: InventoryItem[];
+  products?: Product[];
   stockMovements?: StockMovement[];
-  currentUserId: string;
+  currentUserId?: string;
 }
 
 export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartProps> = ({
@@ -2301,14 +2327,27 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
   inventory = [],
   products = [],
   stockMovements = [],
-  currentUserId
+  currentUserId = ""
 }) => {
   const [activeTab, setActiveTab] = useState<'sales' | 'stock' | 'combined'>('sales');
 
   const chartData = useMemo(() => {
     // Orders where user is supplier/receiver or buyer/sender
-    const mySales = orders.filter(o => o.receiverId === currentUserId || o.senderId === currentUserId);
-    const myStockItems = inventory.filter(i => i.ownerId === currentUserId);
+    const mySales = (orders || []).filter(o => !currentUserId || o.receiverId === currentUserId || o.senderId === currentUserId);
+    const safeInventory: InventoryItem[] = Array.isArray(inventory) && inventory.length > 0
+      ? inventory
+      : (products || []).map(p => ({
+          id: `inv-${p.id}`,
+          productId: p.id,
+          stock: p.stock ?? 0,
+          threshold: (p as any).minStockAlert || 5,
+          lowStockThreshold: (p as any).minStockAlert || 5,
+          ownerId: p.creatorId || currentUserId,
+          price: p.price ?? 0,
+          category: p.category
+        }));
+
+    const myStockItems = safeInventory.filter(i => !currentUserId || i.ownerId === currentUserId);
     const currentStockTotal = myStockItems.reduce((sum, item) => sum + (item.stock || 0), 0);
     const avgThreshold = myStockItems.length > 0
       ? Math.round(myStockItems.reduce((sum, i) => sum + (i.threshold || 5), 0) / myStockItems.length)
@@ -2323,12 +2362,12 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
       const label = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
 
       // Orders on this specific date
-      const dayOrders = mySales.filter(o => o.createdAt && o.createdAt.startsWith(dateStr));
+      const dayOrders = mySales.filter(o => o?.createdAt && o.createdAt.startsWith(dateStr));
       const ventes = dayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
       const volume = dayOrders.length;
 
       // Stock movements for this date
-      const dayMovements = stockMovements.filter(m => m.ownerId === currentUserId && m.timestamp && m.timestamp.startsWith(dateStr));
+      const dayMovements = (stockMovements || []).filter(m => (!currentUserId || m.ownerId === currentUserId) && m.timestamp && m.timestamp.startsWith(dateStr));
       const entrees = dayMovements.filter(m => m.type === 'IN').reduce((sum, m) => sum + m.quantity, 0);
       const sorties = dayMovements.filter(m => m.type === 'OUT').reduce((sum, m) => sum + m.quantity, 0);
 
@@ -2348,7 +2387,7 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
     }
 
     return dataPoints;
-  }, [orders, inventory, stockMovements, currentUserId]);
+  }, [orders, inventory, products, stockMovements, currentUserId]);
 
   const totalVentes30j = useMemo(() => chartData.reduce((sum, d) => sum + d.ventes, 0), [chartData]);
   const totalVolume30j = useMemo(() => chartData.reduce((sum, d) => sum + d.volume, 0), [chartData]);
@@ -2631,23 +2670,36 @@ export const ClaimsSummaryWidget: React.FC<ClaimsSummaryWidgetProps> = ({
 // Stock Evolution Bar Chart Widget (7-Day Trend & Replenishment Need)
 // ----------------------------------------------------------------------
 interface StockEvolutionBarChartProps {
-  inventory: InventoryItem[];
-  products: Product[];
-  currentUserId: string;
+  inventory?: InventoryItem[];
+  products?: Product[];
+  currentUserId?: string;
 }
 
 export const StockEvolutionBarChart: React.FC<StockEvolutionBarChartProps> = ({
-  inventory,
-  products,
-  currentUserId
+  inventory = [],
+  products = [],
+  currentUserId = ""
 }) => {
-  const userInventory = inventory.filter(i => i.ownerId === currentUserId);
+  const safeInventory: InventoryItem[] = Array.isArray(inventory) && inventory.length > 0
+    ? inventory
+    : (products || []).map(p => ({
+        id: `inv-${p.id}`,
+        productId: p.id,
+        stock: p.stock ?? 0,
+        threshold: (p as any).minStockAlert || 5,
+        lowStockThreshold: (p as any).minStockAlert || 5,
+        ownerId: p.creatorId || currentUserId,
+        price: p.price ?? 0,
+        category: p.category
+      }));
+
+  const userInventory = safeInventory.filter(i => !currentUserId || i.ownerId === currentUserId);
   
   const chartData = useMemo(() => {
     return userInventory.slice(0, 7).map(item => {
-      const prod = products.find(p => p.id === item.productId);
+      const prod = (products || []).find(p => p.id === item.productId);
       const name = prod ? (prod.name.length > 15 ? prod.name.substring(0, 15) + '...' : prod.name) : 'Produit';
-      const stock = item.stock;
+      const stock = item.stock ?? 0;
       return {
         name,
         J_6: stock,
@@ -2703,15 +2755,15 @@ export function handleExportInventoryCSV(inventory: InventoryItem[], products: P
     const prod = products.find(p => p.id === item.productId);
     return [
       item.productId,
-      `"${prod?.name || 'Produit'}"`,
-      `"${prod?.category || 'Général'}"`,
+      `"${(prod?.name || 'Produit').replace(/"/g, '""')}"`,
+      `"${(prod?.category || 'Général').replace(/"/g, '""')}"`,
       item.stock,
       item.threshold || 5,
       prod?.prixGros || prod?.prixDetail || 1000
     ];
   });
 
-  const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+  const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement("a");
   link.setAttribute("href", encodedUri);
@@ -2720,6 +2772,118 @@ export function handleExportInventoryCSV(inventory: InventoryItem[], products: P
   link.click();
   document.body.removeChild(link);
 }
+
+/**
+ * Export filtered merchant sales and orders data to downloadable CSV
+ */
+export function handleExportSalesCSV(
+  orders: Order[],
+  products: Product[],
+  users: UserProfile[],
+  currentUserId?: string,
+  fileNamePrefix: string = "ventes_commandes"
+) {
+  // Filter relevant merchant sales if currentUserId is supplied
+  const salesToExport = currentUserId
+    ? orders.filter(o => o.receiverId === currentUserId || o.senderId === currentUserId || (o as any).vendeurId === currentUserId)
+    : orders;
+
+  if (salesToExport.length === 0) {
+    alert("Aucune donnée de vente ou commande à exporter.");
+    return;
+  }
+
+  const headers = [
+    "ID Commande",
+    "Date",
+    "Client / Acheteur",
+    "Contact Téléphone",
+    "Montant Total (FCFA)",
+    "Montant Payé (FCFA)",
+    "Statut Commande",
+    "Statut Paiement",
+    "Mode de Paiement",
+    "Nombre d'Articles",
+    "Détail des Articles",
+    "Adresse de Livraison"
+  ];
+
+  const rows = salesToExport.map(order => {
+    const clientUser = users.find(u => u.id === order.senderId);
+    const clientName = (order as any).clientName || clientUser?.companyName || clientUser?.name || "Client";
+    const clientPhone = clientUser?.phone || (order as any).clientPhone || "-";
+    const itemCount = order.items ? order.items.reduce((sum, item) => sum + (item.quantity || 1), 0) : 1;
+    
+    const itemsDetail = order.items && order.items.length > 0
+      ? order.items.map(item => {
+          const prod = products.find(p => p.id === item.productId);
+          return `${item.quantity}x ${prod?.name || item.productId}`;
+        }).join(" | ")
+      : "Vente directe";
+
+    const formattedDate = new Date(order.createdAt).toLocaleString("fr-FR");
+
+    return [
+      `"${order.id}"`,
+      `"${formattedDate}"`,
+      `"${clientName.replace(/"/g, '""')}"`,
+      `"${clientPhone.replace(/"/g, '""')}"`,
+      order.totalAmount || 0,
+      order.amountPaid !== undefined ? order.amountPaid : order.totalAmount || 0,
+      `"${order.status || 'En cours'}"`,
+      `"${order.paymentStatus || 'PAID'}"`,
+      `"${order.paymentMethod || 'CASH'}"`,
+      itemCount,
+      `"${itemsDetail.replace(/"/g, '""')}"`,
+      `"${(order.deliveryAddress || 'Standard').replace(/"/g, '""')}"`
+    ];
+  });
+
+  const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `${fileNamePrefix}_wakatmarket_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+interface SalesExportButtonProps {
+  orders: Order[];
+  products: Product[];
+  users: UserProfile[];
+  currentUserId?: string;
+  className?: string;
+  label?: string;
+  size?: "sm" | "md";
+}
+
+export const SalesExportButton: React.FC<SalesExportButtonProps> = ({
+  orders,
+  products,
+  users,
+  currentUserId,
+  className = "",
+  label = "Exporter en CSV",
+  size = "md"
+}) => {
+  return (
+    <button
+      type="button"
+      onClick={() => handleExportSalesCSV(orders, products, users, currentUserId)}
+      className={`px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
+        size === "sm" ? "text-[11px] py-1 px-2.5" : "text-xs"
+      } ${className}`}
+      title="Exporter toutes les ventes et commandes filtrées au format CSV"
+      id="btn-export-sales-csv"
+    >
+      <Package className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+      <span>{label}</span>
+    </button>
+  );
+};
+
 
 
 

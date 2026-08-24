@@ -4,7 +4,7 @@ import {
   ArrowUp, ArrowDown, RotateCcw, Check, Sparkles, SlidersHorizontal,
   TrendingUp, BarChart3, AlertTriangle, ShieldCheck, ShoppingBag, DollarSign, RefreshCw
 } from "lucide-react";
-import { UserProfile, Product, Order, DebtPayment, LightClient } from "../types";
+import { UserProfile, Product, Order, DebtPayment, LightClient, InventoryItem, OrderStatus } from "../types";
 import { 
   ThirtyDaySalesAndStockChart, LowStockAlerts, WeeklySalesChart, 
   DebtVsRevenueChart, StockEvolutionBarChart, ClaimsSummaryWidget 
@@ -75,20 +75,26 @@ interface CustomizableDashboardProps {
   currentUser: UserProfile;
   products: Product[];
   orders: Order[];
+  inventory?: InventoryItem[];
+  users?: UserProfile[];
   payments?: DebtPayment[];
   lightClients?: LightClient[];
   onOpenReorderModal?: (product: Product, suggestedQty: number) => void;
   onOpenComparator?: () => void;
+  onUpdateOrderStatus?: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
 }
 
 export function CustomizableDashboard({
   currentUser,
-  products,
-  orders,
+  products = [],
+  orders = [],
+  inventory = [],
+  users = [],
   payments = [],
   lightClients = [],
   onOpenReorderModal,
-  onOpenComparator
+  onOpenComparator,
+  onUpdateOrderStatus
 }: CustomizableDashboardProps) {
   const localStorageKey = `wakat_dashboard_widgets_${currentUser.id}`;
 
@@ -194,7 +200,7 @@ export function CustomizableDashboard({
   const renderWidgetContent = (widgetId: string) => {
     switch (widgetId) {
       case "sales_30d_chart":
-        return <ThirtyDaySalesAndStockChart products={userProducts} orders={orders} currentUserId={currentUser.id} />;
+        return <ThirtyDaySalesAndStockChart products={userProducts} inventory={inventory} orders={orders} currentUserId={currentUser.id} />;
 
       case "stock_forecast":
         return (
@@ -211,13 +217,20 @@ export function CustomizableDashboard({
         return <DebtVsRevenueChart orders={orders} currentUserId={currentUser.id} payments={payments} lightClients={lightClients} />;
 
       case "low_stock_alerts":
-        return <LowStockAlerts products={userProducts} orders={orders} currentUserId={currentUser.id} />;
+        return <LowStockAlerts products={userProducts} inventory={inventory} orders={orders} currentUserId={currentUser.id} />;
 
       case "stock_evolution_bar":
-        return <StockEvolutionBarChart products={userProducts} orders={orders} currentUserId={currentUser.id} />;
+        return <StockEvolutionBarChart products={userProducts} inventory={inventory} currentUserId={currentUser.id} />;
 
       case "claims_summary":
-        return <ClaimsSummaryWidget orders={orders} currentUserId={currentUser.id} />;
+        return (
+          <ClaimsSummaryWidget 
+            orders={orders} 
+            users={users} 
+            currentUser={currentUser} 
+            onUpdateOrderStatus={onUpdateOrderStatus || (() => {})} 
+          />
+        );
 
       default:
         return null;
