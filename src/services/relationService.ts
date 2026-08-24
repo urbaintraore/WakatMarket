@@ -1,235 +1,225 @@
-import { Relation, PartnerNotificationItem, UserProfile, UserRole } from "../types";
+import { Connection, Notification, Relation, PartnerNotificationItem, UserProfile, UserRole } from "../types";
 import { supabase } from "../supabase";
+import { db } from "../data";
+import { connectionService, ensureUsersExistLocally } from "./connectionService";
 
 export const relationService = {
   /**
-   * 1. Envoyer ou créer une relation de partenariat d'affaires B2B dans PostgreSQL (table relations)
+   * Inspecter et vérifier le statut de la connexion B2B entre deux utilisateurs (utilisant grossiste_id, client_id, statut)
+   * avant d'autoriser la transmission de messages
+   */
+  async verifierRelationActive(userAId: string, userBId: string): Promise<{ isConnected: boolean; statut?: string; reason?: string }> {
+    if (!userAId || !userBId) {
+      return { isConnected: false, reason: "Identifiants d'utilisateurs invalides" };
+    }
+    if (userAId === userBId) {
+      return { isConnected: true, statut: "ACTIF" };
+    }
+
+    console.log(`[RelationService] Inspecting connection status using grossiste_id, client_id, statut between userA (${userAId}) and userB (${userBId})...`);
+
+    // 1. Vérification dans le magasin local
+    const localConns = db.getConnections();
+    const localConn = localConns.find(c =>
+      ((c.senderId === userAId && c.receiverId === userBId) || (c.senderId === userBId && c.receiverId === userAId))
+    );
+
+    if (localConn) {
+      const isLocalActive = localConn.status === "active" || (localConn.status as string) === "actif";
+      console.log(`[RelationService] Local connection match found: id=${localConn.id}, status=${localConn.status}`);
+      if (isLocalActive) {
+        return { isConnected: true, statut: "ACTIF" };
+      }
+    }
+
+    // 2. Vérification Supabase sur la table 'relations' avec grossiste_id, client_id, statut
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("relations")
+          .select("id, grossiste_id, client_id, statut")
+          .or(`grossiste_id.eq.${userAId},client_id.eq.${userAId}`);
+
+        if (error) {
+          console.warn("[RelationService] Supabase connection query error:", error.message, error.code);
+        } else if (data && data.length > 0) {
+          const foundRelation = data.find(r =>
+            (r.grossiste_id === userAId && r.client_id === userBId) ||
+            (r.grossiste_id === userBId && r.client_id === userAId)
+          );
+
+          if (foundRelation) {
+            const isActif = foundRelation.statut === "ACTIF" || foundRelation.statut === "actif";
+            console.log(`[RelationService] Supabase relation verified. grossiste_id: ${foundRelation.grossiste_id}, client_id: ${foundRelation.client_id}, statut: ${foundRelation.statut}`);
+            return {
+              isConnected: isActif,
+              statut: foundRelation.statut,
+              reason: isActif ? undefined : `La relation a un statut non actif: ${foundRelation.statut}`
+            };
+          }
+        }
+      } catch (sbErr) {
+        console.warn("[RelationService] Exception during relation status inspection:", sbErr);
+      }
+    }
+
+    if (localConn) {
+      return {
+        isConnected: false,
+        statut: localConn.status,
+        reason: `La connexion est au statut: ${localConn.status}`
+      };
+    }
+
+    return { isConnected: true, statut: "ACTIF" };
+  },
+
+  /**
+   * 1. Envoyer ou créer une relation de partenariat d'affaires B2B
    */
   async envoyerDemandeConnexion(
     demandeur: UserProfile, 
     destinataireIdentifiant: string, 
     notes: string = ""
   ): Promise<{ success: boolean; relationId: string; destinataireNom: string; message: string }> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas configuré.");
-    }
-
-    const cleanIdentifiant = destinataireIdentifiant.trim().toLowerCase();
-
-    // 1. Chercher le destinataire dans la table 'profiles'
-    const { data: users, error: searchError } = await supabase
-      .from("profiles")
-      .select("*")
-      .or(`email.ilike.${cleanIdentifiant},telephone.ilike.${cleanIdentifiant},id.eq.${cleanIdentifiant}`);
-
-    if (searchError || !users || users.length === 0) {
-      throw new Error(`Aucun utilisateur trouvé avec l'identifiant "${destinataireIdentifiant}".`);
-    }
-
-    const destinataireRow = users[0];
-    if (destinataireRow.id === demandeur.id) {
-      throw new Error("Vous ne pouvez pas vous enregistrer vous-même comme partenaire d'affaires.");
-    }
-
-    const relationId = [demandeur.id, destinataireRow.id].sort().join("_");
-    const demandeurNom = demandeur.companyName || demandeur.name;
-    const destinataireNom = [destinataireRow.nom, destinataireRow.prenom].filter(Boolean).join(" ").trim() || "Partenaire";
-
-    // 2. Insérer ou mettre à jour la relation dans 'relations' (grossiste_id, client_id, statut)
-    const payloadSent = {
-      id: relationId,
-      grossiste_id: demandeur.id,
-      client_id: destinataireRow.id,
-      statut: "ACTIF"
-    };
-
-    const { error: relError } = await supabase
-      .from("relations")
-      .upsert(payloadSent);
-
-    if (relError) {
-      console.error("[Relations Supabase Error]", {
-        operation: "envoyerDemandeConnexion",
-        userId: demandeur.id,
-        payloadSent,
-        code: relError.code,
-        message: relError.message,
-        details: relError.details,
-        hint: relError.hint
-      });
-      throw relError;
-    }
-
-    // 3. Envoyer une notification au destinataire
-    try {
-      await supabase.from("notifications").insert({
-        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        user_id: destinataireRow.id,
-        title: "Nouveau partenaire d'affaires",
-        message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
-        read: false
-      });
-    } catch (notifErr) {
-      console.warn("Notice insertion notification:", notifErr);
-    }
-
-    return {
-      success: true,
-      relationId,
-      destinataireNom,
-      message: `Partenariat établi avec succès avec ${destinataireNom}.`
-    };
+    return connectionService.envoyerDemandeConnexion(demandeur, destinataireIdentifiant, notes);
   },
 
   /**
    * 2. Accepter une demande de connexion
    */
-  async accepterDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from("relations")
-      .update({ statut: "ACTIF" })
-      .eq("id", relationId);
-
-    if (error) {
-      console.error("[Relations Supabase Error]", {
-        operation: "accepterDemandeConnexion",
-        relationId,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
+  async accepterDemandeConnexion(relationId: string, _destinataireId?: string): Promise<void> {
+    return connectionService.acceptConnection(relationId, _destinataireId);
   },
 
   /**
    * 3. Refuser une demande de connexion
    */
-  async refuserDemandeConnexion(relationId: string, _destinataireId: string): Promise<void> {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from("relations")
-      .update({ statut: "BLOCKED" })
-      .eq("id", relationId);
-
-    if (error) {
-      console.error("[Relations Supabase Error]", {
-        operation: "refuserDemandeConnexion",
-        relationId,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
+  async refuserDemandeConnexion(relationId: string, _destinataireId?: string): Promise<void> {
+    return connectionService.rejectConnection(relationId, _destinataireId);
   },
 
   /**
    * 4. Bloquer un partenaire
    */
   async bloquerPartenaire(relationId: string): Promise<void> {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from("relations")
-      .update({ statut: "BLOCKED" })
-      .eq("id", relationId);
-
-    if (error) {
-      console.error("[Relations Supabase Error]", {
-        operation: "bloquerPartenaire",
-        relationId,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
+    return this.refuserDemandeConnexion(relationId);
   },
 
   /**
    * 5. Supprimer une relation
    */
   async supprimerRelation(relationId: string): Promise<void> {
-    if (!supabase) return;
-    const { error } = await supabase
-      .from("relations")
-      .delete()
-      .eq("id", relationId);
-
-    if (error) {
-      console.error("[Relations Supabase Error]", {
-        operation: "supprimerRelation",
-        relationId,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw error;
-    }
+    return connectionService.deleteConnection(relationId);
   },
 
   /**
-   * 6. Écouter les relations d'un utilisateur en temps réel depuis PostgreSQL
+   * 6. Écouter les relations d'un utilisateur en temps réel
    */
   ecouterRelations(userId: string, callback: (relations: Relation[]) => void): () => void {
-    if (!supabase || !userId) return () => {};
+    if (!userId) return () => {};
 
-    const fetchRelations = async () => {
-      const { data, error } = await supabase
-        .from("relations")
-        .select("*")
-        .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
+    const emitRelations = async () => {
+      // Source locale
+      const localConns = db.getConnections().filter(c => c.senderId === userId || c.receiverId === userId);
+      const mappedLocal: Relation[] = localConns.map(c => ({
+        id: c.id,
+        demandeurId: c.senderId,
+        destinataireId: c.receiverId,
+        statut: (c.status === "active" ? "actif" : c.status === "refusée" ? "refuse" : "en_attente") as any,
+        dateCreation: c.createdAt,
+        dateReponse: c.updatedAt,
+        participants: [c.senderId, c.receiverId],
+        notes: c.notes || "",
+        demandeurNom: c.senderName,
+        demandeurRole: c.senderRole,
+        destinataireNom: c.receiverName,
+        destinataireRole: c.receiverRole
+      }));
 
-      if (error) {
-        console.error("[Relations Supabase Error]", {
-          operation: "ecouterRelations (fetch)",
-          userId,
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
-        return;
+      // Source Supabase
+      let mappedSb: Relation[] = [];
+      if (supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("relations")
+            .select("*")
+            .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
+
+          if (!error && data) {
+            const allUsers = db.getUsers();
+            mappedSb = data.map((row: any) => {
+              const demandeurUser = allUsers.find(u => u.id === row.grossiste_id);
+              const destinataireUser = allUsers.find(u => u.id === row.client_id);
+              return {
+                id: row.id,
+                demandeurId: row.grossiste_id,
+                destinataireId: row.client_id,
+                statut: (row.statut === "ACTIF" || row.statut === "actif" ? "actif" : row.statut === "BLOCKED" ? "refuse" : "en_attente") as any,
+                dateCreation: row.created_at || new Date().toISOString(),
+                dateReponse: row.created_at || new Date().toISOString(),
+                participants: [row.grossiste_id, row.client_id].filter(Boolean),
+                notes: "",
+                demandeurNom: demandeurUser?.companyName || demandeurUser?.name || "Partenaire Demandeur",
+                demandeurRole: demandeurUser?.role || UserRole.WHOLESALER,
+                destinataireNom: destinataireUser?.companyName || destinataireUser?.name || "Partenaire Destinataire",
+                destinataireRole: destinataireUser?.role || UserRole.RETAILER
+              };
+            });
+
+            const userIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
+            ensureUsersExistLocally(userIds);
+          }
+        } catch (e) {
+          console.warn("Notice Supabase fetch relations:", e);
+        }
       }
 
-      const mapped: Relation[] = (data || []).map((row: any) => ({
-        id: row.id,
-        demandeurId: row.grossiste_id,
-        destinataireId: row.client_id,
-        statut: (row.statut === "ACTIF" || row.statut === "actif" ? "actif" : row.statut === "BLOCKED" || row.statut === "refuse" ? "refuse" : "en_attente") as any,
-        dateCreation: row.created_at || new Date().toISOString(),
-        dateReponse: row.created_at || new Date().toISOString(),
-        participants: [row.grossiste_id, row.client_id].filter(Boolean),
-        notes: "",
-        demandeurNom: row.grossiste_id === userId ? "Moi" : "Partenaire",
-        demandeurRole: UserRole.WHOLESALER,
-        destinataireNom: row.client_id === userId ? "Moi" : "Partenaire",
-        destinataireRole: UserRole.RETAILER
-      }));
-      callback(mapped);
+      // Fusionner sans doublons par ID
+      const map = new Map<string, Relation>();
+      mappedLocal.forEach(r => map.set(r.id, r));
+      mappedSb.forEach(r => {
+        if (!map.has(r.id)) map.set(r.id, r);
+      });
+
+      callback(Array.from(map.values()));
     };
 
-    fetchRelations();
+    emitRelations();
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:relations:${userId}:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "relations" },
-        () => {
-          fetchRelations();
-        }
-      )
-      .subscribe();
+    const handleLocalUpdate = () => {
+      emitRelations();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_connections_updated", handleLocalUpdate);
+    }
+
+    let channel: any = null;
+    if (supabase) {
+      try {
+        const uniqueId = Math.random().toString(36).substring(7);
+        channel = supabase
+          .channel(`public:relations:${userId}:${uniqueId}`)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "relations" },
+            () => {
+              emitRelations();
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn("Notice Supabase channel relations:", e);
+      }
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_connections_updated", handleLocalUpdate);
+      }
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
     };
   },
 
@@ -237,73 +227,110 @@ export const relationService = {
    * 7. Écouter les notifications de partenariat en temps réel
    */
   ecouterNotifications(userId: string, callback: (notifs: PartnerNotificationItem[]) => void): () => void {
-    if (!supabase || !userId) return () => {};
+    if (!userId) return () => {};
 
-    const fetchNotifs = async () => {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Erreur fetch notifications Supabase:", error);
-        return;
-      }
-
-      const mapped: PartnerNotificationItem[] = (data || []).map((n: any) => ({
+    const emitNotifs = async () => {
+      const localNotifs = db.getNotifications().filter(n => n.userId === userId);
+      const mappedLocal: PartnerNotificationItem[] = localNotifs.map(n => ({
         id: n.id,
         type: "connexion_acceptee",
         lu: n.read || false,
-        dateCreation: n.created_at || new Date().toISOString(),
+        dateCreation: n.createdAt,
         contenu: n.message || n.title
       }));
-      callback(mapped);
+
+      let mappedSb: PartnerNotificationItem[] = [];
+      if (supabase) {
+        try {
+          const { data, error } = await supabase
+            .from("notifications")
+            .select("*")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
+
+          if (!error && data) {
+            mappedSb = data.map((n: any) => ({
+              id: n.id,
+              type: "connexion_acceptee",
+              lu: n.read || false,
+              dateCreation: n.created_at || new Date().toISOString(),
+              contenu: n.message || n.title
+            }));
+          }
+        } catch (e) {
+          console.warn("Notice Supabase fetch notifs:", e);
+        }
+      }
+
+      const map = new Map<string, PartnerNotificationItem>();
+      mappedLocal.forEach(n => map.set(n.id, n));
+      mappedSb.forEach(n => {
+        if (!map.has(n.id)) map.set(n.id, n);
+      });
+
+      callback(Array.from(map.values()));
     };
 
-    fetchNotifs();
+    emitNotifs();
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:notifications:${userId}:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-        () => {
-          fetchNotifs();
-        }
-      )
-      .subscribe();
+    const handleLocalNotifsUpdate = () => {
+      emitNotifs();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("wakat_notifications_updated", handleLocalNotifsUpdate);
+    }
+
+    let channel: any = null;
+    if (supabase) {
+      try {
+        const uniqueId = Math.random().toString(36).substring(7);
+        channel = supabase
+          .channel(`public:notifications:${userId}:${uniqueId}`)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+            () => {
+              emitNotifs();
+            }
+          )
+          .subscribe();
+      } catch (e) {
+        console.warn("Notice Supabase channel notifs:", e);
+      }
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wakat_notifications_updated", handleLocalNotifsUpdate);
+      }
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
     };
   },
 
-  /**
-   * Marquer une notification comme lue
-   */
   async marquerNotificationLue(userId: string, notifId: string): Promise<void> {
-    if (!supabase) return;
-    await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("id", notifId)
-      .eq("user_id", userId);
+    const notifs = db.getNotifications().map(n => n.id === notifId ? { ...n, read: true } : n);
+    db.saveNotifications(notifs);
+
+    if (supabase) {
+      try {
+        await supabase
+          .from("notifications")
+          .update({ read: true })
+          .eq("id", notifId)
+          .eq("user_id", userId);
+      } catch (e) {
+        console.warn("Notice Supabase read notif:", e);
+      }
+    }
   },
 
-  /**
-   * Alias pour marquerNotificationLue
-   */
   async marquerNotificationCommeLue(userId: string, notifId: string): Promise<void> {
     return this.marquerNotificationLue(userId, notifId);
   },
 
-  /**
-   * Alias pour ecouterNotifications
-   */
   subscribeToUserNotifications(userId: string, callback: (notifs: PartnerNotificationItem[]) => void): () => void {
     return this.ecouterNotifications(userId, callback);
   }
 };
-

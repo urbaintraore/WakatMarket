@@ -29,6 +29,7 @@ import { relationService } from "./services/relationService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
 import { supabaseConfigError } from "./supabase";
+import { isAIStudioOrDevEnvironment } from "./utils/env";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { ProductDetailModal } from "./components/ProductDetailModal";
@@ -234,6 +235,9 @@ export default function App() {
 
   // Active User session simulation
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    if (!isAIStudioOrDevEnvironment()) {
+      return null;
+    }
     const list = db.getUsers();
     const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
     const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
@@ -419,6 +423,9 @@ export default function App() {
   // UI state managers
   const [initialLoadingTimeout, setInitialLoadingTimeout] = useState(false);
   const [isAuthScreen, setIsAuthScreen] = useState(() => {
+    if (!isAIStudioOrDevEnvironment()) {
+      return true;
+    }
     const list = db.getUsers();
     const hasUser = list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
     return !hasUser;
@@ -562,15 +569,21 @@ export default function App() {
       setIsAuthScreen(false);
     } else {
       setIsRealUserAuthenticated(false);
-      // Maintenir ou restaurer un profil démo actif pour que l'application s'affiche immédiatement
-      setCurrentUser((prev) => {
-        if (prev) return prev;
-        const list = db.getUsers();
-        const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
-        const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
-        return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
-      });
-      setIsAuthScreen(false);
+      if (isAIStudioOrDevEnvironment()) {
+        // Maintenir ou restaurer un profil démo actif uniquement en environnement AI Studio / Dev
+        setCurrentUser((prev) => {
+          if (prev) return prev;
+          const list = db.getUsers();
+          const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
+          const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
+          return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
+        });
+        setIsAuthScreen(false);
+      } else {
+        // En production (hors AI Studio) : Bloquer l'accès démo et forcer la mire de connexion
+        setCurrentUser(null);
+        setIsAuthScreen(true);
+      }
     }
   }, [supabaseUser, dbUser]);
 
@@ -743,9 +756,15 @@ export default function App() {
     window.addEventListener("wakat_open_upload_proof", handleOpenUploadProof);
     window.addEventListener("wakat_open_valider_paiements", handleOpenValiderPaiements);
 
+    const handleUsersUpdated = () => {
+      setUsers(db.getUsers());
+    };
+    window.addEventListener("wakat_users_updated", handleUsersUpdated);
+
     return () => {
       window.removeEventListener("wakat_open_upload_proof", handleOpenUploadProof);
       window.removeEventListener("wakat_open_valider_paiements", handleOpenValiderPaiements);
+      window.removeEventListener("wakat_users_updated", handleUsersUpdated);
     };
   }, []);
 
@@ -2570,8 +2589,8 @@ export default function App() {
                       <div className="p-4 text-center text-[10px] text-zinc-400">Aucune notification</div>
                     ) : (
                       realNotifications.map((n, idx) => {
-                        const isConnRequest = n.type === "CONNECTION_REQUEST" && n.relatedId;
-                        const relatedConn = isConnRequest 
+                        const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion") || Boolean(n.relatedId);
+                        const relatedConn = n.relatedId 
                           ? (realConnections.find(c => c.id === n.relatedId) || db.getConnections().find(c => c.id === n.relatedId))
                           : null;
                         const isPending = relatedConn?.status === "en_attente";
@@ -2595,28 +2614,43 @@ export default function App() {
                               )}
                             </div>
 
-                            {isConnRequest && isPending && relatedConn && (
+                            {isConnNotif && (
                               <div className="flex gap-2 mt-2">
+                                {isPending && relatedConn && (
+                                  <>
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await connectionService.respondToConnectionRequest(relatedConn, "active");
+                                        connectionService.markNotificationAsRead(n.id);
+                                        addNotification("Invitation acceptée !");
+                                      }}
+                                      className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
+                                    >
+                                      <UserCheck className="w-3 h-3" /> Accepter
+                                    </button>
+                                    <button
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        await connectionService.respondToConnectionRequest(relatedConn, "refusée");
+                                        connectionService.markNotificationAsRead(n.id);
+                                      }}
+                                      className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
+                                    >
+                                      <UserX className="w-3 h-3" /> Refuser
+                                    </button>
+                                  </>
+                                )}
                                 <button
-                                  onClick={async (e) => {
+                                  onClick={(e) => {
                                     e.stopPropagation();
-                                    await connectionService.respondToConnectionRequest(relatedConn, "active");
                                     connectionService.markNotificationAsRead(n.id);
-                                    addNotification("Invitation acceptée !");
+                                    setShowNotifications(false);
+                                    setShowChat(true);
                                   }}
-                                  className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1"
                                 >
-                                  <UserCheck className="w-3 h-3" /> Accepter
-                                </button>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await connectionService.respondToConnectionRequest(relatedConn, "refusée");
-                                    connectionService.markNotificationAsRead(n.id);
-                                  }}
-                                  className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-[9px] font-bold transition"
-                                >
-                                  <UserX className="w-3 h-3" /> Refuser
+                                  <MessageSquare className="w-3 h-3" /> Discuter
                                 </button>
                               </div>
                             )}
@@ -2695,13 +2729,17 @@ export default function App() {
                   setCurrentUser(null);
                   setIsAuthScreen(true);
                 } else {
-                  setIsAuthScreen(!isAuthScreen);
+                  if (!isAIStudioOrDevEnvironment() && !currentUser) {
+                    setIsAuthScreen(true);
+                  } else {
+                    setIsAuthScreen(!isAuthScreen);
+                  }
                 }
               }}
               className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
               id="auth-toggle-btn"
             >
-              <LogIn className="w-4 h-4" /> {isRealUserAuthenticated ? "Déconnexion" : "Connexion"}
+              <LogIn className="w-4 h-4" /> {isRealUserAuthenticated || currentUser ? "Déconnexion" : "Connexion"}
             </button>
           </div>
         </div>
@@ -2731,20 +2769,24 @@ export default function App() {
               <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
                 <KeyRound className="w-4 h-4 text-emerald-600" /> WakatMarket - Portail de Connexion
               </h4>
-              <button 
-                onClick={() => {
-                  if (!currentUser) {
-                    const list = db.getUsers();
-                    const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
-                    if (defaultUser) setCurrentUser(defaultUser);
-                  }
-                  setIsAuthScreen(false);
-                }} 
-                className="text-zinc-500 hover:text-zinc-950 dark:hover:text-white font-bold cursor-pointer text-sm p-1"
-                title="Fermer et accéder à la plateforme"
-              >
-                ✕
-              </button>
+              {(isAIStudioOrDevEnvironment() || currentUser) && (
+                <button 
+                  onClick={() => {
+                    if (!currentUser && isAIStudioOrDevEnvironment()) {
+                      const list = db.getUsers();
+                      const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
+                      if (defaultUser) setCurrentUser(defaultUser);
+                    }
+                    if (currentUser || isAIStudioOrDevEnvironment()) {
+                      setIsAuthScreen(false);
+                    }
+                  }} 
+                  className="text-zinc-500 hover:text-zinc-950 dark:hover:text-white font-bold cursor-pointer text-sm p-1"
+                  title="Fermer"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Config Info Banner */}
@@ -3024,58 +3066,60 @@ export default function App() {
               </form>
             )}
 
-            {/* Direct Access & Demo Switcher */}
-            <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!currentUser) {
-                    const list = db.getUsers();
-                    const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
-                    if (defaultUser) setCurrentUser(defaultUser);
-                  }
-                  setIsAuthScreen(false);
-                }}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20"
-              >
-                <Compass className="w-4 h-4 text-emerald-100" />
-                Accéder directement au Tableau de Bord ERP (Mode Démo)
-              </button>
+            {/* Direct Access & Demo Switcher - Uniquement accessible en environnement AI Studio / Dev */}
+            {isAIStudioOrDevEnvironment() && (
+              <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentUser) {
+                      const list = db.getUsers();
+                      const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
+                      if (defaultUser) setCurrentUser(defaultUser);
+                    }
+                    setIsAuthScreen(false);
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20"
+                >
+                  <Compass className="w-4 h-4 text-emerald-100" />
+                  Accéder directement au Tableau de Bord ERP (Mode Démo)
+                </button>
 
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5 text-center">
-                  Tester un rôle spécifique (1 Clic) :
-                </p>
-                <div className="flex flex-wrap gap-1.5 justify-center">
-                  {[
-                    { label: "Admin", role: UserRole.ADMIN },
-                    { label: "Grossiste", role: UserRole.WHOLESALER },
-                    { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
-                    { label: "Détaillant", role: UserRole.RETAILER },
-                    { label: "Fabricant", role: UserRole.MANUFACTURER },
-                    { label: "Livreur", role: UserRole.DRIVER_R2C },
-                    { label: "Client", role: UserRole.CLIENT }
-                  ].map((btn) => (
-                    <button
-                      key={btn.role}
-                      type="button"
-                      onClick={() => {
-                        const list = db.getUsers();
-                        const found = list.find((u) => u.role === btn.role) || list[0];
-                        if (found) {
-                          setCurrentUser(found);
-                          localStorage.setItem("wakat_active_user_id", found.id);
-                        }
-                        setIsAuthScreen(false);
-                      }}
-                      className="px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold transition cursor-pointer"
-                    >
-                      {btn.label}
-                    </button>
-                  ))}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5 text-center">
+                    Tester un rôle spécifique (1 Clic) :
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 justify-center">
+                    {[
+                      { label: "Admin", role: UserRole.ADMIN },
+                      { label: "Grossiste", role: UserRole.WHOLESALER },
+                      { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
+                      { label: "Détaillant", role: UserRole.RETAILER },
+                      { label: "Fabricant", role: UserRole.MANUFACTURER },
+                      { label: "Livreur", role: UserRole.DRIVER_R2C },
+                      { label: "Client", role: UserRole.CLIENT }
+                    ].map((btn) => (
+                      <button
+                        key={btn.role}
+                        type="button"
+                        onClick={() => {
+                          const list = db.getUsers();
+                          const found = list.find((u) => u.role === btn.role) || list[0];
+                          if (found) {
+                            setCurrentUser(found);
+                            localStorage.setItem("wakat_active_user_id", found.id);
+                          }
+                          setIsAuthScreen(false);
+                        }}
+                        className="px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold transition cursor-pointer"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Option to Disconnect User if signed in */}
             {supabaseUser && (

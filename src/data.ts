@@ -436,11 +436,14 @@ class ERPStorage {
   }
 
   getMessages(): ChatMessage[] {
-    return [];
+    return filterMockData(this.get("wakat_erp_v2_messages", USE_DEMO_DATA ? INITIAL_MESSAGES : []));
   }
 
   saveMessages(messages: ChatMessage[]): void {
-    // Ne pas persister dans localStorage, Firestore est la source de vérité
+    this.set("wakat_erp_v2_messages", messages);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_messages_updated", { detail: messages }));
+    }
   }
 
   getRecommendations(): AIRecommendation[] {

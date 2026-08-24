@@ -3,6 +3,7 @@ import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
 import { connectionService } from '../../services/connectionService';
 import { Conversation, UserProfile, Connection } from '../../types';
+import { db } from '../../data';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatWindow } from './ChatWindow';
 import { Search, X, MessageSquare, User } from 'lucide-react';
@@ -53,21 +54,42 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     if (currentUser.role === 'ADMIN') {
       list = users.filter(u => u.id !== currentUser.id);
     } else {
-      // Filter to ONLY active B2B connections to enforce strict partitioning
-      const activeConnectionUserIds = connections
-        .filter(c => c.status === 'active')
-        .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
+      const activeConns = connections.filter(c => {
+        const st = (c.status || (c as any).statut || "").toLowerCase();
+        return st === "active" || st === "actif";
+      });
 
-      list = users.filter(u => activeConnectionUserIds.includes(u.id) && u.id !== currentUser.id);
+      const allKnownUsers = db.getUsers();
+      activeConns.forEach(c => {
+        const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
+        if (partnerId && partnerId !== currentUser.id) {
+          const found = users.find(u => u.id === partnerId) || allKnownUsers.find(u => u.id === partnerId);
+          if (found) {
+            list.push(found);
+          } else {
+            const partnerName = c.senderId === currentUser.id ? c.receiverName : c.senderName;
+            const partnerRole = c.senderId === currentUser.id ? c.receiverRole : c.senderRole;
+            list.push({
+              id: partnerId,
+              name: partnerName || "Partenaire B2B",
+              companyName: partnerName || "Entreprise Partenaire",
+              role: (partnerRole as any) || "SEMI_WHOLESALER",
+              email: "",
+              phone: "",
+              country: "Burkina Faso",
+              region: "Ouagadougou",
+              status: "ACTIVE",
+              avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+            });
+          }
+        }
+      });
     }
 
     const map = new Map<string, UserProfile>();
     list.forEach(u => {
-      const normEmail = u.email ? u.email.toLowerCase().trim() : "";
-      const normCompany = u.companyName ? u.companyName.toLowerCase().trim() : "";
-      const key = normEmail || normCompany || u.id;
-      if (!map.has(key)) {
-        map.set(key, u);
+      if (u.id !== currentUser.id && !map.has(u.id)) {
+        map.set(u.id, u);
       }
     });
 

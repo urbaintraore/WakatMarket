@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Plus, MessageSquare, Users } from 'lucide-react';
 import { Conversation, UserProfile } from '../../types';
 import { useAuthContext } from '../../context/AuthContext';
+import { db } from '../../data';
 
 interface ChatSidebarProps {
   currentUser?: UserProfile | null;
@@ -28,7 +29,7 @@ export function ChatSidebar({ currentUser: propCurrentUser, conversations, users
 
   const [searchTerm, setSearchTerm] = useState('');
 
-  const getUserDetails = (userId: string) => users.find(u => u.id === userId);
+  const getUserDetails = (userId: string) => users.find(u => u.id === userId) || db.getUsers().find(u => u.id === userId);
 
   const getConvDisplay = (conv: Conversation) => {
     if (conv.type === "GROUP") {
@@ -39,14 +40,17 @@ export function ChatSidebar({ currentUser: propCurrentUser, conversations, users
         isGroup: true
       };
     } else {
-      const otherUserId = conv.participants.find(p => p !== currentUser?.id);
+      const parts = Array.isArray(conv.participants)
+        ? conv.participants
+        : (typeof conv.participants === "string" ? JSON.parse((conv.participants as any) || "[]") : []);
+      const otherUserId = parts.find((p: string) => p !== currentUser?.id);
       const otherUser = getUserDetails(otherUserId || "");
       const normEmail = otherUser?.email ? otherUser.email.toLowerCase().trim() : "";
       const normCompany = otherUser?.companyName ? otherUser.companyName.toLowerCase().trim() : "";
       const key = normEmail || normCompany || otherUserId || conv.id;
       return {
         key,
-        name: otherUser?.companyName || otherUser?.name || "Utilisateur inconnu",
+        name: otherUser?.companyName || otherUser?.name || conv.groupName || "Partenaire B2B",
         image: otherUser?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         isGroup: false,
         role: otherUser?.role

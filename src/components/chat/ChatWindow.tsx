@@ -3,6 +3,7 @@ import { ArrowLeft, Info, Phone, Video, Mic, MicOff, Volume2, VolumeX, PhoneOff,
 import { Conversation, ChatMessage, UserProfile, MessageType } from '../../types';
 import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
+import { db } from '../../data';
 import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
 
@@ -267,10 +268,13 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         status: `${conversation.participants.length} membres`
       };
     } else {
-      const otherUserId = conversation.participants.find(p => p !== currentUser?.id);
-      const otherUser = users.find(u => u.id === otherUserId);
+      const parts = Array.isArray(conversation.participants)
+        ? conversation.participants
+        : (typeof conversation.participants === "string" ? JSON.parse((conversation.participants as any) || "[]") : []);
+      const otherUserId = parts.find((p: string) => p !== currentUser?.id);
+      const otherUser = users.find(u => u.id === otherUserId) || db.getUsers().find(u => u.id === otherUserId);
       return {
-        name: otherUser?.companyName || otherUser?.name || "Utilisateur inconnu",
+        name: otherUser?.companyName || otherUser?.name || conversation.groupName || "Partenaire B2B",
         image: otherUser?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         status: otherUser?.status === "ACTIVE" ? "En ligne" : "Hors ligne"
       };
@@ -280,7 +284,7 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
   const display = getConvDisplay();
 
   const getSenderInfo = (senderId: string) => {
-    return users.find(u => u.id === senderId);
+    return users.find(u => u.id === senderId) || db.getUsers().find(u => u.id === senderId);
   };
 
   return (
