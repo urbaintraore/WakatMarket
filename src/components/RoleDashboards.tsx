@@ -27,6 +27,9 @@ import { AdminUserEditModal } from "./AdminUserEditModal";
 import { EditProductStockModal } from "./EditProductStockModal";
 import { CreateProductModal } from "./CreateProductModal";
 import { StockCategoryOrganizer } from "./StockCategoryOrganizer";
+import { B2BProductComparator } from "./B2BProductComparator";
+import { StockForecastModule } from "./StockForecastModule";
+import { CustomizableDashboard } from "./CustomizableDashboard";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -1302,7 +1305,7 @@ export function WholesalerDashboard({
   onUpdateCreditLimit,
   onUpdateProductFull,
 }: WholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -1514,7 +1517,8 @@ export function WholesalerDashboard({
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
-            { id: "dashboard", label: "Dashboard", icon: BarChart },
+            { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
+            { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
             { id: "procure", label: "S'approvisionner", icon: Landmark },
             { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
             { id: "sales", label: "Ventes & Comptoir", icon: ShoppingBag },
@@ -1548,107 +1552,41 @@ export function WholesalerDashboard({
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
           {activeTab === "dashboard" && (
-        <div className="space-y-6 animate-fade-in">
-          <ExpirationAlertsBanner alerts={wholesalerExpirationAlerts} />
-
-          <ThirtyDaySalesAndStockChart
-            orders={orders}
-            inventory={inventory}
-            products={products}
-            stockMovements={stockMovements}
-            currentUserId={currentUser.id}
-          />
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Orders & Inventory (Takes 2 columns on lg) */}
-          <div className="lg:col-span-2 space-y-6">
-            <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
-
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider">Dernières commandes B2B</h4>
-                <button onClick={() => setActiveTab("sales")} className="text-[10px] font-bold text-emerald-600 hover:underline">Voir tout</button>
-              </div>
-              {incomingRetailerOrders.length === 0 ? (
-                <div className="text-center py-8 text-zinc-400 text-xs">Aucune commande récente.</div>
-              ) : (
-                <div className="space-y-3">
-                  {incomingRetailerOrders.slice(0, 5).map(order => {
-                    const buyer = users.find(u => u.id === order.senderId);
-                    return (
-                      <div key={order.id} className="flex justify-between items-center p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl">
-                        <div>
-                          <p className="font-bold text-xs">{buyer?.companyName || buyer?.name}</p>
-                          <p className="text-[10px] text-zinc-500">{new Date(order.createdAt).toLocaleDateString()}</p>
-                        </div>
-                        <span className="font-mono text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 px-2 py-1 rounded-lg">{formatCFA(order.totalAmount)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+            <div className="space-y-6 animate-fade-in">
+              <ExpirationAlertsBanner alerts={wholesalerExpirationAlerts} />
+              <CustomizableDashboard
+                currentUser={currentUser}
+                products={products}
+                orders={orders}
+                payments={payments}
+                lightClients={lightClients}
+                onOpenReorderModal={() => setActiveTab("procure")}
+                onOpenComparator={() => {
+                  if (typeof window !== "undefined") {
+                    const btn = document.getElementById("header-comparator-toggle");
+                    if (btn) btn.click();
+                  }
+                }}
+              />
             </div>
-          </div>
+          )}
 
-          {/* Right Column: Alerts & Notifications (Takes 1 column on lg) */}
-          <div className="space-y-6">
-             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-orange-500" /> Alertes de Stock
-                </h4>
-                <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  {activeAlerts.length}
-                </span>
-              </div>
-              {activeAlerts.length === 0 ? (
-                <div className="p-6 text-center text-zinc-400 text-xs">
-                  Vos stocks sont optimaux !
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {activeAlerts.slice(0, 5).map((item) => {
-                    const prod = products.find((p) => p.id === item.productId);
-                    return (
-                      <div key={item.id} className="p-3 bg-rose-50/40 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-950/30 rounded-xl flex items-center justify-between">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <img loading="lazy" src={prod?.image} alt={prod?.name} className="w-8 h-8 rounded object-cover" />
-                          <div className="min-w-0">
-                            <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100 truncate">{prod?.name}</p>
-                            <p className="text-[10px] text-rose-600 font-bold">Stock critique: {item.stock}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => setActiveTab("procure")} className="text-[10px] font-bold text-emerald-600 hover:underline">Réappro.</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          {activeTab === "forecast" && (
+            <div className="animate-fade-in">
+              <StockForecastModule
+                products={products}
+                orders={orders}
+                currentUser={currentUser}
+                onOpenReorderModal={() => setActiveTab("procure")}
+                onOpenComparator={() => {
+                  if (typeof window !== "undefined") {
+                    const btn = document.getElementById("header-comparator-toggle");
+                    if (btn) btn.click();
+                  }
+                }}
+              />
             </div>
-
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
-              <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4 flex items-center gap-1.5">
-                <Bell className="w-4 h-4 text-indigo-500" /> Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="p-3 border border-indigo-100 dark:border-indigo-900/30 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-xl">
-                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mb-1">Mise à jour système</p>
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Les taux de commission B2B ont été révisés. Vérifiez vos marges.</p>
-                </div>
-                <div className="p-3 border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl">
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mb-1">Nouvelle fonctionnalité</p>
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300">L'historique des prix est maintenant disponible dans votre catalogue.</p>
-                </div>
-                <div className="p-3 border border-orange-100 dark:border-orange-900/30 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl">
-                  <p className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mb-1">Activité</p>
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300">Vous avez {myBuyers.length} acheteurs enregistrés. Explorez vos statistiques.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
+          )}
 
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
@@ -2405,7 +2343,7 @@ export function RetailerDashboard({
   onUpdateCreditLimit,
   onUpdateProductFull,
 }: RetailerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync">("procure");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync">("dashboard");
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -2591,9 +2529,11 @@ export function RetailerDashboard({
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
+            { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
+            { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
             { id: "procure", label: "Réappro Boutique", icon: Landmark },
             { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
-            { id: "sales", label: "Vente & Commandes", icon: ShoppingCart },
+            { id: "sales", label: "Vente & Commandes", icon: ShoppingBag },
             { id: "inventory", label: "Mon Stock", icon: Layers },
             { id: "accounting", label: "Comptabilité", icon: Wallet },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
@@ -2623,6 +2563,43 @@ export function RetailerDashboard({
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
+          {activeTab === "dashboard" && (
+            <div className="space-y-6 animate-fade-in">
+              <ExpirationAlertsBanner alerts={retailerExpirationAlerts} />
+              <CustomizableDashboard
+                currentUser={currentUser}
+                products={products}
+                orders={orders}
+                payments={payments}
+                lightClients={lightClients}
+                onOpenReorderModal={() => setActiveTab("procure")}
+                onOpenComparator={() => {
+                  if (typeof window !== "undefined") {
+                    const btn = document.getElementById("header-comparator-toggle");
+                    if (btn) btn.click();
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab === "forecast" && (
+            <div className="animate-fade-in">
+              <StockForecastModule
+                products={products}
+                orders={orders}
+                currentUser={currentUser}
+                onOpenReorderModal={() => setActiveTab("procure")}
+                onOpenComparator={() => {
+                  if (typeof window !== "undefined") {
+                    const btn = document.getElementById("header-comparator-toggle");
+                    if (btn) btn.click();
+                  }
+                }}
+              />
+            </div>
+          )}
+
           {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">

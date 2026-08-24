@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -59,8 +59,10 @@ import { PaiementsAValiderModule } from "./components/PaiementsAValiderModule";
 import { PreuvePaiementUploadModal } from "./components/PreuvePaiementUploadModal";
 import { NotificationBell } from "./components/NotificationBell";
 import { QuickActionsBar } from "./components/QuickActionsBar";
+import { B2BProductComparator } from "./components/B2BProductComparator";
 
 export default function App() {
+  const [showComparator, setShowComparator] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -2555,6 +2557,7 @@ export default function App() {
                 setShowAICopilot(false);
                 setShowReports(false);
                 setShowChat(false);
+                setShowComparator(false);
               }}
               className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
                 showPitchDeck
@@ -2567,6 +2570,26 @@ export default function App() {
               <Presentation className="w-4 h-4 text-amber-500 animate-pulse" />
               <span className="hidden xl:inline">Pitch Deck</span>
             </button>
+
+            {/* B2B Product Comparator */}
+            {currentUser && (
+              <button
+                onClick={() => {
+                  setShowComparator(!showComparator);
+                  setShowPitchDeck(false);
+                }}
+                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
+                  showComparator
+                    ? "bg-emerald-600 text-white border-transparent"
+                    : "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100"
+                }`}
+                id="header-comparator-toggle"
+                title="Comparateur de Prix & Stocks B2B Multi-Fournisseurs"
+              >
+                <Scale className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden lg:inline">Comparateur B2B</span>
+              </button>
+            )}
 
             {/* Direct Messaging */}
             {currentUser && (
@@ -3350,6 +3373,35 @@ export default function App() {
                   onClose={() => setShowProfileEdit(false)}
                   onSuccess={handleProfileUpdateSuccess}
                   addNotification={addNotification}
+                />
+              )}
+
+              {showComparator && currentUser && (
+                <B2BProductComparator
+                  products={displayProducts}
+                  users={countryFilteredUsers}
+                  connections={realConnections}
+                  currentUser={currentUser}
+                  onClose={() => setShowComparator(false)}
+                  onSelectProductToOrder={(product) => {
+                    setShowComparator(false);
+                    addNotification(`Produit "${product.name}" sélectionné pour commande.`);
+                  }}
+                  onContactSupplier={(supplierId) => {
+                    setShowComparator(false);
+                    setShowChat(true);
+                  }}
+                  onRequestConnection={async (targetUserId) => {
+                    try {
+                      const targetUser = countryFilteredUsers.find((u) => u.id === targetUserId);
+                      if (targetUser) {
+                        await connectionService.envoyerDemandeConnexion(currentUser, targetUser);
+                        addNotification("Demande de partenariat envoyée au fournisseur !");
+                      }
+                    } catch (e: any) {
+                      addNotification(`Info : ${e.message || "Demande déjà envoyée"}`);
+                    }
+                  }}
                 />
               )}
             </AnimatePresence>
