@@ -58,7 +58,7 @@ export function relationToDb(rel: Partial<Relation> & { senderId?: string; recei
   } else if (rawStatut === "bloque" || rawStatut === "blocked" || rawStatut === "refuse" || rawStatut === "BLOCKED") {
     dbRecord.statut = "BLOCKED";
   } else {
-    dbRecord.statut = "EN_ATTENTE";
+    dbRecord.statut = "PENDING";
   }
 
   const createdAt = rel.createdAt || (rel as any).dateCreation || (rel as any).created_at;

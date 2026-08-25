@@ -52,34 +52,35 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
 
   const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
+  // Helper to refresh active relations list
+  const refreshActiveRelations = () => {
+    if (!currentUser?.id) return;
+    const allConns = localDb.getConnections();
+    const userConns = allConns.filter(c => 
+      (c.senderId === currentUser.id || c.receiverId === currentUser.id)
+    );
+
+    const mapped: Relation[] = userConns.map(c => ({
+      id: c.id,
+      demandeurId: c.senderId,
+      destinataireId: c.receiverId,
+      statut: c.status === "active" ? "actif" : (c.status === "en_attente" ? "en_attente" : "refuse"),
+      dateCreation: c.createdAt,
+      dateReponse: c.updatedAt,
+      participants: [c.senderId, c.receiverId],
+      notes: c.notes,
+      demandeurNom: c.senderName,
+      demandeurRole: c.senderRole,
+      destinataireNom: c.receiverName,
+      destinataireRole: c.receiverRole
+    }));
+
+    setActiveRelations(mapped);
+  };
+
   // 1. Setup real-time listeners with strict lifecycle cleanup (unsubscribe)
   useEffect(() => {
     if (!currentUser?.id) return;
-
-    // Helper to refresh active relations list
-    const refreshActiveRelations = () => {
-      const allConns = localDb.getConnections();
-      const userConns = allConns.filter(c => 
-        (c.senderId === currentUser.id || c.receiverId === currentUser.id)
-      );
-
-      const mapped: Relation[] = userConns.map(c => ({
-        id: c.id,
-        demandeurId: c.senderId,
-        destinataireId: c.receiverId,
-        statut: c.status === "active" ? "actif" : (c.status === "en_attente" ? "en_attente" : "refuse"),
-        dateCreation: c.createdAt,
-        dateReponse: c.updatedAt,
-        participants: [c.senderId, c.receiverId],
-        notes: c.notes,
-        demandeurNom: c.senderName,
-        demandeurRole: c.senderRole,
-        destinataireNom: c.receiverName,
-        destinataireRole: c.receiverRole
-      }));
-
-      setActiveRelations(mapped);
-    };
 
     refreshActiveRelations();
 
@@ -96,6 +97,42 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
       }
     };
   }, [currentUser?.id]);
+
+  const handleAccept = async (relationId: string) => {
+    try {
+      setStatusMessage(null);
+      await relationService.accepterDemandeConnexion(relationId);
+      setStatusMessage({
+        type: "success",
+        text: "Partenariat d'affaires accepté avec succès ! Vous pouvez désormais échanger et collaborer."
+      });
+      refreshActiveRelations();
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage({
+        type: "error",
+        text: err.message || "Erreur lors de l'acceptation de la demande."
+      });
+    }
+  };
+
+  const handleDecline = async (relationId: string) => {
+    try {
+      setStatusMessage(null);
+      await relationService.refuserDemandeConnexion(relationId);
+      setStatusMessage({
+        type: "info",
+        text: "La demande de partenariat a été refusée."
+      });
+      refreshActiveRelations();
+    } catch (err: any) {
+      console.error(err);
+      setStatusMessage({
+        type: "error",
+        text: err.message || "Erreur lors du refus."
+      });
+    }
+  };
 
   // Submit New Relation Request
   const handleSendRequest = async (e: React.FormEvent) => {
@@ -307,25 +344,59 @@ export const RelationsManager: React.FC<RelationsManagerProps> = ({
                 </div>
 
                 {/* Bottom Card Action Buttons */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenProfile(partnerUid)}
-                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    Profil
-                  </button>
-
-                  {isActif && onOpenChatWithUser && (
+                <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2 w-full">
                     <button
                       type="button"
-                      onClick={() => onOpenChatWithUser(partnerUid)}
-                      className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      onClick={() => handleOpenProfile(partnerUid)}
+                      className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
                     >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      Discuter
+                      <Eye className="w-3.5 h-3.5" />
+                      Profil
                     </button>
+
+                    {isActif && onOpenChatWithUser && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenChatWithUser(partnerUid)}
+                        className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        Discuter
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Facebook-style pending request validation buttons */}
+                  {!isActif && rel.statut === "en_attente" && (
+                    <div className="w-full pt-2 border-t border-dashed border-slate-100">
+                      {!isSender ? (
+                        <div className="flex items-center gap-2 w-full">
+                          <button
+                            type="button"
+                            onClick={() => handleAccept(rel.id)}
+                            className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Accepter
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDecline(rel.id)}
+                            className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all"
+                            title="Refuser l'invitation"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Refuser
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-full text-center py-1.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-medium italic flex items-center justify-center gap-1.5">
+                          <RefreshCw className="w-3 h-3 animate-spin text-amber-500" />
+                          Invitation envoyée (En attente)
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

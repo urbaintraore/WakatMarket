@@ -185,7 +185,7 @@ export const connectionService = {
       id: relationId,
       senderId: demandeur.id,
       receiverId: destinataireUser.id,
-      status: "active",
+      status: "en_attente",
       senderName: demandeurNom,
       senderRole: demandeur.role,
       receiverName: destinataireNom,
@@ -205,8 +205,8 @@ export const connectionService = {
       id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       userId: destinataireUser.id,
       type: "demande_connexion",
-      title: "Nouveau partenaire d'affaires",
-      message: `${demandeurNom} (${demandeur.role}) vous a ajouté comme partenaire commercial.`,
+      title: "Demande de partenariat commercial",
+      message: `${demandeurNom} (${demandeur.role}) souhaite collaborer avec vous.`,
       read: false,
       relatedId: relationId,
       createdAt: nowIso
@@ -228,7 +228,7 @@ export const connectionService = {
         id: relationId,
         grossiste_id: demandeur.id,
         client_id: destinataireUser.id,
-        statut: "ACTIF"
+        statut: "PENDING"
       };
 
       console.log("[ConnectionService] Sending payload to Supabase 'relations' table:");
