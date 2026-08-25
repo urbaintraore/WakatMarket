@@ -32,6 +32,9 @@ import { StockForecastModule } from "./StockForecastModule";
 import { CustomizableDashboard } from "./CustomizableDashboard";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import { PriceRangeSlider } from "./PriceRangeSlider";
+import { FavoritesSection } from "./FavoritesSection";
+import { OrderCreationDeliveryCalculator } from "./OrderCreationDeliveryCalculator";
+import { PartnerReviewsSection } from "./PartnerReviewsSection";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -568,7 +571,7 @@ export function ManufacturerDashboard({
   onUpdateOrderStatus,
   onUpdateProductFull,
 }: ManufacturerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"catalog" | "orders" | "sales" | "ai" | "buyers" | "clients" | "sync">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "orders" | "sales" | "ai" | "buyers" | "clients" | "sync" | "reviews">("catalog");
   const [isAdding, setIsAdding] = useState(false);
   const [posCart, setPosCart] = useState<Record<string, number>>({});
   const [posSelectedLightClientId, setPosSelectedLightClientId] = useState<string>("");
@@ -690,7 +693,9 @@ export function ManufacturerDashboard({
             { id: "catalog", label: "Catalogue & Stocks", icon: Layers },
             { id: "orders", label: "Commandes B2B", icon: ShoppingCart },
             { id: "sales", label: "Vente Comptoir", icon: ShoppingBag },
+            { id: "ai", label: "Prévisions IA", icon: Sparkles },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
             { id: "sync", label: "Sync", icon: Cloud },
           ].map((tab) => (
             <button
@@ -1218,6 +1223,26 @@ export function ManufacturerDashboard({
           <SyncHistory queue={syncQueue} />
         </div>
       )}
+
+      {activeTab === "reviews" && (
+        <div className="animate-fade-in">
+          <PartnerReviewsSection
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+          />
+        </div>
+      )}
+
+      {activeTab === "ai" && (
+        <div className="animate-fade-in">
+          <StockForecastModule
+            products={products}
+            orders={orders}
+            currentUser={currentUser}
+          />
+        </div>
+      )}
         </motion.div>
       </AnimatePresence>
 
@@ -1288,6 +1313,8 @@ interface WholesalerDashboardProps {
   onPayOrder?: (orderId: string) => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
+  favoriteProductIds?: string[];
+  onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
 
 export function WholesalerDashboard({
@@ -1314,8 +1341,10 @@ export function WholesalerDashboard({
   onPayOrder,
   onUpdateCreditLimit,
   onUpdateProductFull,
+  favoriteProductIds = [],
+  onSelectProduct,
 }: WholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -1535,6 +1564,7 @@ export function WholesalerDashboard({
             { id: "inventory", label: "Stocks", icon: Layers },
             { id: "accounting", label: "Comptabilité", icon: Wallet },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
             { id: "sync", label: "Sync", icon: Cloud },
           ].map((tab) => (
             <button
@@ -1581,6 +1611,14 @@ export function WholesalerDashboard({
                   }
                 }}
               />
+              {onSelectProduct && (
+                <FavoritesSection
+                  favoriteIds={favoriteProductIds}
+                  products={products}
+                  inventory={inventory}
+                  onSelectProduct={onSelectProduct}
+                />
+              )}
             </div>
           )}
 
@@ -2263,6 +2301,16 @@ export function WholesalerDashboard({
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
+
+      {activeTab === "reviews" && (
+        <div className="animate-fade-in">
+          <PartnerReviewsSection
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+          />
+        </div>
+      )}
         </motion.div>
       </AnimatePresence>
 
@@ -2336,6 +2384,8 @@ interface RetailerDashboardProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
+  favoriteProductIds?: string[];
+  onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
 
 export function RetailerDashboard({
@@ -2363,8 +2413,10 @@ export function RetailerDashboard({
   onUpdateOrderStatus,
   onUpdateCreditLimit,
   onUpdateProductFull,
+  favoriteProductIds = [],
+  onSelectProduct,
 }: RetailerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -2558,6 +2610,7 @@ export function RetailerDashboard({
             { id: "inventory", label: "Mon Stock", icon: Layers },
             { id: "accounting", label: "Comptabilité", icon: Wallet },
             { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
             { id: "sync", label: "Sync", icon: Cloud },
           ].map((tab) => (
             <button
@@ -2604,6 +2657,14 @@ export function RetailerDashboard({
                   }
                 }}
               />
+              {onSelectProduct && (
+                <FavoritesSection
+                  favoriteIds={favoriteProductIds}
+                  products={products}
+                  inventory={inventory}
+                  onSelectProduct={onSelectProduct}
+                />
+              )}
             </div>
           )}
 
@@ -3389,6 +3450,16 @@ export function RetailerDashboard({
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
+
+      {activeTab === "reviews" && (
+        <div className="animate-fade-in">
+          <PartnerReviewsSection
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+          />
+        </div>
+      )}
         </motion.div>
       </AnimatePresence>
 
@@ -3446,6 +3517,8 @@ interface ClientDashboardProps {
   onPlaceB2COrder: (receiverId: string, items: { productId: string; quantity: number }[], address: string, method: string) => void;
   onPostReview: (orderId: string, rating: number, comment: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
+  favoriteProductIds?: string[];
+  onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
 
 export function ClientDashboard({
@@ -3457,6 +3530,8 @@ export function ClientDashboard({
   onPlaceB2COrder,
   onPostReview,
   onUpdateOrderStatus,
+  favoriteProductIds = [],
+  onSelectProduct,
 }: ClientDashboardProps) {
   const [activeTab, setActiveTab] = useState<"market" | "orders" | "addresses" | "feed">("feed");
   const [orderStatusFilter, setOrderStatusFilter] = useState<"TOUS" | "EN_COURS" | "LIVRE" | "ANNULE">("TOUS");
@@ -3465,6 +3540,25 @@ export function ClientDashboard({
   const [selectedRetailer, setSelectedRetailer] = useState<string>("");
   const [shippingAddress, setShippingAddress] = useState(currentUser.address || "La Médina, Dakar");
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH");
+  const [shippingFee, setShippingFee] = useState<number>(1000);
+  const [shippingDistance, setShippingDistance] = useState<number>(1.5);
+  const [shippingTime, setShippingTime] = useState<number>(5);
+
+  const resolveRegionLabel = (addressOrRegion: string): string => {
+    if (!addressOrRegion) return "Abidjan";
+    const clean = addressOrRegion.toLowerCase();
+    if (clean.includes("plateau") && clean.includes("dakar")) return "Dakar Plateau";
+    if (clean.includes("médina") || clean.includes("medina")) return "La Médina";
+    if (clean.includes("almadies")) return "Les Almadies";
+    if (clean.includes("dakar")) return "Dakar";
+    if (clean.includes("cocody")) return "Cocody";
+    if (clean.includes("plateau")) return "Le Plateau";
+    if (clean.includes("marcory")) return "Marcory";
+    if (clean.includes("abidjan")) return "Abidjan";
+    if (clean.includes("ouaga 2000") || clean.includes("ouagadougou")) return "Ouaga 2000 (Secteur 15)";
+    if (clean.includes("koulouba")) return "Koulouba";
+    return "Abidjan"; // Default fallback
+  };
 
   // Identify connected suppliers (from previous orders)
   const connectedSupplierIds = Array.from(new Set(
@@ -3739,48 +3833,58 @@ export function ClientDashboard({
 
           {!selectedRetailer ? (
             /* Vendor Selection Cards when no shop is selected */
-            <div className="space-y-3">
-              <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Commerces & Demi-Grossistes Disponibles</h5>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {retailers.map((r) => {
-                  const itemCount = inventory.filter(i => i.ownerId === r.id).length;
-                  return (
-                    <div
-                      key={r.id}
-                      onClick={() => {
-                        setSelectedRetailer(r.id);
-                        setCart({});
-                      }}
-                      className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-2xl cursor-pointer transition shadow-xs hover:shadow-md group space-y-2"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-base">
-                          <Store className="w-5 h-5" />
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Commerces & Demi-Grossistes Disponibles</h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {retailers.map((r) => {
+                    const itemCount = inventory.filter(i => i.ownerId === r.id).length;
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => {
+                          setSelectedRetailer(r.id);
+                          setCart({});
+                        }}
+                        className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-2xl cursor-pointer transition shadow-xs hover:shadow-md group space-y-2"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-base">
+                            <Store className="w-5 h-5" />
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            r.role === UserRole.SEMI_WHOLESALER 
+                              ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                          }`}>
+                            {r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"}
+                          </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          r.role === UserRole.SEMI_WHOLESALER 
-                            ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
-                            : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
-                        }`}>
-                          {r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"}
-                        </span>
+                        <div>
+                          <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 transition">
+                            {r.companyName || r.name}
+                          </h5>
+                          <p className="text-xs text-zinc-500 truncate mt-0.5">
+                            📍 {r.address || r.region || "Local"}
+                          </p>
+                        </div>
+                        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px] text-zinc-500 font-medium">
+                          <span>{itemCount > 0 ? `${itemCount} articles en stock` : "Catalogue disponible"}</span>
+                          <span className="font-bold text-emerald-600 group-hover:underline">Voir les produits &rarr;</span>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 transition">
-                          {r.companyName || r.name}
-                        </h5>
-                        <p className="text-xs text-zinc-500 truncate mt-0.5">
-                          📍 {r.address || r.region || "Local"}
-                        </p>
-                      </div>
-                      <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px] text-zinc-500 font-medium">
-                        <span>{itemCount > 0 ? `${itemCount} articles en stock` : "Catalogue disponible"}</span>
-                        <span className="font-bold text-emerald-600 group-hover:underline">Voir les produits &rarr;</span>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
+              {onSelectProduct && (
+                <FavoritesSection
+                  favoriteIds={favoriteProductIds}
+                  products={products}
+                  inventory={inventory}
+                  onSelectProduct={onSelectProduct}
+                />
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -3877,6 +3981,44 @@ export function ClientDashboard({
                     })}
                 </div>
 
+                {/* Subtotal & Delivery details breakdown */}
+                {Object.values(cart).some(q => (q as number) > 0) && (
+                  <div className="pt-2.5 pb-1 space-y-1.5 border-t border-zinc-150">
+                    <div className="flex justify-between text-[11px] text-zinc-500 font-medium">
+                      <span>Sous-total</span>
+                      <span className="font-mono">{formatCFA(
+                        Object.keys(cart)
+                          .filter((prodId) => cart[prodId] > 0)
+                          .reduce((sum, prodId) => {
+                            const qty = cart[prodId];
+                            const prod = products.find((p) => p.id === prodId);
+                            const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedRetailer);
+                            const unitPrice = getProductPrice(invItem, prod);
+                            return sum + unitPrice * qty;
+                          }, 0)
+                      )}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-zinc-500 font-medium">
+                      <span>Frais Livraison ({shippingDistance} km)</span>
+                      <span className="font-mono text-emerald-600 font-bold">+{formatCFA(shippingFee)}</span>
+                    </div>
+                    <div className="flex justify-between text-zinc-900 dark:text-white font-bold text-xs pt-1.5 border-t border-dashed border-zinc-200">
+                      <span>Total général</span>
+                      <span className="font-mono text-emerald-600 font-extrabold">{formatCFA(
+                        Object.keys(cart)
+                          .filter((prodId) => cart[prodId] > 0)
+                          .reduce((sum, prodId) => {
+                            const qty = cart[prodId];
+                            const prod = products.find((p) => p.id === prodId);
+                            const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedRetailer);
+                            const unitPrice = getProductPrice(invItem, prod);
+                            return sum + unitPrice * qty;
+                          }, 0) + shippingFee
+                      )}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-3 pt-3 border-t border-zinc-150">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Adresse de livraison (Auto-complétion)</label>
@@ -3888,6 +4030,20 @@ export function ClientDashboard({
                       id="client-checkout-shipping-address"
                     />
                   </div>
+
+                  {/* Real-time Dynamic Delivery Calculator widget */}
+                  <OrderCreationDeliveryCalculator
+                    sellerRegion={resolveRegionLabel(selectedShopObj?.address || selectedShopObj?.region || "Abidjan")}
+                    buyerRegion={resolveRegionLabel(shippingAddress)}
+                    onCalculateFee={(fee, dist, mins, resolvedBuyer) => {
+                      setShippingFee(fee);
+                      setShippingDistance(dist);
+                      setShippingTime(mins);
+                    }}
+                    title="Estimation Frais de Livraison"
+                    editableRegions={false}
+                  />
+
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase">Moyen de Paiement</label>
                     <select
@@ -4349,6 +4505,8 @@ interface SemiWholesalerDashboardProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
+  favoriteProductIds?: string[];
+  onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
 
 export function SemiWholesalerDashboard({
@@ -4376,8 +4534,10 @@ export function SemiWholesalerDashboard({
   onUpdateOrderStatus,
   onUpdateCreditLimit,
   onUpdateProductFull,
+  favoriteProductIds = [],
+  onSelectProduct,
 }: SemiWholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [posCart, setPosCart] = useState<Record<string, number>>({});
@@ -4708,6 +4868,14 @@ export function SemiWholesalerDashboard({
           <BookOpen className="w-4 h-4 inline mr-1.5" /> Clients & Adresses
         </button>
         <button
+          onClick={() => setActiveTab("reviews")}
+          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
+            activeTab === "reviews" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 inline mr-1.5" /> Avis Partenaires
+        </button>
+        <button
           onClick={() => setActiveTab("sync")}
           className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
             activeTab === "sync" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
@@ -4872,6 +5040,18 @@ export function SemiWholesalerDashboard({
               </div>
             </div>
           </div>
+
+          {/* Favorites Section */}
+          {onSelectProduct && (
+            <div className="lg:col-span-3 mt-4">
+              <FavoritesSection
+                favoriteIds={favoriteProductIds}
+                products={products}
+                inventory={inventory}
+                onSelectProduct={onSelectProduct}
+              />
+            </div>
+          )}
         </div>
       </div>
       )}
@@ -5535,6 +5715,16 @@ export function SemiWholesalerDashboard({
       {activeTab === "accounting" && (
         <div className="animate-fade-in">
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
+        </div>
+      )}
+
+      {activeTab === "reviews" && (
+        <div className="animate-fade-in">
+          <PartnerReviewsSection
+            currentUser={currentUser}
+            users={users}
+            connections={connections}
+          />
         </div>
       )}
 

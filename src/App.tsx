@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale, Cloud
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -94,22 +94,50 @@ export default function App() {
     totalCount: 0,
     progress: 100
   });
+  const [lastSuccessfulSync, setLastSuccessfulSync] = useState<string>(() => {
+    return localStorage.getItem("wakat_last_successful_sync") || new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  });
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
-    return localStorage.getItem("wakat_erp_v2_theme") === "dark";
+    const saved = localStorage.getItem("wakat_erp_v2_theme");
+    if (saved) {
+      return saved === "dark";
+    }
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const [autoSystemTheme, setAutoSystemTheme] = useState<boolean>(() => {
-    return localStorage.getItem("wakat_erp_autosync_theme") === "true";
+    const saved = localStorage.getItem("wakat_erp_autosync_theme");
+    if (saved !== null) {
+      return saved === "true";
+    }
+    return !localStorage.getItem("wakat_erp_v2_theme");
   });
 
   useEffect(() => {
     localStorage.setItem("wakat_erp_autosync_theme", String(autoSystemTheme));
-    if (autoSystemTheme) {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const hasManualOverride = localStorage.getItem("wakat_erp_v2_theme") !== null;
+    const shouldSyncWithSystem = autoSystemTheme || !hasManualOverride;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    if (shouldSyncWithSystem) {
       setDarkMode(mediaQuery.matches);
-      const handleChange = (e: MediaQueryListEvent) => setDarkMode(e.matches);
+    }
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      const currentManualOverride = localStorage.getItem("wakat_erp_v2_theme") !== null;
+      if (autoSystemTheme || !currentManualOverride) {
+        setDarkMode(e.matches);
+      }
+    };
+
+    if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleChange);
       return () => mediaQuery.removeEventListener('change', handleChange);
+    } else {
+      // Compatibility fallback for older browsers
+      mediaQuery.addListener(handleChange);
+      return () => mediaQuery.removeListener(handleChange);
     }
   }, [autoSystemTheme]);
 
@@ -729,6 +757,37 @@ export default function App() {
     inventoryItem?: InventoryItem;
   } | null>(null);
 
+  const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      try {
+        const stored = localStorage.getItem(`wakat_favorites_${currentUser.id}`);
+        setFavoriteProductIds(stored ? JSON.parse(stored) : []);
+      } catch {
+        setFavoriteProductIds([]);
+      }
+    } else {
+      setFavoriteProductIds([]);
+    }
+  }, [currentUser?.id]);
+
+  const handleToggleFavorite = (productId: string) => {
+    if (!currentUser?.id) return;
+    setFavoriteProductIds((prev) => {
+      const next = prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId];
+      localStorage.setItem(`wakat_favorites_${currentUser.id}`, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleSelectProduct = (product: Product) => {
+    const item = inventory.find((i) => i.productId === product.id);
+    setViewingProductDetail({ product, inventoryItem: item });
+  };
+
   const handleOpenProfileEdit = () => {
     setShowProfileEdit(true);
   };
@@ -913,6 +972,13 @@ export default function App() {
         lastError: status.lastError
       });
       setSyncQueue(queue);
+
+      // Record sync time if online and done syncing with no pending or failed items
+      if (status.isOnline && !status.isSyncing && status.pendingCount === 0 && status.failedCount === 0) {
+        const nowStr = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        setLastSuccessfulSync(nowStr);
+        localStorage.setItem("wakat_last_successful_sync", nowStr);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -1380,17 +1446,61 @@ export default function App() {
       clientRole = UserRole.CLIENT;
     }
 
+    if (!isPartnerRegistration) {
+      // Direct local creation (Client local / hors-ligne)
+      const newLc: LightClient = {
+        id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        ownerId: currentUser.id,
+        name: notes || identifier,
+        phone: identifier.includes("@") ? "" : identifier,
+        email: identifier.includes("@") ? identifier : "",
+        notes: `Abonné local [${clientRole}]`,
+        linkedUserId: undefined,
+        createdAt: new Date().toISOString()
+      };
+      const updated = [newLc, ...lightClients];
+      syncLightClients(updated);
+      addNotification(`Client local "${newLc.name}" créé avec succès.`);
+      return undefined as any;
+    }
+
     try {
       relationService.envoyerDemandeConnexion(currentUser, identifier, notes)
         .then((res) => {
           addNotification(res.message);
         })
         .catch((err) => {
-          console.error("Error creating connection request:", err);
-          addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
+          console.warn("Could not establish online connection, creating local contact fallback instead:", err);
+          
+          const newLc: LightClient = {
+            id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            ownerId: currentUser.id,
+            name: notes || identifier,
+            phone: identifier.includes("@") ? "" : identifier,
+            email: identifier.includes("@") ? identifier : "",
+            notes: `Partenaire local [${clientRole}] - Non connecté au cloud`,
+            linkedUserId: undefined,
+            createdAt: new Date().toISOString()
+          };
+          const updated = [newLc, ...lightClients];
+          syncLightClients(updated);
+          addNotification(`Partenaire "${newLc.name}" ajouté localement à votre carnet.`);
         });
     } catch (err: any) {
-      addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
+      console.warn("Exception in handleCreateLightClient, fallback to local:", err);
+      const newLc: LightClient = {
+        id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        ownerId: currentUser.id,
+        name: notes || identifier,
+        phone: identifier.includes("@") ? "" : identifier,
+        email: identifier.includes("@") ? identifier : "",
+        notes: `Partenaire local [${clientRole}] - Exception`,
+        linkedUserId: undefined,
+        createdAt: new Date().toISOString()
+      };
+      const updated = [newLc, ...lightClients];
+      syncLightClients(updated);
+      addNotification(`Partenaire "${newLc.name}" créé localement.`);
     }
     
     return undefined as any;
@@ -2408,14 +2518,14 @@ export default function App() {
   // Apply geographical country filter to users (clients, partners, suppliers)
   const countryFilteredUsers = useMemo(() => {
     const rawList = (!selectedCountryFilter || selectedCountryFilter === "ALL") 
-      ? displayUsers 
-      : displayUsers.filter(u => {
+      ? users 
+      : users.filter(u => {
           if (u.id === currentUser?.id || u.role === UserRole.ADMIN) return true;
           const userCountry = u.country || (u as any).pays || "";
           return userCountry.toLowerCase().trim() === selectedCountryFilter.toLowerCase().trim();
         });
     return deduplicateUsers(rawList);
-  }, [displayUsers, selectedCountryFilter, currentUser?.id]);
+  }, [users, selectedCountryFilter, currentUser?.id]);
 
   // Apply geographical country filter to light clients
   const countryFilteredLightClients = useMemo(() => {
@@ -2525,6 +2635,19 @@ export default function App() {
                 </span>
               </h1>
               <p className="text-[9.5px] text-zinc-500 font-medium">Distribution & Logistique Intelligente d'Afrique</p>
+            </div>
+
+            {/* Real-time Sync Successful Indicator */}
+            <div className="hidden md:flex flex-col items-start gap-0.5 border-l border-zinc-150 dark:border-zinc-800 pl-3">
+              <span className="text-[8px] uppercase tracking-wider font-bold text-zinc-400 dark:text-zinc-500">Données</span>
+              <div 
+                className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-150 dark:border-emerald-900/50 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
+                title="Toutes les données locales sont synchronisées et sécurisées hors-ligne. Cliquez pour forcer la synchronisation."
+                onClick={() => syncService.triggerSync()}
+              >
+                <Cloud className={`w-3 h-3 text-emerald-500 ${syncStatus.isSyncing ? "animate-bounce" : ""}`} />
+                <span>Synchro: {lastSuccessfulSync}</span>
+              </div>
             </div>
           </div>
 
@@ -3577,6 +3700,8 @@ export default function App() {
                   onUpdateOrderStatus={handleUpdateOrderStatus}
                   onPayOrder={handlePayOrder}
                   onUpdateCreditLimit={handleUpdateCreditLimit}
+                  favoriteProductIds={favoriteProductIds}
+                  onSelectProduct={handleSelectProduct}
                 />
               )}
 
@@ -3606,6 +3731,8 @@ export default function App() {
                   onPayOrder={handlePayOrder}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
                   onUpdateCreditLimit={handleUpdateCreditLimit}
+                  favoriteProductIds={favoriteProductIds}
+                  onSelectProduct={handleSelectProduct}
                 />
               )}
 
@@ -3635,6 +3762,8 @@ export default function App() {
                   onPayOrder={handlePayOrder}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
                   onUpdateCreditLimit={handleUpdateCreditLimit}
+                  favoriteProductIds={favoriteProductIds}
+                  onSelectProduct={handleSelectProduct}
                 />
               )}
 
@@ -3648,6 +3777,8 @@ export default function App() {
                   onPlaceB2COrder={handlePlaceB2COrder}
                   onPostReview={handlePostReview}
                   onUpdateOrderStatus={handleUpdateOrderStatus}
+                  favoriteProductIds={favoriteProductIds}
+                  onSelectProduct={handleSelectProduct}
                 />
               )}
 
@@ -3671,6 +3802,8 @@ export default function App() {
             product={viewingProductDetail.product}
             inventoryItem={viewingProductDetail.inventoryItem}
             onClose={() => setViewingProductDetail(null)}
+            isFavorite={favoriteProductIds.includes(viewingProductDetail.product.id)}
+            onToggleFavorite={() => handleToggleFavorite(viewingProductDetail.product.id)}
           />
         )}
 

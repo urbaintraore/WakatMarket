@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { CheckCircle, AlertOctagon, Mic, Send, X, MessageSquare, Download, Share2, Smartphone, CheckCircle2, AlertTriangle } from "lucide-react";
 import { OrderStatus, Order, Product, UserProfile } from "../types";
-import { jsPDF } from "jspdf";
+import { orderService } from "../services/orderService";
 
 interface Props {
   orderId: string;
@@ -38,122 +38,11 @@ export function OrderClaimAndConfirm({
 
   const isDeliveredOrShipped = status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED;
 
-  // Invoice PDF Generation
+  // Invoice PDF Generation routed through orderService
   const handleExportPDF = () => {
     if (!order || !products || !users) return;
-
     try {
-      const doc = new jsPDF();
-      
-      const seller = users.find(u => u.id === order.receiverId);
-      const buyer = users.find(u => u.id === order.senderId);
-
-      // Top Header accent bar
-      doc.setFillColor(16, 185, 129); // Emerald-500
-      doc.rect(0, 0, 210, 35, "F");
-
-      // Header Text
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(20);
-      doc.text("FACTURE COMMERCIALE / WAKAT ERP", 15, 22);
-
-      // Metadata right-aligned
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(`ID Facture: #${order.id}`, 135, 15);
-      doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString("fr-FR")}`, 135, 21);
-      doc.text(`Statut: ${order.status}`, 135, 27);
-
-      // Seller / Buyer Information Blocks
-      doc.setTextColor(30, 41, 59); // zinc-800
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("Vendeur / Partenaire :", 15, 52);
-      
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9.5);
-      doc.text(`${seller?.companyName || seller?.name || "Partenaire Wakat ERP"}`, 15, 58);
-      doc.text(`Contact: ${seller?.phone || "N/A"}`, 15, 64);
-      doc.text(`Localisation: ${seller?.region || "N/A"}, ${seller?.country || "Burkina Faso"}`, 15, 70);
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text("Acheteur / Client :", 115, 52);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9.5);
-      doc.text(`${buyer?.companyName || buyer?.name || "Client Partenaire"}`, 115, 58);
-      doc.text(`Contact: ${buyer?.phone || "N/A"}`, 115, 64);
-      doc.text(`Adresse de livraison: ${order.deliveryAddress || "Non spécifiée"}`, 115, 70);
-
-      // Items Table Header
-      doc.setFillColor(30, 41, 59); // Dark blue gray header
-      doc.rect(15, 85, 180, 8, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9.5);
-      doc.text("Désignation de l'Article", 18, 90.5);
-      doc.text("Qté", 115, 90.5);
-      doc.text("Prix Unit. (CFA)", 135, 90.5);
-      doc.text("Total (CFA)", 165, 90.5);
-
-      // Table Row Loop
-      doc.setTextColor(30, 41, 59);
-      doc.setFont("helvetica", "normal");
-      let currentY = 100;
-      order.items.forEach((item, index) => {
-        const prod = products.find(p => p.id === item.productId);
-        const prodName = prod ? prod.name : "Produit";
-        const totalLine = item.quantity * item.priceAtOrder;
-
-        if (index % 2 === 1) {
-          doc.setFillColor(248, 250, 252); // slate-50
-          doc.rect(15, currentY - 5, 180, 7, "F");
-        }
-
-        doc.text(prodName, 18, currentY);
-        doc.text(item.quantity.toString(), 115, currentY);
-        doc.text(`${item.priceAtOrder.toLocaleString()} FCFA`, 135, currentY);
-        doc.text(`${totalLine.toLocaleString()} FCFA`, 165, currentY);
-
-        currentY += 8;
-      });
-
-      // Horizontal separator line
-      doc.setDrawColor(226, 232, 240); // slate-200
-      doc.line(15, currentY + 2, 195, currentY + 2);
-
-      // Totals and Summary Block
-      currentY += 12;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10.5);
-      doc.text("Frais de livraison :", 115, currentY);
-      doc.setFont("helvetica", "normal");
-      doc.text(`${(order.shippingFee || 0).toLocaleString()} FCFA`, 165, currentY);
-
-      currentY += 7;
-      doc.setFont("helvetica", "bold");
-      doc.text("Montant Global :", 115, currentY);
-      doc.setTextColor(16, 185, 129); // Emerald color
-      doc.text(`${order.totalAmount.toLocaleString()} FCFA`, 165, currentY);
-
-      // Payment Status Badge
-      currentY += 15;
-      doc.setFillColor(order.paymentStatus === "PAID" ? 209 : 254, order.paymentStatus === "PAID" ? 250 : 226, order.paymentStatus === "PAID" ? 229 : 226); // emerald-100 or rose-100
-      doc.rect(15, currentY - 6, 60, 8, "F");
-      doc.setTextColor(order.paymentStatus === "PAID" ? 6 : 153, order.paymentStatus === "PAID" ? 95 : 27, order.paymentStatus === "PAID" ? 70 : 27); // emerald-700 or rose-700
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text(`PAIEMENT: ${order.paymentStatus === "PAID" ? "RÉGLÉ / PAYÉ" : "EN ATTENTE / DU"}`, 18, currentY - 0.5);
-
-      // Footer notice
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(8);
-      doc.setTextColor(148, 163, 184); // slate-400
-      doc.text("Wakat ERP - Solution Intelligente de Gestion Commerciale des Chaines de Valeur", 15, 285);
-
-      doc.save(`Facture_Wakat_${order.id}.pdf`);
+      orderService.generateInvoicePDF(order, products, users);
     } catch (err) {
       console.error("PDF generation failed:", err);
       alert("Erreur lors de la génération de la facture PDF.");

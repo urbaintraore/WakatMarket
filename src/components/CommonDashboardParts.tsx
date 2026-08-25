@@ -2884,6 +2884,162 @@ export const SalesExportButton: React.FC<SalesExportButtonProps> = ({
   );
 };
 
+// ----------------------------------------------------------------------
+// Recharts Monthly Sales Evolution Chart
+// ----------------------------------------------------------------------
+interface MonthlySalesEvolutionChartProps {
+  orders?: Order[];
+  currentUserId?: string;
+}
+
+export const MonthlySalesEvolutionChart: React.FC<MonthlySalesEvolutionChartProps> = ({
+  orders = [],
+  currentUserId = ""
+}) => {
+  const chartData = useMemo(() => {
+    // Filter orders for current user role (where user is sender or receiver/seller)
+    const myOrders = orders.filter(
+      o => !currentUserId || o.receiverId === currentUserId || o.senderId === currentUserId
+    ).filter(o => o.status !== "CANCELLED" as any);
+
+    // Generate monthly bins for the last 12 months
+    const dataPoints = [];
+    const now = new Date();
+    
+    // Month names in French
+    const monthNames = [
+      "Jan", "Fév", "Mar", "Avr", "Mai", "Juin", 
+      "Juil", "Août", "Sept", "Oct", "Nov", "Déc"
+    ];
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const year = d.getFullYear();
+      const monthIdx = d.getMonth();
+      const label = `${monthNames[monthIdx]} ${year.toString().substring(2)}`;
+      
+      // Calculate total sales for this specific month
+      const monthOrders = myOrders.filter(o => {
+        if (!o.createdAt) return false;
+        const oDate = new Date(o.createdAt);
+        return oDate.getFullYear() === year && oDate.getMonth() === monthIdx;
+      });
+
+      const totalRevenue = monthOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+      const orderCount = monthOrders.length;
+      const averageOrder = orderCount > 0 ? Math.round(totalRevenue / orderCount) : 0;
+
+      dataPoints.push({
+        name: label,
+        Ventes: totalRevenue,
+        Commandes: orderCount,
+        PanierMoyen: averageOrder
+      });
+    }
+
+    return dataPoints;
+  }, [orders, currentUserId]);
+
+  const totalTwelveMonthsRevenue = useMemo(() => {
+    return chartData.reduce((sum, d) => sum + d.Ventes, 0);
+  }, [chartData]);
+
+  const totalTwelveMonthsOrders = useMemo(() => {
+    return chartData.reduce((sum, d) => sum + d.Commandes, 0);
+  }, [chartData]);
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-5 rounded-2xl shadow-xs space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <div>
+          <h4 className="text-sm font-black text-zinc-900 dark:text-white tracking-tight flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-600 animate-pulse"></span>
+            Évolution des Ventes Mensuelles (12 Mois)
+          </h4>
+          <p className="text-[11px] text-zinc-500">
+            Chiffre d'affaires cumulé et volume de transactions mensuels
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-150 dark:border-zinc-850">
+          <div className="text-right">
+            <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">C.A. Cumulé</p>
+            <p className="text-xs font-black text-orange-600 font-mono">
+              {totalTwelveMonthsRevenue.toLocaleString("fr-FR")} FCFA
+            </p>
+          </div>
+          <div className="w-px h-6 bg-zinc-200 dark:bg-zinc-800" />
+          <div className="text-right">
+            <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Volume</p>
+            <p className="text-xs font-black text-zinc-900 dark:text-white font-mono">
+              {totalTwelveMonthsOrders} cmds
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#ea580c" stopOpacity={0.2}/>
+                <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-150 dark:stroke-zinc-800" strokeOpacity={0.5} />
+            <XAxis 
+              dataKey="name" 
+              tick={{ fontSize: 9 }}
+              className="text-zinc-500 fill-zinc-500" 
+              stroke="#888888"
+              fontSize={9}
+            />
+            <YAxis 
+              tick={{ fontSize: 9 }}
+              className="text-zinc-500 fill-zinc-500"
+              stroke="#888888"
+              fontSize={9}
+              tickFormatter={(val) => val >= 1000000 ? `${(val/1000000).toFixed(1)}M` : val >= 1000 ? `${(val/1000).toFixed(0)}k` : val}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: "#18181b",
+                border: "none",
+                borderRadius: "12px",
+                color: "#f4f4f5",
+                fontSize: "11px"
+              }}
+              formatter={(value: any, name: string) => {
+                if (name === "Ventes") return [`${value.toLocaleString("fr-FR")} FCFA`, "Ventes"];
+                if (name === "PanierMoyen") return [`${value.toLocaleString("fr-FR")} FCFA`, "Panier Moyen"];
+                return [value, name];
+              }}
+            />
+            <Area 
+              type="monotone" 
+              dataKey="Ventes" 
+              stroke="#ea580c" 
+              strokeWidth={2.5}
+              fillOpacity={1} 
+              fill="url(#colorSales)" 
+            />
+            <Line
+              type="monotone"
+              dataKey="Commandes"
+              stroke="#06b6d4"
+              strokeWidth={1.5}
+              dot={{ r: 2 }}
+              activeDot={{ r: 4 }}
+              yAxisId={0}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
 
 
 

@@ -142,8 +142,13 @@ export function inventoryToDb(item: Partial<InventoryItem>): Record<string, any>
   if (item.id !== undefined) dbRecord.id = item.id;
   if (item.productId !== undefined) dbRecord.product_id = item.productId;
   if (item.ownerId !== undefined) dbRecord.owner_id = item.ownerId;
-  if (item.stock !== undefined) dbRecord.stock = item.stock;
-  if (item.threshold !== undefined) dbRecord.threshold = item.threshold;
+  
+  const stockVal = item.stock !== undefined ? item.stock : (item as any).quantite;
+  if (stockVal !== undefined) dbRecord.stock = stockVal;
+  
+  const thresholdVal = item.threshold !== undefined ? item.threshold : (item as any).seuil;
+  if (thresholdVal !== undefined) dbRecord.threshold = thresholdVal;
+  
   if (item.price !== undefined) dbRecord.price = item.price;
   if (item.prixGros !== undefined) dbRecord.prix_gros = item.prixGros;
   if (item.prixDetail !== undefined) dbRecord.prix_detail = item.prixDetail;

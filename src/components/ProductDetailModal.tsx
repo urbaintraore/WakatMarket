@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   Truck,
   FileSpreadsheet,
-  ArrowUpDown
+  ArrowUpDown,
+  Star
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -41,13 +42,17 @@ interface ProductDetailModalProps {
   inventoryItem?: InventoryItem;
   onClose: () => void;
   onOrderProduct?: (product: Product) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 export function ProductDetailModal({
   product,
   inventoryItem,
   onClose,
-  onOrderProduct
+  onOrderProduct,
+  isFavorite = false,
+  onToggleFavorite
 }: ProductDetailModalProps) {
   // Tab view switcher: "stocks" vs "price_history"
   const [activeTab, setActiveTab] = useState<"stocks" | "price_history">("stocks");
@@ -154,14 +159,29 @@ export function ProductDetailModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition cursor-pointer"
-            title="Fermer la fiche"
-            id="close-product-detail-modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onToggleFavorite && (
+              <button
+                onClick={onToggleFavorite}
+                className="p-2 rounded-xl text-zinc-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition cursor-pointer flex items-center justify-center gap-1 text-xs font-bold"
+                title={isFavorite ? "Retirer des favoris" : "Marquer comme favori"}
+                id="toggle-product-favorite"
+              >
+                <Star className={`w-5 h-5 transition-transform duration-300 ${isFavorite ? "text-amber-500 fill-amber-500 scale-110" : "text-zinc-400"}`} />
+                <span className="hidden sm:inline text-[10px] uppercase font-bold tracking-wider">
+                  {isFavorite ? "Favori" : "Ajouter aux favoris"}
+                </span>
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-800 transition cursor-pointer"
+              title="Fermer la fiche"
+              id="close-product-detail-modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* View Mode Segmented Control Switcher */}

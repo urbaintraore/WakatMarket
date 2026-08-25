@@ -56,13 +56,13 @@ export const userService = {
       email: user.email.trim().toLowerCase(),
       name: companyOrFullName,
       companyName: companyOrFullName,
-      phone: user.téléphone || user.phone || "",
+      phone: user.téléphone || user.phone || (user as any).telephone || "",
       role: normRole,
       address: [user.quartier, user.ville, user.pays].filter(Boolean).join(", ") || user.address || "",
       region: user.ville,
       country: user.pays,
-      avatar: user.logoUrl,
-      creditLimit: user.creditLimit || 0,
+      avatar: user.logoUrl || (user as any).avatar,
+      creditLimit: user.creditLimit || (user as any).limite_credit || 0,
     });
 
     try {
@@ -81,14 +81,24 @@ export const userService = {
 
       const { error } = await supabase.from("profiles").upsert(profileRecord);
       if (error) {
-        console.warn("[403 / AUTH ERROR DIAGNOSTIC] Erreur écriture profiles Supabase:", {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hasSession: !!session,
-          targetUid: user.uid,
-          authUid: authUser?.id
-        });
+        const is403 = error.status === 403 || error.code === "42501" || error.message?.toLowerCase().includes("permission") || error.message?.toLowerCase().includes("row-level security");
+        if (is403) {
+          console.error("[CRITICAL HTTP 403 / RLS ERROR] Erreur d'écriture (upsert) sur la table 'profiles':", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            hasSession: !!session,
+            targetUid: user.uid,
+            authUid: authUser?.id || "NONE",
+            isSelfUpdate: authUser?.id === user.uid,
+            diagnostic: authUser?.id === user.uid
+              ? "L'utilisateur essaie de mettre à jour son propre profil mais est bloqué par la politique RLS. Vérifiez les règles RLS pour autoriser les écritures par le propriétaire."
+              : "L'utilisateur authentifié essaie de créer ou modifier un profil tiers qui ne lui appartient pas, ce qui est bloqué par la sécurité RLS."
+          });
+        } else {
+          console.warn("[profiles WRITE ERROR] Erreur écriture profiles Supabase:", error);
+        }
       }
     } catch (err) {
       console.warn("Notice: Exception lors de l'enregistrement du profil Supabase:", err);
@@ -223,14 +233,27 @@ export const userService = {
 
     if (fields.nom !== undefined) updates.nom = fields.nom;
     if (fields.prénom !== undefined) updates.prenom = fields.prénom;
-    if (fields.téléphone || fields.phone) updates.telephone = fields.téléphone || fields.phone;
+    
+    // Clean and update telephone, supporting both native types and direct db columns, strictly avoiding obsolete fields
+    if (fields.téléphone !== undefined || fields.phone !== undefined || (fields as any).telephone !== undefined) {
+      updates.telephone = fields.téléphone || fields.phone || (fields as any).telephone;
+    }
+    
     if (fields.rôle || fields.role) updates.role = normalizeUserRole(fields.rôle || fields.role);
     if (fields.address !== undefined) updates.address = fields.address;
     if (fields.ville !== undefined) updates.ville = fields.ville;
     if (fields.quartier !== undefined) updates.quartier = fields.quartier;
     if (fields.pays !== undefined) updates.pays = fields.pays;
-    if (fields.logoUrl !== undefined) updates.avatar = fields.logoUrl;
-    if (fields.creditLimit !== undefined) updates.limite_credit = fields.creditLimit;
+    
+    // Clean and update avatar, strictly avoiding obsolete image mappings
+    if (fields.logoUrl !== undefined || (fields as any).avatar !== undefined) {
+      updates.avatar = fields.logoUrl || (fields as any).avatar;
+    }
+    
+    // Clean and update limite_credit, strictly avoiding obsolete fields like creditLimit/credit_limit
+    if (fields.creditLimit !== undefined || (fields as any).limite_credit !== undefined) {
+      updates.limite_credit = fields.creditLimit !== undefined ? fields.creditLimit : (fields as any).limite_credit;
+    }
 
     if (Object.keys(updates).length === 0) return;
 
@@ -257,14 +280,24 @@ export const userService = {
 
     const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
     if (error) {
-      console.error("[403 / AUTH ERROR DIAGNOSTIC] Erreur update profil Supabase:", {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hasSession: !!session,
-        targetUid: uid,
-        authUid: authUser?.id
-      });
+      const is403 = error.status === 403 || error.code === "42501" || error.message?.toLowerCase().includes("permission") || error.message?.toLowerCase().includes("row-level security");
+      if (is403) {
+        console.error("[CRITICAL HTTP 403 / RLS ERROR] Erreur de mise à jour (update) sur la table 'profiles':", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          hasSession: !!session,
+          targetUid: uid,
+          authUid: authUser?.id || "NONE",
+          isSelfUpdate: authUser?.id === uid,
+          diagnostic: authUser?.id === uid
+            ? "L'utilisateur essaie de mettre à jour son propre profil mais est bloqué par la politique RLS. Vérifiez les règles RLS pour autoriser l'action 'UPDATE' par le propriétaire."
+            : "L'utilisateur authentifié essaie de modifier un profil tiers qui ne lui appartient pas, ce qui est bloqué par la sécurité RLS."
+        });
+      } else {
+        console.error("Erreur de mise à jour du profil Supabase:", error);
+      }
       throw error;
     }
   },

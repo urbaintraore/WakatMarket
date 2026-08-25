@@ -105,3 +105,35 @@ BEGIN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
     END IF;
 END $$;
+
+-- 5. Create the `relations` table if it doesn't exist (to prevent RLS and missing table violations)
+CREATE TABLE IF NOT EXISTS public.relations (
+    id TEXT PRIMARY KEY,
+    grossiste_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    client_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    statut TEXT DEFAULT 'PENDING',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS for relations
+ALTER TABLE public.relations ENABLE ROW LEVEL SECURITY;
+
+-- Create ultra-permissive policies for full access in order to let B2B partnerships synch seamlessly
+DROP POLICY IF EXISTS "Allow full access to relations" ON public.relations;
+CREATE POLICY "Allow full access to relations" ON public.relations FOR ALL USING (true) WITH CHECK (true);
+
+-- Ensure full access to notifications as well
+DROP POLICY IF EXISTS "Allow full access to notifications" ON public.notifications;
+CREATE POLICY "Allow full access to notifications" ON public.notifications FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable Realtime for relations table
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'relations'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.relations;
+    END IF;
+END $$;

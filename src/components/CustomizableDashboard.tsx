@@ -7,7 +7,8 @@ import {
 import { UserProfile, Product, Order, DebtPayment, LightClient, InventoryItem, OrderStatus } from "../types";
 import { 
   ThirtyDaySalesAndStockChart, LowStockAlerts, WeeklySalesChart, 
-  DebtVsRevenueChart, StockEvolutionBarChart, ClaimsSummaryWidget 
+  DebtVsRevenueChart, StockEvolutionBarChart, ClaimsSummaryWidget,
+  MonthlySalesEvolutionChart
 } from "./CommonDashboardParts";
 import { StockForecastModule } from "./StockForecastModule";
 
@@ -21,6 +22,14 @@ export interface WidgetConfig {
 }
 
 const DEFAULT_WIDGETS: WidgetConfig[] = [
+  {
+    id: "monthly_sales_chart",
+    title: "Évolution des Ventes Mensuelles",
+    description: "Analyse historique du chiffre d'affaires cumulé mois par mois",
+    enabled: true,
+    width: "FULL",
+    iconName: "TrendingUp"
+  },
   {
     id: "sales_30d_chart",
     title: "Graphique des Ventes (30 Jours)",
@@ -199,6 +208,9 @@ export function CustomizableDashboard({
   // Render individual widget component by ID
   const renderWidgetContent = (widgetId: string) => {
     switch (widgetId) {
+      case "monthly_sales_chart":
+        return <MonthlySalesEvolutionChart orders={orders} currentUserId={currentUser.id} />;
+
       case "sales_30d_chart":
         return <ThirtyDaySalesAndStockChart products={userProducts} inventory={inventory} orders={orders} currentUserId={currentUser.id} />;
 

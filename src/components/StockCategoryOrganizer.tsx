@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { motion } from "motion/react";
 import {
   Layers, Package, Folder, Search, Filter, ArrowUpDown, ChevronDown, ChevronRight,
   TrendingUp, Trash2, Edit3, Plus, Download, AlertTriangle, CheckCircle2,
@@ -719,8 +720,11 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                 {!isCollapsed && (
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-zinc-50/40 dark:bg-zinc-950/20">
                     {group.items.map(({ inventoryItem: item, product: prod, isLowStock, prixGros, prixDetail, quantiteMinimum }) => (
-                      <div
+                      <motion.div
                         key={item.id}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
                         className={`p-4 bg-white dark:bg-zinc-900 border rounded-xl flex flex-col justify-between shadow-xs transition hover:shadow-md ${
                           isLowStock
                             ? "border-amber-300 dark:border-amber-700/60 ring-1 ring-amber-400/20"
@@ -937,7 +941,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                             />
                           </div>
                         )}
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 )}
@@ -953,8 +957,11 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
           {filteredAndSortedItems.map(({ inventoryItem: item, product: prod, category, isLowStock, prixGros, prixDetail, quantiteMinimum }) => {
             const catStyle = getCategoryStyle(category);
             return (
-              <div
+              <motion.div
                 key={item.id}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.25 }}
                 className={`p-4 bg-white dark:bg-zinc-900 border rounded-2xl flex flex-col justify-between shadow-xs transition hover:shadow-md ${
                   isLowStock
                     ? "border-amber-300 dark:border-amber-700/60 ring-1 ring-amber-400/20"
@@ -1138,7 +1145,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                     </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>

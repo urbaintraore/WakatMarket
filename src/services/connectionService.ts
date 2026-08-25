@@ -260,7 +260,7 @@ export const connectionService = {
           title: newNotif.title,
           message: newNotif.message,
           type: "demande_connexion",
-          related_id: relationId,
+          metadata: { related_id: relationId },
           read: false
         };
         console.log("[ConnectionService] Sending payload to Supabase 'notifications' table:", notifPayload);
@@ -676,7 +676,7 @@ export const connectionService = {
               title: row.title || row.message,
               lu: Boolean(row.read),
               read: Boolean(row.read),
-              relatedId: row.related_id || (row as any).relatedId,
+              relatedId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relatedId) || (row as any).relatedId,
               dateCreation: row.created_at || new Date().toISOString(),
               timestamp: row.created_at || new Date().toISOString(),
             }));

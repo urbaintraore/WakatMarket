@@ -85,16 +85,27 @@ export const chatService = {
     }
 
     // Inspection de statut de relation avant la transmission de message
+    let receiverId: string | undefined = undefined;
     if (_receiverOrParticipants) {
-      const receiverId = Array.isArray(_receiverOrParticipants)
+      receiverId = Array.isArray(_receiverOrParticipants)
         ? _receiverOrParticipants.find(id => id !== senderId)
         : _receiverOrParticipants;
-      if (receiverId) {
-        const statusCheck = await connectionService.validateRelationshipActive(senderId, receiverId);
-        console.log(`[ChatService.sendMessage] Relationship Diagnostic Check (grossiste_id, client_id, statut):`, statusCheck);
-        if (!statusCheck.isActive) {
-          console.warn(`[ChatService.sendMessage] WARNING: Transmitting message to user ${receiverId} with non-active relationship status '${statusCheck.statut}'. Details: ${statusCheck.details}`);
-        }
+    }
+    
+    // Fallback: extract receiver from conversationId if it is a private conversation (id1_id2 format)
+    if (!receiverId && conversationId && !conversationId.startsWith("grp_")) {
+      const parts = conversationId.split("_");
+      if (parts.length === 2) {
+        receiverId = parts.find(id => id !== senderId);
+      }
+    }
+
+    if (receiverId) {
+      const statusCheck = await connectionService.validateRelationshipActive(senderId, receiverId);
+      console.log(`[ChatService.sendMessage] Relationship Diagnostic Check (grossiste_id, client_id, statut):`, statusCheck);
+      if (!statusCheck.isActive) {
+        console.warn(`[ChatService.sendMessage] BLOCKED: Transmitting message to user ${receiverId} with non-active relationship status '${statusCheck.statut}'. Details: ${statusCheck.details}`);
+        throw new Error(`La transmission du message a été bloquée : le partenariat n'est pas actif (Statut: ${statusCheck.statut || "Non actif"}).`);
       }
     }
 

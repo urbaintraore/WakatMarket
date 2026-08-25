@@ -80,6 +80,7 @@ export function EditProductStockModal({
   const [price, setPrice] = useState<number>(0);
   const [prixGros, setPrixGros] = useState<number>(0);
   const [prixDetail, setPrixDetail] = useState<number>(0);
+  const [costPrice, setCostPrice] = useState<number>(0);
   const [quantiteMinimum, setQuantiteMinimum] = useState<number>(1);
   const [expirationDate, setExpirationDate] = useState<string>("");
 
@@ -100,6 +101,9 @@ export function EditProductStockModal({
         setImage(product.image || product.imageUrl || "");
         setUploadedImage(product.image || product.imageUrl || "");
         setExpirationDate(product.expirationDate || "");
+
+        const refPrice = inventoryItem?.price || product.prixGros || product.prixDetail || 5000;
+        setCostPrice(Math.round(refPrice * 0.7));
 
         if (inventoryItem) {
           setStock(inventoryItem.stock || 0);
@@ -609,6 +613,94 @@ export function EditProductStockModal({
                   </span>
                 </div>
               </div>
+
+              {/* Dynamic Net Margin Widget */}
+              {(() => {
+                const calculateMargin = (sellPrice: number) => {
+                  if (!sellPrice || !costPrice) return { profit: 0, marginPct: 0 };
+                  const profit = sellPrice - costPrice;
+                  const marginPct = (profit / sellPrice) * 100;
+                  return { profit, marginPct };
+                };
+
+                const mainMargin = calculateMargin(price);
+                const grosMargin = calculateMargin(prixGros);
+                const detailMargin = calculateMargin(prixDetail);
+
+                const getMarginColor = (pct: number) => {
+                  if (pct <= 0) return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-250 dark:border-rose-900/40";
+                  if (pct < 15) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-250 dark:border-amber-900/40";
+                  return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/40";
+                };
+
+                return (
+                  <div className="bg-zinc-100/50 dark:bg-zinc-900/60 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
+                    <div className="flex justify-between items-center flex-wrap gap-2.5">
+                      <div>
+                        <h5 className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                          📈 Calculateur de Marge Nette & Profit
+                        </h5>
+                        <p className="text-[10px] text-zinc-500 font-medium">Simulez l'impact du coût d'acquisition sur vos prix de vente</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 uppercase">Coût d'acquisition :</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            value={costPrice}
+                            onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
+                            className="w-24 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-855 rounded-xl font-mono font-bold text-xs text-zinc-950 dark:text-white"
+                            placeholder="Coût unitaire"
+                          />
+                          <span className="absolute right-2 top-1.5 text-[9px] text-zinc-400 font-bold">CFA</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Main Price Margin */}
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between space-y-2 ${getMarginColor(mainMargin.marginPct)}`}>
+                        <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-80">Prix Principal ({formatCFA(price)})</span>
+                        <div>
+                          <div className="text-base font-extrabold font-mono leading-none">{formatCFA(mainMargin.profit)}</div>
+                          <div className="text-[9px] font-bold mt-1 opacity-90">Profit net unitaire</div>
+                        </div>
+                        <div className="text-[10px] font-extrabold border-t border-current/15 pt-1.5 flex justify-between items-center">
+                          <span>Marge nette :</span>
+                          <span className="font-mono">{mainMargin.marginPct.toFixed(1)}%</span>
+                        </div>
+                      </div>
+
+                      {/* Wholesale Margin */}
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between space-y-2 ${getMarginColor(grosMargin.marginPct)}`}>
+                        <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-80">Prix Gros ({formatCFA(prixGros)})</span>
+                        <div>
+                          <div className="text-base font-extrabold font-mono leading-none">{formatCFA(grosMargin.profit)}</div>
+                          <div className="text-[9px] font-bold mt-1 opacity-90">Profit net unitaire</div>
+                        </div>
+                        <div className="text-[10px] font-extrabold border-t border-current/15 pt-1.5 flex justify-between items-center">
+                          <span>Marge nette :</span>
+                          <span className="font-mono">{grosMargin.marginPct.toFixed(1)}%</span>
+                        </div>
+                      </div>
+
+                      {/* Retail Margin */}
+                      <div className={`p-3 rounded-xl border flex flex-col justify-between space-y-2 ${getMarginColor(detailMargin.marginPct)}`}>
+                        <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-80">Prix Détail ({formatCFA(prixDetail)})</span>
+                        <div>
+                          <div className="text-base font-extrabold font-mono leading-none">{formatCFA(detailMargin.profit)}</div>
+                          <div className="text-[9px] font-bold mt-1 opacity-90">Profit net unitaire</div>
+                        </div>
+                        <div className="text-[10px] font-extrabold border-t border-current/15 pt-1.5 flex justify-between items-center">
+                          <span>Marge nette :</span>
+                          <span className="font-mono">{detailMargin.marginPct.toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Footer Buttons */}

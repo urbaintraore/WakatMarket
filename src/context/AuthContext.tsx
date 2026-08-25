@@ -304,6 +304,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Extraction et élimination stricte des champs sensibles
     const { role, rôle, id, uid, email, statut, ...safeFields } = fields as any;
 
+    // Normalisation stricte pour utiliser 'telephone', 'avatar', 'limite_credit' tout en conservant la compatibilité locale
+    if (safeFields.téléphone !== undefined || safeFields.phone !== undefined || safeFields.telephone !== undefined) {
+      const val = safeFields.téléphone || safeFields.phone || safeFields.telephone;
+      safeFields.telephone = val;
+      safeFields.téléphone = val;
+      safeFields.phone = val;
+    }
+    if (safeFields.logoUrl !== undefined || safeFields.avatar !== undefined) {
+      const val = safeFields.logoUrl || safeFields.avatar;
+      safeFields.avatar = val;
+      safeFields.logoUrl = val;
+    }
+    if (safeFields.creditLimit !== undefined || safeFields.limite_credit !== undefined) {
+      const val = safeFields.creditLimit !== undefined ? safeFields.creditLimit : safeFields.limite_credit;
+      safeFields.limite_credit = val;
+      safeFields.creditLimit = val;
+    }
+
     setError(null);
     try {
       await userService.updateUser(targetUid, safeFields);
