@@ -1256,6 +1256,18 @@ export default function App() {
       return updatedUsers;
     });
 
+    // Clean up any connections/relations
+    const currentConns = db.getConnections();
+    const updatedConns = currentConns.filter(c => c.senderId !== userId && c.receiverId !== userId && c.id !== userId);
+    db.saveConnections(updatedConns);
+    connectionService.deleteConnection(userId);
+
+    // Clean up light clients
+    const currentLc = db.getLightClients();
+    const updatedLc = currentLc.filter(lc => lc.linkedUserId !== userId && lc.id !== userId);
+    db.saveLightClients(updatedLc);
+    setLightClients(updatedLc);
+
     console.log(`[Delete pipeline] Cleaning up local storage entries for userId="${userId}"`);
     try {
       localStorage.removeItem(`wakat_erp_v2_user_${userId}`);
@@ -1438,9 +1450,17 @@ export default function App() {
   };
 
   const onDeleteLightClient = (clientId: string) => {
+    const targetLc = lightClients.find(lc => lc.id === clientId);
     const updated = lightClients.filter(lc => lc.id !== clientId);
     syncLightClients(updated);
-    addNotification("Client supprimé de votre carnet d'adresses.");
+
+    if (targetLc?.linkedUserId) {
+      connectionService.deleteConnection(targetLc.linkedUserId, currentUser?.id, targetLc.linkedUserId);
+    } else {
+      connectionService.deleteConnection(clientId, currentUser?.id);
+    }
+
+    addNotification("Partenaire / client supprimé de votre carnet d'adresses.");
   };
 
   const handleUpdateCreditLimit = (id: string, isRealUser: boolean, limit: number) => {

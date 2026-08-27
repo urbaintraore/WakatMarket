@@ -56,7 +56,47 @@ export async function ensureUsersExistLocally(userIds: string[]): Promise<void> 
   }
 }
 
+function getDeletedConnectionIds(): Set<string> {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem("wakat_deleted_connection_ids") : null;
+    if (raw) return new Set(JSON.parse(raw));
+  } catch (e) {}
+  return new Set();
+}
+
+function saveDeletedConnectionId(id: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const set = getDeletedConnectionIds();
+    set.add(id);
+    localStorage.setItem("wakat_deleted_connection_ids", JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
+function getDeletedPartnerPairs(): Set<string> {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem("wakat_deleted_partner_pairs") : null;
+    if (raw) return new Set(JSON.parse(raw));
+  } catch (e) {}
+  return new Set();
+}
+
+function saveDeletedPartnerPair(id1: string, id2: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const set = getDeletedPartnerPairs();
+    set.add(`${id1}:${id2}`);
+    set.add(`${id2}:${id1}`);
+    localStorage.setItem("wakat_deleted_partner_pairs", JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
 export const connectionService = {
+  getDeletedConnectionIds,
+  saveDeletedConnectionId,
+  getDeletedPartnerPairs,
+  saveDeletedPartnerPair,
+
   /**
    * Envoyer une demande de connexion de partenariat B2B avec logs détaillés
    */
@@ -532,16 +572,63 @@ export const connectionService = {
     }
   },
 
-  async deleteConnection(connectionId: string): Promise<void> {
+  async deleteConnection(connectionId: string, senderId?: string, receiverId?: string): Promise<void> {
+    console.log(`[ConnectionService.deleteConnection] Deleting connection id="${connectionId}", sId="${senderId}", rId="${receiverId}"`);
     const currentConns = db.getConnections();
-    const updated = currentConns.filter(c => c.id !== connectionId);
+    const target = currentConns.find(c => c.id === connectionId);
+    const sId = senderId || target?.senderId;
+    const rId = receiverId || target?.receiverId;
+
+    saveDeletedConnectionId(connectionId);
+    if (sId && rId) {
+      saveDeletedPartnerPair(sId, rId);
+    }
+
+    const updated = currentConns.filter(c => {
+      if (c.id === connectionId) return false;
+      if (sId && rId) {
+        if ((c.senderId === sId && c.receiverId === rId) || (c.senderId === rId && c.receiverId === sId)) {
+          return false;
+        }
+      }
+      return true;
+    });
     db.saveConnections(updated);
+
+    // Also remove from lightClients if matching
+    try {
+      const currentLightClients = db.getLightClients();
+      const updatedLc = currentLightClients.filter(lc => {
+        if (lc.id === connectionId) return false;
+        if (sId && (lc.linkedUserId === sId || lc.id === sId)) return false;
+        if (rId && (lc.linkedUserId === rId || lc.id === rId)) return false;
+        return true;
+      });
+      if (updatedLc.length !== currentLightClients.length) {
+        db.saveLightClients(updatedLc);
+      }
+    } catch (e) {}
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+      window.dispatchEvent(new CustomEvent("wakat_light_clients_updated"));
+    }
 
     if (supabase) {
       try {
         await supabase.from("relations").delete().eq("id", connectionId);
       } catch (e) {
-        console.warn("Notice Supabase delete connection:", e);
+        console.warn("Notice Supabase delete connection by id:", e);
+      }
+      if (sId && rId) {
+        try {
+          await supabase
+            .from("relations")
+            .delete()
+            .or(`and(grossiste_id.eq.${sId},client_id.eq.${rId}),and(grossiste_id.eq.${rId},client_id.eq.${sId})`);
+        } catch (e) {
+          console.warn("Notice Supabase delete relation by pair:", e);
+        }
       }
     }
   },
@@ -550,7 +637,14 @@ export const connectionService = {
     if (!userId) return () => {};
 
     const emitConnections = async () => {
-      const localConns = db.getConnections().filter(c => c.senderId === userId || c.receiverId === userId);
+      const deletedIds = getDeletedConnectionIds();
+      const deletedPairs = getDeletedPartnerPairs();
+
+      const localConns = db.getConnections().filter(c => {
+        if (deletedIds.has(c.id)) return false;
+        if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
+        return c.senderId === userId || c.receiverId === userId;
+      });
 
       let mappedSb: Connection[] = [];
       if (supabase) {
@@ -562,25 +656,31 @@ export const connectionService = {
 
           if (!error && data) {
             const allUsers = db.getUsers();
-            mappedSb = data.map((row: any) => {
-              const senderUser = allUsers.find(u => u.id === row.grossiste_id);
-              const receiverUser = allUsers.find(u => u.id === row.client_id);
-              const isActif = row.statut === "ACTIF" || row.statut === "actif";
+            mappedSb = data
+              .filter((row: any) => {
+                if (deletedIds.has(row.id)) return false;
+                if (deletedPairs.has(`${row.grossiste_id}:${row.client_id}`) || deletedPairs.has(`${row.client_id}:${row.grossiste_id}`)) return false;
+                return true;
+              })
+              .map((row: any) => {
+                const senderUser = allUsers.find(u => u.id === row.grossiste_id);
+                const receiverUser = allUsers.find(u => u.id === row.client_id);
+                const isActif = row.statut === "ACTIF" || row.statut === "actif";
 
-              return {
-                id: row.id,
-                senderId: row.grossiste_id,
-                receiverId: row.client_id,
-                status: isActif ? "active" : row.statut === "BLOCKED" ? "refusée" : "en_attente",
-                senderName: senderUser?.companyName || senderUser?.name || "Grossiste/Partenaire",
-                senderRole: senderUser?.role || UserRole.WHOLESALER,
-                receiverName: receiverUser?.companyName || receiverUser?.name || "Client/Détaillant",
-                receiverRole: receiverUser?.role || UserRole.RETAILER,
-                notes: "",
-                createdAt: row.created_at || new Date().toISOString(),
-                updatedAt: row.created_at || new Date().toISOString()
-              };
-            });
+                return {
+                  id: row.id,
+                  senderId: row.grossiste_id,
+                  receiverId: row.client_id,
+                  status: isActif ? "active" : row.statut === "BLOCKED" ? "refusée" : "en_attente",
+                  senderName: senderUser?.companyName || senderUser?.name || "Grossiste/Partenaire",
+                  senderRole: senderUser?.role || UserRole.WHOLESALER,
+                  receiverName: receiverUser?.companyName || receiverUser?.name || "Client/Détaillant",
+                  receiverRole: receiverUser?.role || UserRole.RETAILER,
+                  notes: "",
+                  createdAt: row.created_at || new Date().toISOString(),
+                  updatedAt: row.created_at || new Date().toISOString()
+                };
+              });
 
             // Auto-fetch any missing partner profiles into local db
             const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
@@ -597,7 +697,11 @@ export const connectionService = {
         if (!map.has(c.id)) map.set(c.id, c);
       });
 
-      const mergedConns = Array.from(map.values());
+      const mergedConns = Array.from(map.values()).filter(c => {
+        if (deletedIds.has(c.id)) return false;
+        if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
+        return true;
+      });
       db.saveConnections(mergedConns);
       callback(mergedConns);
     };

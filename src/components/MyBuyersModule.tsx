@@ -2,13 +2,31 @@ import React, { useState, useMemo } from "react";
 import { 
   User as UserIcon, Phone, Mail, ShoppingBag, DollarSign, PlusCircle, 
   ChevronDown, ChevronUp, Search, Calendar, CheckCircle, Clock, AlertTriangle,
-  Download, FileText, Users, TrendingDown, AlertCircle, Eye, ArrowUpRight
+  Download, FileText, Users, TrendingDown, AlertCircle, Eye, ArrowUpRight, Trash2
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { UserProfile, Order, DebtPayment, LightClient, Product } from "../types";
 import { formatCFA } from "../data";
 import { BuyerDetailModal } from "./BuyerDetailModal";
 import { PartialPaymentModal } from "./PartialPaymentModal";
+import { connectionService } from "../services/connectionService";
+
+function getRemovedBuyerIds(currentUserId: string): Set<string> {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(`wakat_deleted_buyers_${currentUserId}`) : null;
+    if (raw) return new Set(JSON.parse(raw));
+  } catch (e) {}
+  return new Set();
+}
+
+function saveRemovedBuyerId(currentUserId: string, buyerId: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const set = getRemovedBuyerIds(currentUserId);
+    set.add(buyerId);
+    localStorage.setItem(`wakat_deleted_buyers_${currentUserId}`, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
 
 interface UnifiedBuyer {
   id: string; // User ID or LightClient ID
@@ -31,6 +49,7 @@ interface MyBuyersModuleProps {
   onAddPayment: (clientId: string, amount: number, orderId?: string, method?: string) => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onCreateLightClient?: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
+  onDeleteLightClient?: (clientId: string) => void;
 }
 
 export function MyBuyersModule({
@@ -42,7 +61,8 @@ export function MyBuyersModule({
   products = [],
   onAddPayment,
   onUpdateCreditLimit,
-  onCreateLightClient
+  onCreateLightClient,
+  onDeleteLightClient
 }: MyBuyersModuleProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedBuyerId, setExpandedBuyerId] = useState<string | null>(null);
@@ -54,6 +74,8 @@ export function MyBuyersModule({
   const [onlyShowDebtors, setOnlyShowDebtors] = useState<boolean>(true);
   const [debtSearchQuery, setDebtSearchQuery] = useState("");
   const [debtPaymentAmount, setDebtPaymentAmount] = useState<Record<string, string>>({});
+  const [confirmDeleteBuyerId, setConfirmDeleteBuyerId] = useState<string | null>(null);
+  const [deletedIdsCount, setDeletedIdsCount] = useState<number>(0);
 
   // Modals state for Buyer Details and Partial Payment Form
   const [selectedBuyerForDetail, setSelectedBuyerForDetail] = useState<UnifiedBuyer | null>(null);
@@ -249,6 +271,9 @@ export function MyBuyersModule({
   // 1. Compute unified list of buyers
   const unifiedBuyers = useMemo(() => {
     const list: UnifiedBuyer[] = [];
+    const removedIds = getRemovedBuyerIds(currentUser.id);
+    const deletedConnIds = connectionService.getDeletedConnectionIds();
+    const deletedPairs = connectionService.getDeletedPartnerPairs();
 
     const isBuyerForSeller = (sellerRole: string, buyerRole: string): boolean => {
       if (sellerRole === "ADMIN") return true;
@@ -278,6 +303,9 @@ export function MyBuyersModule({
     });
 
     realUserIds.forEach((uid) => {
+      if (removedIds.has(uid) || deletedConnIds.has(uid)) return;
+      if (deletedPairs.has(`${currentUser.id}:${uid}`) || deletedPairs.has(`${uid}:${currentUser.id}`)) return;
+
       const u = users.find((profile) => profile.id === uid);
       if (u && isBuyerForSeller(currentUser.role, u.role)) {
         list.push({
@@ -296,8 +324,13 @@ export function MyBuyersModule({
     // B. LightClients (Clients locaux enregistrés)
     const myLightClients = lightClients.filter((lc) => lc.ownerId === currentUser.id);
     myLightClients.forEach((lc) => {
+      if (removedIds.has(lc.id) || deletedConnIds.has(lc.id)) return;
+
       // If this light client has a linked real user, check if they are a buyer role
       if (lc.linkedUserId) {
+        if (removedIds.has(lc.linkedUserId) || deletedConnIds.has(lc.linkedUserId)) return;
+        if (deletedPairs.has(`${currentUser.id}:${lc.linkedUserId}`) || deletedPairs.has(`${lc.linkedUserId}:${currentUser.id}`)) return;
+
         const u = users.find((profile) => profile.id === lc.linkedUserId);
         if (u) {
           if (isBuyerForSeller(currentUser.role, u.role)) {
@@ -360,7 +393,24 @@ export function MyBuyersModule({
     });
 
     return dedupedList;
-  }, [currentUser, users, orders, lightClients]);
+  }, [currentUser, users, orders, lightClients, deletedIdsCount]);
+
+  const handleDeleteBuyer = async (buyer: UnifiedBuyer) => {
+    saveRemovedBuyerId(currentUser.id, buyer.id);
+    if (buyer.isRealUser) {
+      connectionService.saveDeletedPartnerPair(currentUser.id, buyer.id);
+      connectionService.saveDeletedConnectionId(buyer.id);
+      await connectionService.deleteConnection(buyer.id, currentUser.id, buyer.id);
+    }
+    if (onDeleteLightClient) {
+      onDeleteLightClient(buyer.id);
+    }
+    setDeletedIdsCount(prev => prev + 1);
+    setConfirmDeleteBuyerId(null);
+    if (selectedBuyerForDetail?.id === buyer.id) {
+      setSelectedBuyerForDetail(null);
+    }
+  };
 
   // 2. Filter buyers by search query
   const filteredBuyers = useMemo(() => {
@@ -723,6 +773,46 @@ export function MyBuyersModule({
                               <Eye className="w-3 h-3" />
                               <span>Fiche Détaillée</span>
                             </button>
+
+                            {confirmDeleteBuyerId === buyer.id ? (
+                              <div className="ml-1.5 inline-flex items-center gap-1 animate-in fade-in" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    await handleDeleteBuyer(buyer);
+                                  }}
+                                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold shadow-sm"
+                                  title="Confirmer la suppression"
+                                >
+                                  CONFIRMER
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteBuyerId(null);
+                                  }}
+                                  className="px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded text-[9px] font-bold"
+                                  title="Annuler"
+                                >
+                                  ANNULER
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteBuyerId(buyer.id);
+                                }}
+                                className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/30 px-2 py-0.5 rounded-md transition cursor-pointer"
+                                title="Supprimer / retirer ce partenaire ou client de votre carnet"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Supprimer</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -635,7 +635,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                               e.preventDefault();
                               e.stopPropagation();
                               setConnections(prev => prev.filter(c => c.id !== req.id));
-                              await connectionService.deleteConnection(req.id);
+                              await connectionService.deleteConnection(req.id, req.senderId, req.receiverId);
                               setConfirmDeleteId(null);
                             }}
                             className="px-2 py-1 bg-rose-600 text-white rounded-lg text-[9px] font-bold"
@@ -714,7 +714,14 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setConnections(prev => prev.filter(c => c.id !== conn.id));
-                                  await connectionService.deleteConnection(conn.id);
+                                  await connectionService.deleteConnection(conn.id, conn.senderId, conn.receiverId);
+                                  const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
+                                  if (otherPartyId) {
+                                    const linkedClient = clients.find(c => c.linkedUserId === otherPartyId || c.id === otherPartyId);
+                                    if (linkedClient) {
+                                      onDeleteClient(linkedClient.id);
+                                    }
+                                  }
                                   setConfirmDeleteId(null);
                                 }}
                                 className="px-2 py-1 bg-rose-600 text-white rounded-lg text-[9px] font-bold"
@@ -825,11 +832,17 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                         {confirmDeleteId === client.id ? (
                           <div className="flex gap-1 animate-in fade-in slide-in-from-right-2">
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                onDeleteClient(client.id);
-                                if (selectedClientId === client.id) setSelectedClientId(null);
+                                const targetId = client.id;
+                                onDeleteClient(targetId);
+                                if (client.linkedUserId) {
+                                  await connectionService.deleteConnection(client.linkedUserId, currentUser?.id, client.linkedUserId);
+                                } else {
+                                  await connectionService.deleteConnection(targetId, currentUser?.id);
+                                }
+                                if (selectedClientId === targetId) setSelectedClientId(null);
                                 setConfirmDeleteId(null);
                               }}
                               className="px-2 py-1 bg-rose-600 text-white rounded-lg text-[9px] font-bold shadow-sm"
