@@ -1,7 +1,7 @@
 import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
 import { supabase, uploadToSupabaseStorage } from "../supabase";
 import { db } from "../data";
-import { relationService } from "./relationService";
+
 import { connectionService, ensureUsersExistLocally } from "./connectionService";
 
 export const chatService = {
@@ -97,15 +97,6 @@ export const chatService = {
       const parts = conversationId.split("_");
       if (parts.length === 2) {
         receiverId = parts.find(id => id !== senderId);
-      }
-    }
-
-    if (receiverId) {
-      const statusCheck = await connectionService.validateRelationshipActive(senderId, receiverId);
-      console.log(`[ChatService.sendMessage] Relationship Diagnostic Check (grossiste_id, client_id, statut):`, statusCheck);
-      if (!statusCheck.isActive) {
-        console.warn(`[ChatService.sendMessage] BLOCKED: Transmitting message to user ${receiverId} with non-active relationship status '${statusCheck.statut}'. Details: ${statusCheck.details}`);
-        throw new Error(`La transmission du message a été bloquée : le partenariat n'est pas actif (Statut: ${statusCheck.statut || "Non actif"}).`);
       }
     }
 

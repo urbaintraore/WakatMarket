@@ -19,7 +19,7 @@ export interface PartnerReview {
 interface PartnerReviewsSectionProps {
   currentUser: UserProfile;
   users: UserProfile[];
-  connections: Connection[];
+  connections?: Connection[];
 }
 
 const DEFAULT_PARTNER_REVIEWS: PartnerReview[] = [
@@ -61,7 +61,7 @@ const DEFAULT_PARTNER_REVIEWS: PartnerReview[] = [
   }
 ];
 
-export function PartnerReviewsSection({ currentUser, users, connections }: PartnerReviewsSectionProps) {
+export function PartnerReviewsSection({ currentUser, users, connections = [] }: PartnerReviewsSectionProps) {
   const [reviews, setReviews] = useState<PartnerReview[]>([]);
   const [activeTab, setActiveTab] = useState<"received" | "given" | "write">("received");
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,14 +95,10 @@ export function PartnerReviewsSection({ currentUser, users, connections }: Partn
     localStorage.setItem("wakat_partner_reviews", JSON.stringify(updated));
   };
 
-  // Find connected partners (wholesalers, semi-wholesalers, retailers)
+  // List all platform partners
   const connectedPartners = useMemo(() => {
-    const partnerIds = connections
-      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
-      .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
-
-    return users.filter(u => partnerIds.includes(u.id) && u.id !== currentUser.id);
-  }, [users, connections, currentUser.id]);
+    return users.filter(u => u.id !== currentUser.id);
+  }, [users, currentUser.id]);
 
   // Reviews received by the current user
   const reviewsReceived = useMemo(() => {

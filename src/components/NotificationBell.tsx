@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Bell, Check, Users, CheckCircle2, XCircle, Info, Smartphone, FileText, AlertTriangle } from "lucide-react";
-import { relationService } from "../services/relationService";
+import { connectionService } from "../services/connectionService";
 import { PartnerNotificationItem } from "../types";
 
 interface NotificationBellProps {
@@ -21,7 +21,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     if (!currentUserId) return;
 
     // Direct real-time onSnapshot subscription with strict lifecycle cleanup (unsubscribe)
-    const unsubscribe = relationService.subscribeToUserNotifications(currentUserId, (notifs) => {
+    const unsubscribe = connectionService.subscribeToUserNotifications(currentUserId, (notifs) => {
       setNotifications(notifs);
     });
 
@@ -40,7 +40,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
   const handleMarkAsRead = async (notif: PartnerNotificationItem) => {
     try {
-      await relationService.marquerNotificationCommeLue(currentUserId, notif.id);
+      await connectionService.markNotificationAsRead(currentUserId, notif.id);
       if (notif.relationId && onSelectRelation) {
         onSelectRelation(notif.relationId);
         setIsOpen(false);

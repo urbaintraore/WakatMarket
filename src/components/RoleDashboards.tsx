@@ -534,7 +534,7 @@ interface ManufacturerDashboardProps {
   users: UserProfile[];
   lightClients: LightClient[];
   payments: DebtPayment[];
-  connections: Connection[];
+  connections?: Connection[];
   syncQueue: any[];
   isOnline: boolean;
   stockMovements?: StockMovement[];
@@ -557,7 +557,7 @@ export function ManufacturerDashboard({
   users,
   lightClients,
   payments,
-  connections,
+  connections = [],
   syncQueue,
   isOnline,
   stockMovements = [],
@@ -1297,7 +1297,7 @@ interface WholesalerDashboardProps {
   users: UserProfile[];
   lightClients: LightClient[];
   payments: DebtPayment[];
-  connections: Connection[];
+  connections?: Connection[];
   syncQueue: any[];
   isOnline: boolean;
   stockMovements?: StockMovement[];
@@ -1325,7 +1325,7 @@ export function WholesalerDashboard({
   users,
   lightClients,
   payments,
-  connections,
+  connections = [],
   syncQueue,
   isOnline,
   stockMovements = [],
@@ -1401,32 +1401,16 @@ export function WholesalerDashboard({
     reader.readAsDataURL(file);
   };
 
-  // Filter manufacturers by connection
+  // Filter manufacturers (all active manufacturers on the platform)
   const manufacturers = useMemo(() => {
-    const partnerIds = connections
-      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
-      .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
-    
-    const filtered = users.filter(u => {
+    return users.filter(u => {
       const uStatus = ((u.status || (u as any).statut || "") as string).toLowerCase();
       return (
-        partnerIds.includes(u.id) && 
         u.role === UserRole.MANUFACTURER && 
         (uStatus === "active" || uStatus === "actif" || !u.status)
       );
     });
-
-    if (filtered.length === 0) {
-      return users.filter(u => {
-        const uStatus = ((u.status || (u as any).statut || "") as string).toLowerCase();
-        return (
-          u.role === UserRole.MANUFACTURER && 
-          (uStatus === "active" || uStatus === "actif" || !u.status)
-        );
-      });
-    }
-    return filtered;
-  }, [users, connections, currentUser.id]);
+  }, [users]);
 
   // Wholesaler inventories
   const myInventory = useMemo(() => {
@@ -2367,7 +2351,7 @@ interface RetailerDashboardProps {
   users: UserProfile[];
   lightClients: LightClient[];
   payments: DebtPayment[];
-  connections: Connection[];
+  connections?: Connection[];
   syncQueue: any[];
   isOnline: boolean;
   stockMovements?: StockMovement[];
@@ -2396,7 +2380,7 @@ export function RetailerDashboard({
   users,
   lightClients,
   payments,
-  connections,
+  connections = [],
   syncQueue,
   isOnline,
   stockMovements = [],
@@ -4488,7 +4472,7 @@ interface SemiWholesalerDashboardProps {
   users: UserProfile[];
   lightClients: LightClient[];
   payments: DebtPayment[];
-  connections: Connection[];
+  connections?: Connection[];
   syncQueue: any[];
   isOnline: boolean;
   stockMovements?: StockMovement[];
@@ -4517,7 +4501,7 @@ export function SemiWholesalerDashboard({
   users,
   lightClients,
   payments,
-  connections,
+  connections = [],
   syncQueue,
   isOnline,
   stockMovements = [],
@@ -4615,36 +4599,18 @@ export function SemiWholesalerDashboard({
     reader.readAsDataURL(file);
   };
 
-  // Filter wholesalers (suppliers) by connection
+  // Filter wholesalers (suppliers)
   const wholesalers = useMemo(() => {
-    const partnerIds = connections
-      .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
-      .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
-
-    const filtered = users.filter((u) => {
+    return users.filter((u) => {
       const uRole = u.role;
       const uStatus = (u.status || (u as any).statut || "").toLowerCase();
       const isActive = uStatus === "active" || uStatus === "actif" || !uStatus;
       return (
-        partnerIds.includes(u.id) &&
         uRole === UserRole.WHOLESALER && 
         isActive
       );
     });
-
-    if (filtered.length === 0) {
-      return users.filter((u) => {
-        const uRole = u.role;
-        const uStatus = (u.status || (u as any).statut || "").toLowerCase();
-        const isActive = uStatus === "active" || uStatus === "actif" || !uStatus;
-        return (
-          uRole === UserRole.WHOLESALER && 
-          isActive
-        );
-      });
-    }
-    return filtered;
-  }, [users, connections, currentUser.id]);
+  }, [users]);
   const myInventory = useMemo(() => {
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);

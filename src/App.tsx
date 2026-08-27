@@ -25,7 +25,7 @@ import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
 import { venteService } from "./services/venteService";
 import { connectionService } from "./services/connectionService";
-import { relationService } from "./services/relationService";
+
 import { chatService } from "./services/chatService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
@@ -810,7 +810,6 @@ export default function App() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [realNotifications, setRealNotifications] = useState<Notification[]>([]);
-  const [realConnections, setRealConnections] = useState<Connection[]>([]);
   const knownNotificationIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -859,50 +858,8 @@ export default function App() {
         setRealNotifications(notifs);
       });
 
-      const unsubConns = connectionService.subscribeToUserConnections(currentUser.id, (conns) => {
-        setRealConnections(conns);
-
-        // Auto-add accepted connections to lightClients
-        const activePartnerIds = conns
-          .filter(c => isConnectionActive(c))
-          .map(c => c.senderId === currentUser.id ? c.receiverId : c.senderId);
-
-        if (activePartnerIds.length > 0) {
-          setLightClients(prev => {
-            let updated = [...prev];
-            let modified = false;
-            activePartnerIds.forEach(partnerId => {
-              const existing = updated.find(lc => lc.linkedUserId === partnerId);
-              if (!existing) {
-                // Find the user to get their details
-                const partnerUser = db.getUsers().find(u => u.id === partnerId);
-                if (partnerUser) {
-                  updated.unshift({
-                    id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    ownerId: currentUser.id,
-                    name: partnerUser.companyName || partnerUser.name,
-                    phone: partnerUser.phone,
-                    email: partnerUser.email,
-                    notes: `Partenaire B2B [${partnerUser.role}]`,
-                    linkedUserId: partnerUser.id,
-                    createdAt: new Date().toISOString()
-                  });
-                  modified = true;
-                }
-              }
-            });
-            if (modified) {
-              db.saveLightClients(updated);
-              return updated;
-            }
-            return prev;
-          });
-        }
-      });
-
       return () => {
         unsubNotifs();
-        unsubConns();
       };
     }
   }, [currentUser?.id]);
@@ -1464,46 +1421,20 @@ export default function App() {
       return undefined as any;
     }
 
-    try {
-      relationService.envoyerDemandeConnexion(currentUser, identifier, notes)
-        .then((res) => {
-          addNotification(res.message);
-        })
-        .catch((err) => {
-          console.warn("Could not establish online connection, creating local contact fallback instead:", err);
-          
-          const newLc: LightClient = {
-            id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            ownerId: currentUser.id,
-            name: notes || identifier,
-            phone: identifier.includes("@") ? "" : identifier,
-            email: identifier.includes("@") ? identifier : "",
-            notes: `Partenaire local [${clientRole}] - Non connecté au cloud`,
-            linkedUserId: undefined,
-            createdAt: new Date().toISOString()
-          };
-          const updated = [newLc, ...lightClients];
-          syncLightClients(updated);
-          addNotification(`Partenaire "${newLc.name}" ajouté localement à votre carnet.`);
-        });
-    } catch (err: any) {
-      console.warn("Exception in handleCreateLightClient, fallback to local:", err);
-      const newLc: LightClient = {
-        id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        ownerId: currentUser.id,
-        name: notes || identifier,
-        phone: identifier.includes("@") ? "" : identifier,
-        email: identifier.includes("@") ? identifier : "",
-        notes: `Partenaire local [${clientRole}] - Exception`,
-        linkedUserId: undefined,
-        createdAt: new Date().toISOString()
-      };
-      const updated = [newLc, ...lightClients];
-      syncLightClients(updated);
-      addNotification(`Partenaire "${newLc.name}" créé localement.`);
-    }
-    
-    return undefined as any;
+    // "Système de mise en relation désactivé"
+    const newLc: LightClient = {
+      id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      ownerId: currentUser.id,
+      name: notes || identifier,
+      phone: identifier.includes("@") ? "" : identifier,
+      email: identifier.includes("@") ? identifier : "",
+      notes: notes || "Partenaire local",
+      linkedUserId: undefined,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newLc, ...lightClients];
+    syncLightClients(updated);
+    addNotification(`Partenaire "${newLc.name}" ajouté localement.`);
   };
 
   const onDeleteLightClient = (clientId: string) => {
@@ -2432,16 +2363,10 @@ export default function App() {
         if (u.id === currentUser.id) return true;
         if (currentUser.role === UserRole.ADMIN) return true;
 
-        // Check if there is an order relationship or a connection
+        // Check if there is an order relationship
         const hasOrder = orders.some(o => 
           (o.senderId === currentUser.id && o.receiverId === u.id) ||
           (o.senderId === u.id && o.receiverId === currentUser.id)
-        );
-
-        const hasConnection = realConnections.some(c => 
-          ((c.senderId === currentUser.id && c.receiverId === u.id) ||
-           (c.senderId === u.id && c.receiverId === currentUser.id)) && 
-          isConnectionActive(c)
         );
 
         const isLightClient = lightClients.some(lc => 
@@ -2451,9 +2376,9 @@ export default function App() {
         const isWholesalerSupplier = (currentUser.role === UserRole.RETAILER || currentUser.role === UserRole.SEMI_WHOLESALER || currentUser.role === UserRole.CLIENT) && 
           (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER);
 
-        return hasOrder || hasConnection || isLightClient || isWholesalerSupplier;
+        return hasOrder || isLightClient || isWholesalerSupplier;
       })
-    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, realConnections, lightClients]);
+    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, lightClients]);
 
   const displayProducts = useMemo(() => deduplicate(isRealUserAuthenticated
     ? products.filter(p => {
@@ -2462,11 +2387,8 @@ export default function App() {
         const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
         if (isMine) return true;
         
-        // Include products from partners we are connected to or linked in lightClients
+        // Include products from partners we are linked in lightClients
         const isPartnerInventory = inventory.some(i => i.productId === p.id && (
-          realConnections.some(c => 
-            ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
-          ) ||
           lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId)
         ));
 
@@ -2476,20 +2398,15 @@ export default function App() {
 
         return isPartnerInventory || isWholesalerProd;
       })
-    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, realConnections, lightClients, users]);
+    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, lightClients, users]);
 
   const displayInventory = useMemo(() => {
-    console.log("[DEBUG displayInventory] currentUser:", currentUser?.id, "realConnections:", realConnections);
     return deduplicate(isRealUserAuthenticated
       ? inventory.filter(i => {
           if (!currentUser) return false;
           if (i.ownerId === currentUser.id) return true;
           
-          // Include inventory from partners we are connected to or linked in lightClients
-          const isConnectedPartner = realConnections.some(c => 
-            ((c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.senderId === i.ownerId && c.receiverId === currentUser.id)) && isConnectionActive(c)
-          );
-
+          // Include inventory from partners linked in lightClients
           const isLightClientPartner = lightClients.some(lc => 
             lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId
           );
@@ -2497,10 +2414,10 @@ export default function App() {
           // Include inventory from Wholesalers/Semi-Wholesalers for Retailer replenishment
           const isWholesalerOwner = users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
 
-          return isConnectedPartner || isLightClientPartner || isWholesalerOwner;
+          return isLightClientPartner || isWholesalerOwner;
         })
       : inventory) as InventoryItem[];
-  }, [isRealUserAuthenticated, inventory, currentUser, realConnections, lightClients, users]);
+  }, [isRealUserAuthenticated, inventory, currentUser, lightClients, users]);
 
   const displayOrders = useMemo(() => deduplicate(isRealUserAuthenticated
     ? orders.filter(o => o.senderId === currentUser?.id || o.receiverId === currentUser?.id)
@@ -2806,7 +2723,7 @@ export default function App() {
                       realNotifications.map((n, idx) => {
                         const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion") || Boolean(n.relatedId);
                         const relatedConn = n.relatedId 
-                          ? (realConnections.find(c => c.id === n.relatedId) || db.getConnections().find(c => c.id === n.relatedId))
+                          ? db.getConnections().find(c => c.id === n.relatedId)
                           : null;
                         const isPending = relatedConn?.status === "en_attente";
 
@@ -3544,7 +3461,6 @@ export default function App() {
                 <B2BProductComparator
                   products={displayProducts}
                   users={countryFilteredUsers}
-                  connections={realConnections}
                   currentUser={currentUser}
                   onClose={() => setShowComparator(false)}
                   onSelectProductToOrder={(product) => {
@@ -3554,17 +3470,6 @@ export default function App() {
                   onContactSupplier={(supplierId) => {
                     setShowComparator(false);
                     setShowChat(true);
-                  }}
-                  onRequestConnection={async (targetUserId) => {
-                    try {
-                      const targetUser = countryFilteredUsers.find((u) => u.id === targetUserId);
-                      if (targetUser) {
-                        await connectionService.envoyerDemandeConnexion(currentUser, targetUser);
-                        addNotification("Demande de partenariat envoyée au fournisseur !");
-                      }
-                    } catch (e: any) {
-                      addNotification(`Info : ${e.message || "Demande déjà envoyée"}`);
-                    }
                   }}
                 />
               )}
@@ -3659,7 +3564,6 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
-                  connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -3684,7 +3588,6 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
-                  connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -3714,7 +3617,6 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
-                  connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -3745,7 +3647,6 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
-                  connections={realConnections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}

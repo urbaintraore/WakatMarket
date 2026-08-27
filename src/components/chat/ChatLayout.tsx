@@ -50,50 +50,7 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
 
   const getAllowedChatPartners = () => {
     if (!currentUser) return [];
-    let list: UserProfile[] = [];
-    if (currentUser.role === 'ADMIN') {
-      list = users.filter(u => u.id !== currentUser.id);
-    } else {
-      const activeConns = connections.filter(c => {
-        const st = (c.status || (c as any).statut || "").toLowerCase();
-        return st === "active" || st === "actif";
-      });
-
-      const allKnownUsers = db.getUsers();
-      activeConns.forEach(c => {
-        const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
-        if (partnerId && partnerId !== currentUser.id) {
-          const found = users.find(u => u.id === partnerId) || allKnownUsers.find(u => u.id === partnerId);
-          if (found) {
-            list.push(found);
-          } else {
-            const partnerName = c.senderId === currentUser.id ? c.receiverName : c.senderName;
-            const partnerRole = c.senderId === currentUser.id ? c.receiverRole : c.senderRole;
-            list.push({
-              id: partnerId,
-              name: partnerName || "Partenaire B2B",
-              companyName: partnerName || "Entreprise Partenaire",
-              role: (partnerRole as any) || "SEMI_WHOLESALER",
-              email: "",
-              phone: "",
-              country: "Burkina Faso",
-              region: "Ouagadougou",
-              status: "ACTIVE",
-              avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
-            });
-          }
-        }
-      });
-    }
-
-    const map = new Map<string, UserProfile>();
-    list.forEach(u => {
-      if (u.id !== currentUser.id && !map.has(u.id)) {
-        map.set(u.id, u);
-      }
-    });
-
-    return Array.from(map.values());
+    return users.filter(u => u.id !== currentUser.id);
   };
 
   const allowedPartners = getAllowedChatPartners();

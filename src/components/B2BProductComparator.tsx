@@ -396,24 +396,14 @@ export function B2BProductComparator({
                         <span>Commander au Fournisseur</span>
                       </button>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="flex gap-2">
                         {item.supplier && (
                           <button
                             onClick={() => onContactSupplier && onContactSupplier(item.supplier!.id)}
-                            className="py-1.5 px-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                            className="w-full py-1.5 px-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
                           >
                             <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
-                            <span>Tchat</span>
-                          </button>
-                        )}
-
-                        {item.supplier && !item.isConnected && (
-                          <button
-                            onClick={() => onRequestConnection && onRequestConnection(item.supplier!.id)}
-                            className="py-1.5 px-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>Connexion</span>
+                            <span>Discuter / Négocier</span>
                           </button>
                         )}
                       </div>
