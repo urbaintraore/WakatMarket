@@ -377,6 +377,87 @@ export const userService = {
   },
 
   /**
+   * Recherche optimisée des utilisateurs / partenaires au niveau de la base de données.
+   * Utilise d'abord une RPC de recherche optimisée si disponible,
+   * sinon bascule sur une requête Supabase directe filtrée avec indexes.
+   */
+  async searchUsers(queryText: string, role?: string, limit: number = 20): Promise<UserProfileData[]> {
+    if (!supabase) return [];
+    const q = queryText.trim();
+    if (!q || q.length < 3) return [];
+
+    try {
+      // Étape A: Essayer la fonction de recherche PostgreSQL (RPC) optimisée
+      const { data: rpcData, error: rpcError } = await supabase.rpc("search_profiles_optimized", {
+        search_query: q,
+        filter_role: role || null,
+        max_results: limit
+      });
+
+      let rawRows: any[] = [];
+
+      if (!rpcError && rpcData) {
+        rawRows = rpcData;
+      } else {
+        // En cas d'erreur ou si la RPC n'existe pas, faire un repli robuste sur le filtrage direct en base
+        console.log("[userService] Repli sur requête directe Supabase indexée...");
+        let baseQuery = supabase.from("profiles").select("*");
+        
+        if (role) {
+          baseQuery = baseQuery.eq("role", role);
+        }
+        
+        // Recherche multi-colonne en base de données
+        const ilikeQuery = `%${q}%`;
+        baseQuery = baseQuery.or(`nom.ilike.${ilikeQuery},prenom.ilike.${ilikeQuery},email.ilike.${ilikeQuery},telephone.ilike.${ilikeQuery}`);
+        
+        const { data: tableData, error: tableError } = await baseQuery.limit(limit);
+        if (tableError) {
+          console.error("[userService] Erreur de recherche directe profiles:", tableError);
+          return [];
+        }
+        rawRows = tableData || [];
+      }
+
+      return rawRows.map((row: any) => {
+        let normRole = normalizeUserRole(row.role);
+        if (row.email === "urbain.traore@yahoo.fr" || row.email === "urbain.traoreurb@gmail.com") {
+          normRole = UserRole.ADMIN;
+        } else if (isBonkoungou(row.email, row.nom, row.prenom)) {
+          normRole = UserRole.SEMI_WHOLESALER;
+        }
+        const fullName = [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
+
+        return {
+          uid: row.id,
+          id: row.id,
+          nom: row.nom || fullName,
+          prénom: row.prenom || "",
+          email: row.email || "",
+          téléphone: row.telephone || "",
+          phone: row.telephone || "",
+          rôle: normRole,
+          role: normRole,
+          dateCréation: row.created_at,
+          statut: "ACTIF",
+          companyName: fullName,
+          nomDEntreprise: fullName,
+          address: row.address || "",
+          ville: row.ville || "",
+          quartier: row.quartier || "",
+          pays: row.pays || "Burkina Faso",
+          logoUrl: row.avatar || "",
+          balance: 0,
+          creditLimit: Number(row.limite_credit || 0)
+        };
+      });
+    } catch (e) {
+      console.error("Exception dans searchUsers:", e);
+      return [];
+    }
+  },
+
+  /**
    * Abonnement temps réel aux changements de profils
    */
   subscribeToUsers(callback: (users: UserProfileData[]) => void): () => void {

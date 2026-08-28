@@ -4,6 +4,7 @@ import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, OrderStatus, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
 import { connectionService } from '../services/connectionService';
+import { userService } from '../services/userService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
 import { PartnerStockModal } from './PartnerStockModal';
 
@@ -265,19 +266,63 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
 
   const [paymentAmount, setPaymentAmount] = React.useState<string>("");
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
+
+  // Optimized database search states
+  const [dbSearchResults, setDbSearchResults] = React.useState<UserProfile[]>([]);
+  const [isSearching, setIsSearching] = React.useState(false);
+
+  React.useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 3) {
+      setDbSearchResults([]);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        // Query database using the newly optimized searchUsers method
+        const results = await userService.searchUsers(q);
+        const mapped: UserProfile[] = results.map(u => ({
+          id: u.uid || u.id || "",
+          email: u.email || "",
+          name: u.nom || "",
+          companyName: u.companyName || u.nomDEntreprise || u.nom || "",
+          phone: u.téléphone || u.phone || "",
+          role: (u.role || u.rôle) as UserRole,
+          status: "ACTIVE",
+          address: u.address || "",
+          region: u.ville || "",
+          country: u.pays || "Burkina Faso",
+          avatar: u.logoUrl || "",
+          balance: 0,
+          creditLimit: u.creditLimit || 0
+        }));
+        setDbSearchResults(mapped);
+      } catch (err) {
+        console.error("Error calling db searchUsers:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce to prevent hitting the database on every keystroke
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
   
   const allKnownUsers = React.useMemo(() => {
     const dbList = db.getUsers();
     const map = new Map<string, UserProfile>();
-    [...dbList, ...users].forEach(u => {
+    
+    // We prioritize the optimized Supabase results, falling back to local list and prop-subscribed users
+    [...dbSearchResults, ...dbList, ...users].forEach(u => {
       if (u && u.id) map.set(u.id, u);
     });
     return Array.from(map.values());
-  }, [users]);
+  }, [dbSearchResults, users]);
 
   const filteredUsers = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
+    if (!q || q.length < 3) return [];
 
     return allKnownUsers.filter(u => {
       // 1. Exclure l'utilisateur connecté lui-même
@@ -303,8 +348,8 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
   }, [allKnownUsers, selectedRole, searchQuery, currentUser?.id]);
 
   const mismatchedUser = React.useMemo(() => {
-    if (!searchQuery.trim()) return null;
     const q = searchQuery.trim().toLowerCase();
+    if (!q || q.length < 3) return null;
     const cleanQ = q.replace(/[\s\-\+]/g, '');
     return allKnownUsers.find(u => {
       if (currentUser?.id && u.id === currentUser.id) return false;
@@ -541,10 +586,21 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
               </div>
             )}
 
-            {filteredUsers.length === 0 ? (
+            {isSearching ? (
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs text-center py-8 flex flex-col items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="font-semibold text-zinc-500 mt-1">Recherche optimisée en cours dans la base de données...</p>
+              </div>
+            ) : filteredUsers.length === 0 ? (
               <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs text-center py-6">
                 {searchQuery.trim() 
-                  ? (mismatchedUser ? `L'utilisateur correspondant à "${searchQuery}" n'a pas le bon profil.` : `Aucun utilisateur trouvé avec le profil "${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}" correspondant à "${searchQuery}".`)
+                  ? (searchQuery.trim().length < 3
+                      ? `⚠️ Veuillez saisir au moins 3 caractères pour lancer la recherche (actuel : ${searchQuery.trim().length}/3).`
+                      : (mismatchedUser 
+                          ? `L'utilisateur correspondant à "${searchQuery}" n'a pas le bon profil.` 
+                          : `Aucun utilisateur trouvé avec le profil "${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}" correspondant à "${searchQuery}".`
+                        )
+                    )
                   : `Saisissez un nom, un e-mail ou un numéro de téléphone ci-dessus pour rechercher un(e) ${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}.`
                 }
               </div>

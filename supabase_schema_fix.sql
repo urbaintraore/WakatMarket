@@ -137,3 +137,61 @@ BEGIN
         ALTER PUBLICATION supabase_realtime ADD TABLE public.relations;
     END IF;
 END $$;
+
+-- =========================================================================================
+-- 6. PARTNER SEARCH DB-LEVEL OPTIMIZATION (INDEXES & STORED PROCEDURE)
+-- =========================================================================================
+
+-- Enable trigram extension for efficient fuzzy/partial string matching
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- Create index on role for fast filtering
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles (role);
+
+-- Create GIN trigram indexes on text fields for extremely fast ILIKE query matching
+CREATE INDEX IF NOT EXISTS idx_profiles_nom_trgm ON public.profiles USING gin (nom gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_prenom_trgm ON public.profiles USING gin (prenom gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_email_trgm ON public.profiles USING gin (email gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_profiles_telephone_trgm ON public.profiles USING gin (telephone gin_trgm_ops);
+
+-- Create database-level stored procedure for highly-efficient combined text and role searches
+CREATE OR REPLACE FUNCTION public.search_profiles_optimized(
+    search_query text, 
+    filter_role text DEFAULT NULL, 
+    max_results int DEFAULT 20
+)
+RETURNS SETOF public.profiles AS $$
+DECLARE
+    clean_q text;
+BEGIN
+    -- Trim and clean search query
+    clean_q := trim(search_query);
+    IF clean_q = '' OR length(clean_q) < 3 THEN
+        RETURN;
+    END IF;
+
+    RETURN QUERY
+    SELECT *
+    FROM public.profiles
+    WHERE 
+        -- Maintain role filtering
+        (filter_role IS NULL OR role = filter_role)
+        -- Match across name, prenom, email, or telephone
+        AND (
+            nom ILIKE '%' || clean_q || '%'
+            OR prenom ILIKE '%' || clean_q || '%'
+            OR email ILIKE '%' || clean_q || '%'
+            OR telephone ILIKE '%' || clean_q || '%'
+        )
+    ORDER BY 
+        -- Prioritize matches starting with the search query for better relevance
+        CASE 
+            WHEN nom ILIKE clean_q || '%' THEN 1
+            WHEN prenom ILIKE clean_q || '%' THEN 2
+            ELSE 3
+        END,
+        created_at DESC
+    LIMIT max_results;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
