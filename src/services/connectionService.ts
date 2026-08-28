@@ -3,6 +3,30 @@ import { supabase } from "../supabase";
 import { db } from "../data";
 import { syncService } from "./syncService";
 
+export async function ensureUserExistsInSupabase(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
+  if (!supabase || !user?.id) return;
+  try {
+    const fullName = (user.name || user.companyName || "Utilisateur").trim();
+    const parts = fullName.split(" ");
+    const nom = parts[0] || fullName;
+    const prenom = parts.slice(1).join(" ") || "";
+    await supabase.from("profiles").upsert({
+      id: user.id,
+      email: user.email || `${user.id}@wakatmarket.com`,
+      nom: nom,
+      prenom: prenom,
+      company_name: user.companyName || fullName,
+      telephone: user.phone || "",
+      role: user.role || "RETAILER",
+      statut: "ACTIVE",
+      pays: "Burkina Faso",
+      ville: "Ouagadougou"
+    }, { onConflict: "id" });
+  } catch (e) {
+    console.warn("[ConnectionService] Notice ensureUserExistsInSupabase:", e);
+  }
+}
+
 /**
  * Assure que les profils utilisateurs référencés existent dans le magasin local db.getUsers()
  */
@@ -324,6 +348,12 @@ export const connectionService = {
       window.dispatchEvent(new CustomEvent("wakat_users_updated"));
     }
 
+    // Ensure both sender and receiver profiles exist in Supabase so foreign key constraints succeed
+    if (supabase) {
+      await ensureUserExistsInSupabase(demandeur);
+      await ensureUserExistsInSupabase(destinataireUser);
+    }
+
     // E. Synchronisation Supabase avec logs ultra détaillés du payload et codes d'erreur
     if (supabase) {
       const payloadSent = {
@@ -355,8 +385,8 @@ export const connectionService = {
           console.log("[ConnectionService] Supabase UPSERT into 'relations' SUCCESSFUL! Response data:", relData);
         }
 
-        // Notification Supabase
-        const notifPayload = {
+        // Notification Supabase pour le destinataire
+        const notifPayload: Record<string, any> = {
           id: newNotif.id,
           user_id: destinataireUser.id,
           title: newNotif.title,
@@ -373,10 +403,19 @@ export const connectionService = {
           .select();
 
         if (notifError) {
-          console.error("[ConnectionService] Supabase INSERT into 'notifications' FAILED!");
-          console.error("[ConnectionService] Notification Error Code:", notifError.code);
-          console.error("[ConnectionService] Notification Error Message:", notifError.message);
-          console.error("[ConnectionService] Notification Error Details:", notifError.details);
+          console.warn("[ConnectionService] Supabase INSERT with metadata into 'notifications' failed, attempting standard format...", notifError);
+          try {
+            await supabase.from("notifications").insert({
+              id: newNotif.id,
+              user_id: destinataireUser.id,
+              title: newNotif.title,
+              message: newNotif.message,
+              read: false
+            });
+            console.log("[ConnectionService] Standard Supabase notification inserted successfully!");
+          } catch (retryErr) {
+            console.error("[ConnectionService] Fallback notification insert exception:", retryErr);
+          }
         } else {
           console.log("[ConnectionService] Supabase INSERT into 'notifications' SUCCESSFUL! Response:", notifData);
         }
@@ -393,14 +432,14 @@ export const connectionService = {
         id: relationId,
         grossiste_id: demandeur.id,
         client_id: destinataireUser.id,
-        statut: "ACTIF",
+        statut: "PENDING",
         senderId: demandeur.id,
         receiverId: destinataireUser.id,
         senderName: demandeurNom,
         senderRole: demandeur.role,
         receiverName: destinataireNom,
         receiverRole: destinataireUser.role,
-        status: "active"
+        status: "en_attente"
       });
       console.log(`[ConnectionService] Operation relation #${relationId} added to syncQueue`);
     } catch (qErr) {
@@ -819,7 +858,17 @@ export const connectionService = {
         if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
         return true;
       });
-      db.saveConnections(mergedConns);
+
+      // Update local storage without re-triggering recursive local update events
+      const allLocal = db.getConnections();
+      const hasDifferences = mergedConns.some(mc => !allLocal.some(lc => lc.id === mc.id && lc.status === mc.status));
+      if (hasDifferences) {
+        const remaining = allLocal.filter(lc => !mergedConns.some(mc => mc.id === lc.id));
+        try {
+          localStorage.setItem("wakat_erp_v2_connections", JSON.stringify([...remaining, ...mergedConns]));
+        } catch (e) {}
+      }
+
       callback(mergedConns);
     };
 

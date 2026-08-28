@@ -1405,7 +1405,7 @@ export default function App() {
     return true;
   };
 
-  const handleCreateLightClient = (identifier: string, notes?: string, role?: UserRole, isPartnerRegistration?: boolean) => {
+  const handleCreateLightClient = async (identifier: string, notes?: string, role?: UserRole, isPartnerRegistration?: boolean) => {
     if (!currentUser) return;
     
     let clientRole = role;
@@ -1428,18 +1428,18 @@ export default function App() {
       )
     );
 
-    if (existingUser) {
-      // 1. Vérification stricte du profil / rôle
-      if (clientRole && existingUser.role !== clientRole) {
-        const errorMsg = `Erreur de profil : L'utilisateur "${existingUser.name}" possède le rôle "${existingUser.role}", qui ne correspond pas au profil sélectionné "${clientRole}". Veuillez adapter le profil ou choisir le bon utilisateur.`;
-        addNotification(errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      // 2. Si enregistrement partenaire, envoyer la demande de connexion
-      if (isPartnerRegistration) {
-        connectionService.sendConnectionRequest(currentUser, existingUser, notes);
-        addNotification(`Demande de partenariat envoyée avec succès à ${existingUser.name} (${existingUser.role}).`);
+    // Si enregistrement d'un partenaire B2B
+    if (isPartnerRegistration) {
+      try {
+        const result = await connectionService.envoyerDemandeConnexion(currentUser, existingUser || identifier, notes);
+        if (result?.success) {
+          addNotification(result.message || `Demande de partenariat envoyée avec succès à ${result.destinataireNom || identifier}.`);
+          return;
+        }
+      } catch (err: any) {
+        console.error("[App] Erreur lors de l'envoi de la demande de partenariat:", err);
+        const errMsg = err?.message || "Échec de l'envoi de la demande de partenariat.";
+        addNotification(errMsg);
         return;
       }
     }
@@ -1462,7 +1462,7 @@ export default function App() {
       return undefined as any;
     }
 
-    // Partenaire local (si aucun compte utilisateur sur la plateforme)
+    // Fallback partenaire local (si aucun compte utilisateur sur la plateforme)
     const newLc: LightClient = {
       id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       ownerId: currentUser.id,
@@ -2770,11 +2770,12 @@ export default function App() {
                       <div className="p-4 text-center text-[10px] text-zinc-400">Aucune notification</div>
                     ) : (
                       realNotifications.map((n, idx) => {
-                        const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion") || Boolean(n.relatedId);
-                        const relatedConn = n.relatedId 
-                          ? db.getConnections().find(c => c.id === n.relatedId)
+                        const relId = n.relationId || (n as any).relatedId || (n.metadata as any)?.related_id;
+                        const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion") || Boolean(relId);
+                        const relatedConn = relId 
+                          ? db.getConnections().find(c => c.id === relId)
                           : null;
-                        const isPending = relatedConn?.status === "en_attente";
+                        const isPending = !relatedConn || relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente" || (relatedConn as any).statut === "PENDING";
 
                         return (
                           <div key={`${n.id}_${idx}`} className="p-3 text-[10px] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/20">
@@ -2787,7 +2788,7 @@ export default function App() {
                               </div>
                               {!n.read && (
                                 <button 
-                                  onClick={() => connectionService.markNotificationAsRead(n.id)}
+                                  onClick={() => connectionService.markNotificationAsRead(currentUser.id, n.id)}
                                   className="text-[8px] text-emerald-600 hover:underline shrink-0"
                                 >
                                   Marquer lu
@@ -2797,13 +2798,17 @@ export default function App() {
 
                             {isConnNotif && (
                               <div className="flex gap-2 mt-2">
-                                {isPending && relatedConn && (
+                                {isPending && (
                                   <>
                                     <button
                                       onClick={async (e) => {
                                         e.stopPropagation();
-                                        await connectionService.respondToConnectionRequest(relatedConn, "active");
-                                        connectionService.markNotificationAsRead(n.id);
+                                        if (relId) {
+                                          await connectionService.acceptConnection(relId, currentUser.id);
+                                        } else if (relatedConn) {
+                                          await connectionService.respondToConnectionRequest(relatedConn, "active");
+                                        }
+                                        connectionService.markNotificationAsRead(currentUser.id, n.id);
                                         addNotification("Invitation acceptée !");
                                       }}
                                       className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
@@ -2813,8 +2818,12 @@ export default function App() {
                                     <button
                                       onClick={async (e) => {
                                         e.stopPropagation();
-                                        await connectionService.respondToConnectionRequest(relatedConn, "refusée");
-                                        connectionService.markNotificationAsRead(n.id);
+                                        if (relId) {
+                                          await connectionService.rejectConnection(relId, currentUser.id);
+                                        } else if (relatedConn) {
+                                          await connectionService.respondToConnectionRequest(relatedConn, "refusée");
+                                        }
+                                        connectionService.markNotificationAsRead(currentUser.id, n.id);
                                       }}
                                       className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
                                     >
