@@ -622,60 +622,224 @@ export const connectionService = {
     };
   },
 
-  async acceptConnection(connectionId: string, _currentUserId?: string): Promise<void> {
-    console.log(`[ConnectionService.acceptConnection] Accepting connection #${connectionId}...`);
+  async getRelationStatusFromSupabase(
+    relationId?: string,
+    userAId?: string,
+    userBId?: string
+  ): Promise<"en_attente" | "active" | "refusee" | "inconnu"> {
+    if (supabase) {
+      try {
+        if (relationId) {
+          const { data, error } = await supabase
+            .from("relations")
+            .select("id, statut, grossiste_id, client_id")
+            .eq("id", relationId)
+            .maybeSingle();
+
+          if (!error && data) {
+            const rawStatut = String(data.statut || "").toUpperCase();
+            if (rawStatut === "ACTIF" || rawStatut === "ACTIVE") return "active";
+            if (rawStatut === "BLOCKED" || rawStatut === "REFUSÉE" || rawStatut === "REFUSEE") return "refusee";
+            return "en_attente";
+          }
+        }
+
+        if (userAId && userBId) {
+          const { data, error } = await supabase
+            .from("relations")
+            .select("id, statut, grossiste_id, client_id")
+            .or(`and(grossiste_id.eq.${userAId},client_id.eq.${userBId}),and(grossiste_id.eq.${userBId},client_id.eq.${userAId})`)
+            .maybeSingle();
+
+          if (!error && data) {
+            const rawStatut = String(data.statut || "").toUpperCase();
+            if (rawStatut === "ACTIF" || rawStatut === "ACTIVE") return "active";
+            if (rawStatut === "BLOCKED" || rawStatut === "REFUSÉE" || rawStatut === "REFUSEE") return "refusee";
+            return "en_attente";
+          }
+        }
+      } catch (err) {
+        console.warn("[ConnectionService] Notice querying relation status from Supabase:", err);
+      }
+    }
+
+    // Fallback to local DB cache
+    const localConns = db.getConnections();
+    const conn = relationId
+      ? localConns.find(c => c.id === relationId)
+      : (userAId && userBId
+          ? localConns.find(c => (c.senderId === userAId && c.receiverId === userBId) || (c.senderId === userBId && c.receiverId === userAId))
+          : null);
+
+    if (conn) {
+      if (conn.status === "active" || (conn as any).statut === "ACTIF") return "active";
+      if (conn.status === "refusée" || (conn as any).statut === "BLOCKED") return "refusee";
+      return "en_attente";
+    }
+
+    return "inconnu";
+  },
+
+  async acceptConnection(connectionId: string, currentUserId?: string): Promise<void> {
+    console.log(`[ConnectionService.acceptConnection] 🚀 [START] Accepting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
-    const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "active" as const, updatedAt: new Date().toISOString() } : c);
+    let conn = currentConns.find(c => c.id === connectionId);
+
+    // If connection was not in local cache, try fetching from Supabase
+    if (!conn && supabase) {
+      try {
+        console.log(`[ConnectionService.acceptConnection] 🔍 Querying Supabase 'relations' table for missing connection id=${connectionId}...`);
+        const { data } = await supabase.from("relations").select("*").eq("id", connectionId).maybeSingle();
+        if (data) {
+          console.log(`[ConnectionService.acceptConnection] ✅ Found relation in Supabase: grossiste_id=${data.grossiste_id}, client_id=${data.client_id}`);
+          const allUsers = db.getUsers();
+          const senderUser = allUsers.find(u => u.id === data.grossiste_id);
+          const receiverUser = allUsers.find(u => u.id === data.client_id);
+          conn = {
+            id: data.id,
+            senderId: data.grossiste_id,
+            receiverId: data.client_id,
+            status: "active",
+            senderName: senderUser?.name || senderUser?.companyName || "Demandeur B2B",
+            senderRole: senderUser?.role || UserRole.WHOLESALER,
+            receiverName: receiverUser?.name || receiverUser?.companyName || "Partenaire B2B",
+            receiverRole: receiverUser?.role || UserRole.RETAILER,
+            notes: data.notes || "",
+            createdAt: data.created_at || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        }
+      } catch (e) {
+        console.warn("[ConnectionService.acceptConnection] Notice fetching missing connection from Supabase:", e);
+      }
+    }
+
+    // Update local connections list
+    const nowIso = new Date().toISOString();
+    let updated: Connection[];
+    if (conn) {
+      conn = { ...conn, status: "active", updatedAt: nowIso };
+      const filtered = currentConns.filter(c => c.id !== connectionId);
+      updated = [...filtered, conn];
+    } else {
+      updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "active" as const, updatedAt: nowIso } : c);
+      conn = updated.find(c => c.id === connectionId);
+    }
     db.saveConnections(updated);
+    console.log(`[ConnectionService.acceptConnection] 💾 Local storage saved with ${updated.length} connection(s).`);
 
     removeDeletedConnectionId(connectionId);
-    const conn = updated.find(c => c.id === connectionId);
     if (conn) {
       removeDeletedPartnerPair(conn.senderId, conn.receiverId);
 
-      // Notification pour le demandeur
-      const receiverName = conn.receiverName || "Votre partenaire";
-      const acceptNotif: Notification = {
-        id: `notif-accept-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      const senderName = conn.senderName || "Votre partenaire B2B";
+      const receiverName = conn.receiverName || "Votre partenaire B2B";
+
+      // 1. Notification de déclenchement pour le DEMANDEUR (Sender)
+      const senderNotif: Notification = {
+        id: `notif-accept-sender-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         userId: conn.senderId,
         type: "connexion_acceptee" as any,
-        title: "Partenariat B2B accepté",
-        message: `${receiverName} a accepté votre demande de partenariat. Vous pouvez désormais collaborer et échanger.`,
+        title: "Partenariat d'affaires établi & actif",
+        message: `${receiverName} a validé votre demande de partenariat commercial. Votre relation d'affaires est désormais active : vous pouvez échanger des propositions commerciales, partager vos stocks et passer des commandes dès maintenant.`,
         read: false,
         relatedId: connectionId,
-        createdAt: new Date().toISOString()
+        relationId: connectionId,
+        createdAt: nowIso
       };
+
+      // 2. Notification de confirmation pour le DESTINATAIRE (Receiver)
+      const receiverNotif: Notification = {
+        id: `notif-accept-recv-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        userId: conn.receiverId,
+        type: "connexion_acceptee" as any,
+        title: "Partenariat d'affaires confirmé",
+        message: `Votre partenariat d'affaires avec ${senderName} est désormais actif. Vous pouvez échanger des propositions commerciales et collaborer directement.`,
+        read: false,
+        relatedId: connectionId,
+        relationId: connectionId,
+        createdAt: nowIso
+      };
+
       const currentNotifs = db.getNotifications();
-      db.saveNotifications([acceptNotif, ...currentNotifs]);
+      // Mark any existing pending request notification for current user as read
+      const updatedNotifs = currentNotifs.map(n => {
+        const notifRelId = (n as any).relationId || (n as any).relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id;
+        if (notifRelId === connectionId) {
+          return { ...n, read: true };
+        }
+        return n;
+      });
+
+      db.saveNotifications([senderNotif, receiverNotif, ...updatedNotifs]);
+      console.log(`[ConnectionService.acceptConnection] 📬 Notifications generated and saved locally for sender (${conn.senderId}) & receiver (${conn.receiverId}).`);
 
       if (supabase) {
         try {
-          await supabase.from("notifications").insert({
-            id: acceptNotif.id,
-            user_id: conn.senderId,
-            title: acceptNotif.title,
-            message: acceptNotif.message,
-            type: "connexion_acceptee",
-            metadata: { related_id: connectionId },
-            read: false
-          });
+          console.log(`[ConnectionService.acceptConnection] 📡 Inserting notifications into Supabase 'notifications' table...`);
+          const { error: notifInsertErr } = await supabase.from("notifications").insert([
+            {
+              id: senderNotif.id,
+              user_id: conn.senderId,
+              title: senderNotif.title,
+              message: senderNotif.message,
+              type: "connexion_acceptee",
+              metadata: { related_id: connectionId, relation_id: connectionId },
+              read: false
+            },
+            {
+              id: receiverNotif.id,
+              user_id: conn.receiverId,
+              title: receiverNotif.title,
+              message: receiverNotif.message,
+              type: "connexion_acceptee",
+              metadata: { related_id: connectionId, relation_id: connectionId },
+              read: false
+            }
+          ]);
+          if (notifInsertErr) {
+            console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase notification insert error:", notifInsertErr.message);
+          } else {
+            console.log(`[ConnectionService.acceptConnection] ✅ Supabase notifications inserted successfully.`);
+          }
         } catch (e) {
-          console.warn("Notice Supabase accept notif:", e);
+          console.warn("Notice Supabase accept notifications:", e);
         }
       }
     }
 
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
-      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
-      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
-    }
-
     if (supabase) {
       try {
-        await supabase.from("relations").update({ statut: "ACTIF" }).eq("id", connectionId);
+        console.log(`[ConnectionService.acceptConnection] 📡 Updating Supabase 'relations' table to statut='ACTIF' for id=${connectionId}...`);
+        const { data: updateData, error: updateErr } = await supabase
+          .from("relations")
+          .update({ statut: "ACTIF", updated_at: nowIso })
+          .eq("id", connectionId)
+          .select();
+
+        if (updateErr) {
+          console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase relation update error:", updateErr.message);
+        } else {
+          console.log(`[ConnectionService.acceptConnection] ✅ Supabase 'relations' updated successfully (statut=ACTIF):`, updateData);
+        }
       } catch (e) {
         console.warn("Notice Supabase accept connection:", e);
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      console.log(`[ConnectionService.acceptConnection] 📣 Dispatching window events 'wakat_connections_updated', 'wakat_notifications_updated', 'wakat_partnership_established'...`);
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+        detail: { connectionId, status: "active", action: "accept", timestamp: nowIso }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated", {
+        detail: { connectionId, status: "active", action: "accept", timestamp: nowIso }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
+      if (conn) {
+        window.dispatchEvent(new CustomEvent("wakat_partnership_established", {
+          detail: { connection: conn, senderId: conn.senderId, receiverId: conn.receiverId, timestamp: nowIso }
+        }));
       }
     }
 
@@ -692,28 +856,87 @@ export const connectionService = {
         console.warn("Notice syncQueue enqueue accept:", e);
       }
     }
+
+    console.log(`[ConnectionService.acceptConnection] 🎉 [DONE] Connection #${connectionId} successfully accepted and synchronized.`);
   },
 
-  async rejectConnection(connectionId: string, _currentUserId?: string): Promise<void> {
-    console.log(`[ConnectionService.rejectConnection] Rejecting connection #${connectionId}...`);
+  async rejectConnection(connectionId: string, currentUserId?: string): Promise<void> {
+    console.log(`[ConnectionService.rejectConnection] 🛑 [START] Rejecting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
     const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "refusée" as const, updatedAt: new Date().toISOString() } : c);
     db.saveConnections(updated);
 
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
-      window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
-      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
-    }
+    const conn = updated.find(c => c.id === connectionId) || currentConns.find(c => c.id === connectionId);
 
-    const conn = updated.find(c => c.id === connectionId);
+    // Send notification to the sender that request was rejected
+    const nowIso = new Date().toISOString();
+    const currentNotifs = db.getNotifications();
+    const updatedNotifs = currentNotifs.map(n => {
+      const notifRelId = (n as any).relationId || (n as any).relatedId || (n as any).metadata?.related_id;
+      if (notifRelId === connectionId) {
+        return { ...n, read: true };
+      }
+      return n;
+    });
+
+    if (conn) {
+      const receiverName = conn.receiverName || "Votre interlocuteur";
+      const rejectNotif: Notification = {
+        id: `notif-reject-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        userId: conn.senderId,
+        type: "connexion_refusee" as any,
+        title: "Demande de partenariat refusée",
+        message: `${receiverName} a refusé la demande de partenariat commercial.`,
+        read: false,
+        relatedId: connectionId,
+        relationId: connectionId,
+        createdAt: nowIso
+      };
+      db.saveNotifications([rejectNotif, ...updatedNotifs]);
+
+      if (supabase) {
+        try {
+          console.log(`[ConnectionService.rejectConnection] 📡 Inserting reject notification into Supabase for sender ${conn.senderId}...`);
+          await supabase.from("notifications").insert({
+            id: rejectNotif.id,
+            user_id: conn.senderId,
+            title: rejectNotif.title,
+            message: rejectNotif.message,
+            type: "connexion_refusee",
+            metadata: { related_id: connectionId, relation_id: connectionId },
+            read: false
+          });
+        } catch (e) {
+          console.warn("Notice Supabase reject notif:", e);
+        }
+      }
+    } else {
+      db.saveNotifications(updatedNotifs);
+    }
 
     if (supabase) {
       try {
-        await supabase.from("relations").update({ statut: "BLOCKED" }).eq("id", connectionId);
+        console.log(`[ConnectionService.rejectConnection] 📡 Updating Supabase 'relations' table to statut='BLOCKED' for id=${connectionId}...`);
+        const { error: blockErr } = await supabase.from("relations").update({ statut: "BLOCKED", updated_at: nowIso }).eq("id", connectionId);
+        if (blockErr) {
+          console.warn("[ConnectionService.rejectConnection] ⚠️ Supabase relation block error:", blockErr.message);
+        } else {
+          console.log(`[ConnectionService.rejectConnection] ✅ Supabase 'relations' status set to BLOCKED.`);
+        }
       } catch (e) {
         console.warn("Notice Supabase reject connection:", e);
       }
+    }
+
+    if (typeof window !== "undefined") {
+      console.log(`[ConnectionService.rejectConnection] 📣 Dispatching window events for rejection...`);
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+        detail: { connectionId, status: "refusée", action: "reject", timestamp: nowIso }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated", {
+        detail: { connectionId, status: "refusée", action: "reject", timestamp: nowIso }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
     }
 
     if (conn) {
@@ -729,14 +952,36 @@ export const connectionService = {
         console.warn("Notice syncQueue enqueue reject:", e);
       }
     }
+
+    console.log(`[ConnectionService.rejectConnection] 🛑 [DONE] Connection #${connectionId} successfully rejected.`);
   },
 
-  async respondToConnectionRequest(connOrId: string | Connection, action: "accept" | "reject" | "accepter" | "refuser" | "active" | "refusée" | string): Promise<void> {
+  async respondToConnectionRequest(
+    connOrId: string | Connection, 
+    action: "accept" | "reject" | "accepter" | "refuser" | "active" | "refusée" | string,
+    currentUserId?: string
+  ): Promise<void> {
     const connectionId = typeof connOrId === "string" ? connOrId : connOrId.id;
-    if (action === "accept" || action === "accepter" || action === "active") {
-      return this.acceptConnection(connectionId);
+    const isAccept = action === "accept" || action === "accepter" || action === "active";
+    
+    console.log(`[ConnectionService.respondToConnectionRequest] 🎯 Received response request: action="${action}" (isAccept=${isAccept}), connectionId="${connectionId}", currentUserId="${currentUserId || 'unknown'}"`);
+
+    if (isAccept) {
+      await this.acceptConnection(connectionId, currentUserId);
     } else {
-      return this.rejectConnection(connectionId);
+      await this.rejectConnection(connectionId, currentUserId);
+    }
+
+    // Explicit manual cache refresh and local synchronization
+    console.log(`[ConnectionService.respondToConnectionRequest] ⚡ Triggering manual cache sync & window event broadcast for App.tsx state synchronization...`);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+        detail: { connectionId, action: isAccept ? "accept" : "reject", timestamp: new Date().toISOString() }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_notifications_updated", {
+        detail: { connectionId, action: isAccept ? "accept" : "reject", timestamp: new Date().toISOString() }
+      }));
+      window.dispatchEvent(new CustomEvent("wakat_users_updated"));
     }
   },
 
@@ -918,11 +1163,14 @@ export const connectionService = {
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "relations" },
-            () => {
+            (payload: any) => {
+              console.log(`[ConnectionService:Realtime] 📥 Supabase 'relations' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
               emitConnections();
             }
           )
-          .subscribe();
+          .subscribe((status: string) => {
+            console.log(`[ConnectionService:Realtime] 📡 Supabase relations channel status for ${userId}: ${status}`);
+          });
       } catch (e) {
         console.warn("Notice Supabase channel conn:", e);
       }
@@ -1021,11 +1269,14 @@ export const connectionService = {
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-            () => {
+            (payload: any) => {
+              console.log(`[NotificationService:Realtime] 📥 Supabase 'notifications' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
               emitNotifs();
             }
           )
-          .subscribe();
+          .subscribe((status: string) => {
+            console.log(`[NotificationService:Realtime] 📡 Supabase notifications channel status for ${userId}: ${status}`);
+          });
       } catch (e) {
         console.warn("Notice Supabase channel notifs:", e);
       }

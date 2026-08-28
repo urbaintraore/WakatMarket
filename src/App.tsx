@@ -2770,12 +2770,19 @@ export default function App() {
                       <div className="p-4 text-center text-[10px] text-zinc-400">Aucune notification</div>
                     ) : (
                       realNotifications.map((n, idx) => {
-                        const relId = n.relationId || (n as any).relatedId || (n.metadata as any)?.related_id;
-                        const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion") || Boolean(relId);
+                        const relId = n.relationId || (n as any).relatedId || (n.metadata as any)?.related_id || (n.metadata as any)?.relation_id || (n.metadata as any)?.relationId;
+                        const isConnNotif = (n.type === "CONNECTION_REQUEST" || n.type === "demande_connexion" || n.type === "demande_partenariat") || Boolean(relId) || n.message?.toLowerCase().includes("partenariat");
                         const relatedConn = relId 
                           ? db.getConnections().find(c => c.id === relId)
                           : null;
-                        const isPending = !relatedConn || relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente" || (relatedConn as any).statut === "PENDING";
+
+                        const currentStatus = (relatedConn?.status || "").toLowerCase();
+                        const isPending = !relatedConn || currentStatus === "en_attente" || currentStatus === "pending";
+                        const isAlreadyActive = relatedConn && (currentStatus === "active" || currentStatus === "actif" || (relatedConn as any).statut === "ACTIF");
+                        const isAlreadyRejected = relatedConn && (currentStatus === "refusée" || currentStatus === "refusee" || (relatedConn as any).statut === "BLOCKED");
+
+                        const senderId = n.senderId || (n as any).expediteurId || (n.metadata as any)?.sender_id;
+                        const isReceiver = senderId ? (senderId !== currentUser.id) : (relatedConn ? relatedConn.receiverId === currentUser.id : true);
 
                         return (
                           <div key={`${n.id}_${idx}`} className="p-3 text-[10px] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/20">
@@ -2797,40 +2804,64 @@ export default function App() {
                             </div>
 
                             {isConnNotif && (
-                              <div className="flex gap-2 mt-2">
-                                {isPending && (
+                              <div className="mt-2">
+                                {isAlreadyActive && (
+                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded-lg border border-emerald-150">
+                                    <UserCheck className="w-3 h-3" />
+                                    <span>Partenariat actif & confirmé</span>
+                                  </div>
+                                )}
+
+                                {isAlreadyRejected && (
+                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-1 rounded-lg border border-rose-150">
+                                    <UserX className="w-3 h-3" />
+                                    <span>Demande de partenariat refusée</span>
+                                  </div>
+                                )}
+
+                                {isPending && !isAlreadyActive && !isAlreadyRejected && (
                                   <>
-                                    <button
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (relId) {
-                                          await connectionService.acceptConnection(relId, currentUser.id);
-                                        } else if (relatedConn) {
-                                          await connectionService.respondToConnectionRequest(relatedConn, "active");
-                                        }
-                                        connectionService.markNotificationAsRead(currentUser.id, n.id);
-                                        addNotification("Invitation acceptée !");
-                                      }}
-                                      className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
-                                    >
-                                      <UserCheck className="w-3 h-3" /> Accepter
-                                    </button>
-                                    <button
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        if (relId) {
-                                          await connectionService.rejectConnection(relId, currentUser.id);
-                                        } else if (relatedConn) {
-                                          await connectionService.respondToConnectionRequest(relatedConn, "refusée");
-                                        }
-                                        connectionService.markNotificationAsRead(currentUser.id, n.id);
-                                      }}
-                                      className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
-                                    >
-                                      <UserX className="w-3 h-3" /> Refuser
-                                    </button>
+                                    {isReceiver ? (
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (relId) {
+                                              await connectionService.acceptConnection(relId, currentUser.id);
+                                            } else if (relatedConn) {
+                                              await connectionService.respondToConnectionRequest(relatedConn, "active");
+                                            }
+                                            await connectionService.markNotificationAsRead(currentUser.id, n.id);
+                                            addNotification("Partenariat accepté avec succès !");
+                                          }}
+                                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                                        >
+                                          <UserCheck className="w-3 h-3" /> Accepter le partenariat
+                                        </button>
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (relId) {
+                                              await connectionService.rejectConnection(relId, currentUser.id);
+                                            } else if (relatedConn) {
+                                              await connectionService.respondToConnectionRequest(relatedConn, "refusée");
+                                            }
+                                            await connectionService.markNotificationAsRead(currentUser.id, n.id);
+                                            addNotification("Demande de partenariat refusée.");
+                                          }}
+                                          className="px-2.5 py-1.5 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                                        >
+                                          <UserX className="w-3 h-3" /> Refuser
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="text-[9px] font-medium text-zinc-500 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-150 rounded-lg px-2 py-1">
+                                        Demande de partenariat en attente de validation
+                                      </div>
+                                    )}
                                   </>
                                 )}
+
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -2838,7 +2869,7 @@ export default function App() {
                                     setShowNotifications(false);
                                     setShowChat(true);
                                   }}
-                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[9px] font-bold transition flex items-center gap-1"
+                                  className="mt-2 w-full px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[9px] font-bold transition flex items-center justify-center gap-1"
                                 >
                                   <MessageSquare className="w-3 h-3" /> Discuter
                                 </button>

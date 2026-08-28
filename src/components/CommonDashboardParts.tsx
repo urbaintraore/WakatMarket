@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2, Clock } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2, Clock, Filter, XCircle, RotateCcw, Sparkles } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, OrderStatus, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
@@ -214,26 +214,71 @@ export const ClientManagement: React.FC<ClientListProps> = ({
   // Partner stock modal state
   const [selectedPartnerForStock, setSelectedPartnerForStock] = useState<UserProfile | null>(null);
 
+  // B2B Partner Filter State: "all" | "en_attente" | "active" | "refusee"
+  const [b2bStatusFilter, setB2bStatusFilter] = useState<"all" | "en_attente" | "active" | "refusee">("all");
+  const [b2bSearchQuery, setB2bSearchQuery] = useState<string>("");
+
   const pendingReceived = useMemo(() => {
-    if (!currentUser) return [];
-    return connections.filter(c => c.receiverId === currentUser.id && c.status === "en_attente");
+    if (!currentUser?.id) return [];
+    return connections.filter(c => {
+      const isReceiver = c.receiverId === currentUser.id || (c as any).client_id === currentUser.id;
+      const isPending = c.status === "en_attente" || (c as any).statut === "en_attente" || (c as any).statut === "PENDING";
+      return isReceiver && isPending;
+    });
   }, [connections, currentUser?.id]);
 
   const pendingSent = useMemo(() => {
-    if (!currentUser) return [];
-    return connections.filter(c => c.senderId === currentUser.id && c.status === "en_attente");
+    if (!currentUser?.id) return [];
+    return connections.filter(c => {
+      const isSender = c.senderId === currentUser.id || (c as any).grossiste_id === currentUser.id;
+      const isPending = c.status === "en_attente" || (c as any).statut === "en_attente" || (c as any).statut === "PENDING";
+      return isSender && isPending;
+    });
   }, [connections, currentUser?.id]);
 
   const activeConnections = useMemo(() => {
-    if (!currentUser) return [];
+    if (!currentUser?.id) return [];
     return connections.filter(c => isConnectionActive(c));
   }, [connections, currentUser?.id]);
 
+  const rejectedConnections = useMemo(() => {
+    if (!currentUser?.id) return [];
+    return connections.filter(c => {
+      const isParty = c.senderId === currentUser.id || c.receiverId === currentUser.id || (c as any).grossiste_id === currentUser.id || (c as any).client_id === currentUser.id;
+      const isRejected = c.status === "refusée" || (c as any).statut === "BLOCKED" || (c as any).statut === "refusée";
+      return isParty && isRejected;
+    });
+  }, [connections, currentUser?.id]);
+
+  // Apply search query filtering across the subsets
+  const filterBySearch = (list: Connection[]) => {
+    if (!b2bSearchQuery.trim()) return list;
+    const q = b2bSearchQuery.toLowerCase().trim();
+    return list.filter(c => {
+      const sName = (c.senderName || "").toLowerCase();
+      const rName = (c.receiverName || "").toLowerCase();
+      const notes = (c.notes || "").toLowerCase();
+      const sRole = (c.senderRole || "").toLowerCase();
+      const rRole = (c.receiverRole || "").toLowerCase();
+      return sName.includes(q) || rName.includes(q) || notes.includes(q) || sRole.includes(q) || rRole.includes(q);
+    });
+  };
+
+  const filteredPendingReceived = useMemo(() => filterBySearch(pendingReceived), [pendingReceived, b2bSearchQuery]);
+  const filteredPendingSent = useMemo(() => filterBySearch(pendingSent), [pendingSent, b2bSearchQuery]);
+  const filteredActiveConnections = useMemo(() => filterBySearch(activeConnections), [activeConnections, b2bSearchQuery]);
+  const filteredRejectedConnections = useMemo(() => filterBySearch(rejectedConnections), [rejectedConnections, b2bSearchQuery]);
+
   const handleRespondToRequest = async (conn: Connection, status: "active" | "refusée") => {
     try {
-      await connectionService.respondToConnectionRequest(conn, status);
+      if (status === "active") {
+        await connectionService.acceptConnection(conn.id, currentUser?.id);
+      } else {
+        await connectionService.rejectConnection(conn.id, currentUser?.id);
+      }
+      setConnections(prev => prev.map(c => c.id === conn.id ? { ...c, status } : c));
     } catch (e) {
-      console.error(e);
+      console.error("Error responding to connection request:", e);
     }
   };
 
@@ -745,16 +790,209 @@ export const ClientManagement: React.FC<ClientListProps> = ({
 
       {activeViewTab === "b2b" ? (
         <div className="space-y-6 animate-fade-in">
-          {/* Outgoing connection requests */}
-          {pendingSent.length > 0 && (
+          {/* B2B Filter & Search Bar */}
+          <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              {/* Filter Tabs by Status */}
+              <div className="flex items-center gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setB2bStatusFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    b2bStatusFilter === "all"
+                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-xs"
+                      : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>Tous</span>
+                  <span className="ml-1 px-1.5 py-0.2 bg-zinc-200 dark:bg-zinc-600 text-zinc-700 dark:text-zinc-200 rounded-full text-[10px]">
+                    {pendingReceived.length + pendingSent.length + activeConnections.length + rejectedConnections.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setB2bStatusFilter("en_attente")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    b2bStatusFilter === "en_attente"
+                      ? "bg-amber-500 text-white shadow-xs"
+                      : "text-zinc-500 hover:text-amber-600 dark:hover:text-amber-400"
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>En attente</span>
+                  {(pendingReceived.length + pendingSent.length) > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                      b2bStatusFilter === "en_attente" ? "bg-amber-600 text-white" : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+                    }`}>
+                      {pendingReceived.length + pendingSent.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setB2bStatusFilter("active")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    b2bStatusFilter === "active"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "text-zinc-500 hover:text-emerald-600 dark:hover:text-emerald-400"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Acceptés & Actifs</span>
+                  {activeConnections.length > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                      b2bStatusFilter === "active" ? "bg-emerald-700 text-white" : "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+                    }`}>
+                      {activeConnections.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setB2bStatusFilter("refusee")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    b2bStatusFilter === "refusee"
+                      ? "bg-rose-600 text-white shadow-xs"
+                      : "text-zinc-500 hover:text-rose-600 dark:hover:text-rose-400"
+                  }`}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>Refusés</span>
+                  {rejectedConnections.length > 0 && (
+                    <span className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] ${
+                      b2bStatusFilter === "refusee" ? "bg-rose-700 text-white" : "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
+                    }`}>
+                      {rejectedConnections.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Search in B2B directory */}
+              <div className="relative flex-1 max-w-xs">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  value={b2bSearchQuery}
+                  onChange={(e) => setB2bSearchQuery(e.target.value)}
+                  placeholder="Filtrer par nom, entreprise, rôle..."
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+                {b2bSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setB2bSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 1. SECTION: Demandes de Partenariat Reçues (En attente de validation) */}
+          {(b2bStatusFilter === "all" || b2bStatusFilter === "en_attente") && filteredPendingReceived.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 animate-pulse text-emerald-600" />
+                Demandes de Partenariat Reçues ({filteredPendingReceived.length})
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredPendingReceived.map((req, idx) => (
+                  <div key={`rec_${req.id}_${idx}`} className="p-5 bg-emerald-50/40 dark:bg-emerald-950/20 border-2 border-emerald-300 dark:border-emerald-700/60 rounded-2xl flex flex-col justify-between gap-4 shadow-sm relative animate-in fade-in">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                          <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.senderName}</p>
+                        </div>
+                        <span className="inline-block mt-1 text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          {req.senderRole}
+                        </span>
+                        {req.notes && (
+                          <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-2 italic bg-white/70 dark:bg-zinc-900/50 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                            "{req.notes}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-t border-emerald-200 dark:border-emerald-800/40 pt-3">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleRespondToRequest(req, "active")}
+                          className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                        >
+                          <UserCheck className="w-4 h-4" /> Accepter le partenariat
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRespondToRequest(req, "refusée")}
+                          className="py-2 px-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                        >
+                          <UserX className="w-4 h-4" /> Refuser
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const senderObj = allKnownUsers.find(u => u.id === req.senderId) || {
+                              id: req.senderId,
+                              name: req.senderName,
+                              companyName: req.senderName,
+                              role: req.senderRole as any,
+                              country: currentUser?.country || "Burkina Faso",
+                              region: currentUser?.region || "Ouagadougou",
+                              status: "ACTIVE" as const,
+                              email: "",
+                              phone: ""
+                            };
+                            setSelectedPartnerForStock(senderObj as UserProfile);
+                          }}
+                          className="flex-1 py-1.5 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-1"
+                        >
+                          <Package className="w-3 h-3" /> Voir Profil & Catalogue
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedClientForMessage({
+                              id: req.senderId,
+                              name: req.senderName,
+                              role: req.senderRole,
+                              isRealUser: true
+                            });
+                          }}
+                          className="py-1.5 px-3 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-1"
+                        >
+                          <MessageSquare className="w-3 h-3" /> Message
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2. SECTION: Demandes Envoyées en attente */}
+          {(b2bStatusFilter === "all" || b2bStatusFilter === "en_attente") && filteredPendingSent.length > 0 && (
             <div className="space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 animate-pulse text-amber-600" />
-                Demandes Envoyées en attente ({pendingSent.length})
+                Demandes Envoyées en attente de réponse ({filteredPendingSent.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pendingSent.map((req, idx) => (
-                  <div key={`${req.id}_${idx}`} className="p-4 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex flex-col justify-between gap-3 shadow-xs">
+                {filteredPendingSent.map((req, idx) => (
+                  <div key={`sent_${req.id}_${idx}`} className="p-4 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex flex-col justify-between gap-3 shadow-xs">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.receiverName}</p>
@@ -797,7 +1035,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                             e.stopPropagation();
                             setConfirmDeleteId(req.id);
                           }}
-                          className="p-2 text-rose-500 bg-rose-50 dark:bg-rose-950/20 rounded-xl hover:bg-rose-500 hover:text-white border border-rose-100 dark:border-rose-900/30 transition-all"
+                          className="p-2 text-rose-500 bg-rose-50 dark:bg-rose-950/20 rounded-xl hover:bg-rose-500 hover:text-white border border-rose-100 dark:border-rose-900/30 transition-all cursor-pointer"
                           title="Annuler la demande"
                           type="button"
                         >
@@ -807,7 +1045,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                     </div>
                     <div className="flex items-center gap-1.5 self-start text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 px-2.5 py-1 rounded-lg">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
-                      <span>En attente de confirmation par le destinataire</span>
+                      <span>En attente de validation par le destinataire</span>
                     </div>
                   </div>
                 ))}
@@ -815,130 +1053,218 @@ export const ClientManagement: React.FC<ClientListProps> = ({
             </div>
           )}
 
-          {/* Active Connected Partners */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-              Mes Partenaires Connectés ({activeConnections.length})
-            </h4>
-            {activeConnections.length === 0 ? (
-              <div className="p-8 text-center text-zinc-400 bg-zinc-50 dark:bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
-                <Users className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-600" />
-                <p className="text-xs font-medium">Aucun partenaire B2B connecté pour le moment.</p>
-                <p className="text-[10px] text-zinc-400 mt-1">Recherchez un acteur existant sur la plateforme pour initier une relation d'affaires.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {activeConnections.map((conn, idx) => {
-                  const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
-                  const otherPartyName = conn.senderId === currentUser?.id ? conn.receiverName : conn.senderName;
-                  const otherPartyRole = conn.senderId === currentUser?.id ? conn.receiverRole : conn.senderRole;
-                  
-                  return (
-                    <div key={`${conn.id}_${idx}`} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition relative group">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <p className="font-bold text-sm text-zinc-900 dark:text-white">{otherPartyName}</p>
-                          <span className="inline-block text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                            {otherPartyRole}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {confirmDeleteId === conn.id ? (
-                            <div className="flex gap-1 animate-in fade-in slide-in-from-right-2">
-                              <button
-                                onClick={async (e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setConnections(prev => prev.filter(c => c.id !== conn.id));
-                                  await connectionService.deleteConnection(conn.id, conn.senderId, conn.receiverId);
-                                  const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
-                                  if (otherPartyId) {
-                                    const linkedClient = clients.find(c => c.linkedUserId === otherPartyId || c.id === otherPartyId);
-                                    if (linkedClient) {
-                                      onDeleteClient(linkedClient.id);
+          {/* 3. SECTION: Partenaires Connectés & Actifs */}
+          {(b2bStatusFilter === "all" || b2bStatusFilter === "active") && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+                <span>Mes Partenaires Connectés & Actifs ({filteredActiveConnections.length})</span>
+                {filteredActiveConnections.length > 0 && (
+                  <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Relation commerciale active
+                  </span>
+                )}
+              </h4>
+              {filteredActiveConnections.length === 0 ? (
+                <div className="p-8 text-center text-zinc-400 bg-zinc-50 dark:bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
+                  <Users className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-600" />
+                  <p className="text-xs font-medium">
+                    {b2bSearchQuery ? "Aucun partenaire ne correspond à votre recherche." : "Aucun partenaire B2B actif pour le moment."}
+                  </p>
+                  <p className="text-[10px] text-zinc-400 mt-1">Recherchez un acteur existant sur la plateforme pour initier une relation d'affaires.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredActiveConnections.map((conn, idx) => {
+                    const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
+                    const otherPartyName = conn.senderId === currentUser?.id ? conn.receiverName : conn.senderName;
+                    const otherPartyRole = conn.senderId === currentUser?.id ? conn.receiverRole : conn.senderRole;
+                    
+                    return (
+                      <div key={`act_${conn.id}_${idx}`} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition relative group">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <p className="font-bold text-sm text-zinc-900 dark:text-white">{otherPartyName}</p>
+                            <span className="inline-block text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              {otherPartyRole}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {confirmDeleteId === conn.id ? (
+                              <div className="flex gap-1 animate-in fade-in slide-in-from-right-2">
+                                <button
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setConnections(prev => prev.filter(c => c.id !== conn.id));
+                                    await connectionService.deleteConnection(conn.id, conn.senderId, conn.receiverId);
+                                    const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
+                                    if (otherPartyId) {
+                                      const linkedClient = clients.find(c => c.linkedUserId === otherPartyId || c.id === otherPartyId);
+                                      if (linkedClient) {
+                                        onDeleteClient(linkedClient.id);
+                                      }
                                     }
-                                  }
-                                  setConfirmDeleteId(null);
-                                }}
-                                className="px-2 py-1 bg-rose-600 text-white rounded-lg text-[9px] font-bold"
-                                type="button"
-                              >
-                                CONFIRMER
-                              </button>
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="px-2 py-1 bg-rose-600 text-white rounded-lg text-[9px] font-bold"
+                                  type="button"
+                                >
+                                  CONFIRMER
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setConfirmDeleteId(null);
+                                  }}
+                                  className="px-2 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-lg text-[9px] font-bold"
+                                  type="button"
+                                >
+                                  ANNULER
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  setConfirmDeleteId(null);
+                                  setConfirmDeleteId(conn.id);
                                 }}
-                                className="px-2 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded-lg text-[9px] font-bold"
+                                className="p-2 text-rose-500 bg-rose-50 dark:bg-rose-950/20 rounded-xl hover:bg-rose-500 hover:text-white border border-rose-100 dark:border-rose-900/30 transition-all shadow-sm cursor-pointer"
+                                title="Supprimer la connexion"
                                 type="button"
                               >
-                                ANNULER
+                                <Trash2 className="w-4 h-4" />
                               </button>
+                            )}
+                            <div className="p-2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                              <UserCheck className="w-4 h-4" />
                             </div>
-                          ) : (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setConfirmDeleteId(conn.id);
-                              }}
-                              className="p-2 text-rose-500 bg-rose-50 dark:bg-rose-950/20 rounded-xl hover:bg-rose-500 hover:text-white border border-rose-100 dark:border-rose-900/30 transition-all shadow-sm"
-                              title="Supprimer la connexion"
-                              type="button"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <div className="p-2 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
-                            <UserCheck className="w-4 h-4" />
                           </div>
                         </div>
+                        
+                        <div className="flex flex-col sm:flex-row gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const partnerObj = allKnownUsers.find(u => u.id === otherPartyId) || {
+                                id: otherPartyId,
+                                name: otherPartyName,
+                                companyName: otherPartyName,
+                                role: otherPartyRole as any,
+                                country: currentUser?.country || "Burkina Faso",
+                                region: currentUser?.region || "Ouagadougou",
+                                status: "ACTIVE" as const,
+                                email: "",
+                                phone: ""
+                              };
+                              setSelectedPartnerForStock(partnerObj as UserProfile);
+                            }}
+                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                          >
+                            <Package className="w-3.5 h-3.5" /> Voir Stock & Établissement
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedClientForMessage({
+                                id: otherPartyId,
+                                name: otherPartyName,
+                                role: otherPartyRole,
+                                isRealUser: true
+                              });
+                            }}
+                            className="py-2 px-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" /> Message
+                          </button>
+                        </div>
                       </div>
-                      
-                      <div className="flex flex-col sm:flex-row gap-2 border-t border-zinc-100 dark:border-zinc-800 pt-3">
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 4. SECTION: Demandes Refusées */}
+          {(b2bStatusFilter === "all" || b2bStatusFilter === "refusee") && filteredRejectedConnections.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-2">
+                <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                Demandes Refusées ({filteredRejectedConnections.length})
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredRejectedConnections.map((conn, idx) => {
+                  const otherPartyId = conn.senderId === currentUser?.id ? conn.receiverId : conn.senderId;
+                  const otherPartyName = conn.senderId === currentUser?.id ? conn.receiverName : conn.senderName;
+                  const otherPartyRole = conn.senderId === currentUser?.id ? conn.receiverRole : conn.senderRole;
+                  const wasSender = conn.senderId === currentUser?.id;
+
+                  return (
+                    <div key={`ref_${conn.id}_${idx}`} className="p-4 bg-rose-50/30 dark:bg-rose-950/10 border border-rose-200 dark:border-rose-900/40 rounded-2xl flex flex-col justify-between gap-3 shadow-xs">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{otherPartyName}</p>
+                          <span className="inline-block mt-0.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-950/60 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            {otherPartyRole}
+                          </span>
+                          <p className="text-xs text-zinc-500 mt-2">
+                            {wasSender 
+                              ? "Votre demande a été déclinée par ce partenaire." 
+                              : "Vous avez décliné cette demande de partenariat."
+                            }
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => {
-                            const partnerObj = allKnownUsers.find(u => u.id === otherPartyId) || {
-                              id: otherPartyId,
-                              name: otherPartyName,
-                              companyName: otherPartyName,
-                              role: otherPartyRole as any,
-                              country: currentUser?.country || "Burkina Faso",
-                              region: currentUser?.region || "Ouagadougou",
-                              status: "ACTIVE" as const,
-                              email: "",
-                              phone: ""
-                            };
-                            setSelectedPartnerForStock(partnerObj as UserProfile);
+                          onClick={async () => {
+                            setConnections(prev => prev.filter(c => c.id !== conn.id));
+                            await connectionService.deleteConnection(conn.id, conn.senderId, conn.receiverId);
                           }}
-                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                          className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg transition"
+                          title="Supprimer de l'historique"
                         >
-                          <Package className="w-3.5 h-3.5" /> Voir Stock & Établissement
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                      </div>
+
+                      <div className="flex gap-2 border-t border-rose-100 dark:border-rose-900/30 pt-2.5">
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedClientForMessage({
-                              id: otherPartyId,
-                              name: otherPartyName,
-                              role: otherPartyRole,
-                              isRealUser: true
-                            });
+                          onClick={async () => {
+                            await connectionService.deleteConnection(conn.id, conn.senderId, conn.receiverId);
+                            setConnections(prev => prev.filter(c => c.id !== conn.id));
+                            setIsAdding(true);
+                            setIsRegisteringPartner(true);
+                            setSearchQuery(otherPartyName);
                           }}
-                          className="py-2 px-3 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          className="flex-1 py-1.5 bg-white dark:bg-zinc-900 hover:bg-zinc-50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
                         >
-                          <MessageSquare className="w-3.5 h-3.5" /> Message
+                          <RotateCcw className="w-3 h-3" /> Relancer la demande
                         </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* Empty fallback when filter has 0 results */}
+          {b2bStatusFilter === "en_attente" && filteredPendingReceived.length === 0 && filteredPendingSent.length === 0 && (
+            <div className="p-8 text-center text-zinc-400 bg-zinc-50 dark:bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
+              <Clock className="w-10 h-10 mx-auto mb-2 opacity-30 text-amber-600" />
+              <p className="text-xs font-medium">Aucune demande de partenariat en attente.</p>
+            </div>
+          )}
+
+          {b2bStatusFilter === "refusee" && filteredRejectedConnections.length === 0 && (
+            <div className="p-8 text-center text-zinc-400 bg-zinc-50 dark:bg-zinc-900/20 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
+              <XCircle className="w-10 h-10 mx-auto mb-2 opacity-30 text-rose-600" />
+              <p className="text-xs font-medium">Aucune demande refusée dans votre historique.</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-6 animate-fade-in">

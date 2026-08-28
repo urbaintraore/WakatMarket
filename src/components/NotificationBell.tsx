@@ -17,6 +17,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 }) => {
   const [notifications, setNotifications] = useState<PartnerNotificationItem[]>([]);
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<Record<string, "accepted" | "rejected">>({});
+  const [relationStatuses, setRelationStatuses] = useState<Record<string, "en_attente" | "active" | "refusee" | "inconnu">>({});
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -27,15 +31,64 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
     });
 
     const handleCustomUpdate = () => {
-      // Re-trigger if custom event fired
+      setRefreshTrigger(prev => prev + 1);
     };
     window.addEventListener("wakat_notifications_updated", handleCustomUpdate);
+    window.addEventListener("wakat_connections_updated", handleCustomUpdate);
 
     return () => {
       unsubscribe();
       window.removeEventListener("wakat_notifications_updated", handleCustomUpdate);
+      window.removeEventListener("wakat_connections_updated", handleCustomUpdate);
     };
   }, [currentUserId]);
+
+  useEffect(() => {
+    if (notifications.length === 0) return;
+
+    let isMounted = true;
+
+    const fetchStatuses = async () => {
+      const statusesToFetch = notifications.filter(n => {
+        const isPartnerReq = 
+          n.type === "demande_connexion" || 
+          n.type === "CONNECTION_REQUEST" || 
+          n.type === "demande_partenariat" || 
+          n.type === "connexion_acceptee" ||
+          n.type === "connexion_refusee" ||
+          (n.title && n.title.toLowerCase().includes("partenariat")) || 
+          (n.contenu && n.contenu.toLowerCase().includes("partenariat"));
+        return isPartnerReq;
+      });
+
+      if (statusesToFetch.length === 0) return;
+
+      const newStatuses: Record<string, "en_attente" | "active" | "refusee" | "inconnu"> = {};
+
+      for (const n of statusesToFetch) {
+        const relId = n.relationId || n.relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id || (n as any).metadata?.relationId;
+        const senderId = n.senderId || (n as any).expediteurId || (n as any).metadata?.sender_id;
+        
+        try {
+          const status = await connectionService.getRelationStatusFromSupabase(relId, currentUserId, senderId);
+          newStatuses[n.id] = status;
+        } catch (err) {
+          console.error(`Error fetching status for notification ${n.id}:`, err);
+          newStatuses[n.id] = "inconnu";
+        }
+      }
+
+      if (isMounted) {
+        setRelationStatuses(prev => ({ ...prev, ...newStatuses }));
+      }
+    };
+
+    fetchStatuses();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [notifications, currentUserId, refreshTrigger]);
 
   const unreadCount = notifications.filter((n) => !n.lu).length;
 
@@ -113,74 +166,166 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                   <p>Aucune notification pour le moment.</p>
                 </div>
               ) : (
-                notifications.map((n, idx) => (
-                  <div
-                    key={`${n.id}_${idx}`}
-                    onClick={() => handleMarkAsRead(n)}
-                    className={`p-3.5 transition-colors cursor-pointer flex items-start gap-3 hover:bg-slate-50 ${
-                      !n.lu ? "bg-amber-50/40" : ""
-                    }`}
-                  >
-                    {getNotifIcon(n.type)}
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs ${!n.lu ? "font-semibold text-slate-900" : "text-slate-700"}`}>
-                        {n.contenu}
-                      </p>
+                notifications.map((n, idx) => {
+                  const isPartnerReq = 
+                    n.type === "demande_connexion" || 
+                    n.type === "CONNECTION_REQUEST" || 
+                    n.type === "demande_partenariat" || 
+                    n.type === "connexion_acceptee" ||
+                    n.type === "connexion_refusee" ||
+                    (n.title && n.title.toLowerCase().includes("partenariat")) || 
+                    (n.contenu && n.contenu.toLowerCase().includes("partenariat"));
 
-                      {/* Accept/Refuse Actions inside the Notification dropdown */}
-                      {n.type === "demande_connexion" && (n.relationId || n.relatedId) && (() => {
-                        const relId = n.relationId || n.relatedId;
-                        const relatedConn = db.getConnections().find(c => c.id === relId);
-                        const isPending = !relatedConn || relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente" || (relatedConn as any).statut === "PENDING";
-                        if (!isPending) return null;
-                        
-                        return (
-                          <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  if (relId) await connectionService.acceptConnection(relId, currentUserId);
-                                  await connectionService.markNotificationAsRead(currentUserId, n.id);
-                                } catch (err) {
-                                  console.error("Error accepting from notification:", err);
-                                }
-                              }}
-                              className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
-                            >
-                              <Check className="w-3 h-3" /> Accepter
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  if (relId) await connectionService.rejectConnection(relId, currentUserId);
-                                  await connectionService.markNotificationAsRead(currentUserId, n.id);
-                                } catch (err) {
-                                  console.error("Error rejecting from notification:", err);
-                                }
-                              }}
-                              className="py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold transition flex items-center justify-center border border-slate-200 cursor-pointer"
-                            >
-                              Refuser
-                            </button>
-                          </div>
-                        );
-                      })()}
+                  const status = relationStatuses[n.id];
 
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        {n.dateCreation
-                          ? typeof n.dateCreation === "string"
-                            ? new Date(n.dateCreation).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
-                            : new Date(n.dateCreation.seconds * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
-                          : "À l'instant"}
-                      </p>
+                  return (
+                    <div
+                      key={`${n.id}_${idx}`}
+                      onClick={() => handleMarkAsRead(n)}
+                      className={`p-3.5 transition-colors cursor-pointer flex items-start gap-3 hover:bg-slate-50 ${
+                        !n.lu ? "bg-amber-50/40" : ""
+                      }`}
+                    >
+                      {getNotifIcon(n.type)}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={`text-xs ${!n.lu ? "font-semibold text-slate-900" : "text-slate-700"} flex-1`}>
+                            {n.contenu}
+                          </p>
+                          {isPartnerReq && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider h-fit flex-shrink-0 whitespace-nowrap border ${
+                              status === "active" 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800" 
+                                : status === "refusee"
+                                ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800"
+                                : status === "en_attente"
+                                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-800"
+                                : "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950/20 dark:text-slate-400 dark:border-slate-800"
+                            }`}>
+                              {status === "active" ? "Accepté" : status === "refusee" ? "Refusé" : status === "en_attente" ? "En attente" : "..."}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Accept/Refuse Actions inside the Notification dropdown */}
+                        {(() => {
+                          if (!isPartnerReq) return null;
+
+                          const relId = n.relationId || n.relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id || (n as any).metadata?.relationId;
+                          const senderId = n.senderId || (n as any).expediteurId || (n as any).metadata?.sender_id;
+                          
+                          const allConns = db.getConnections();
+                          const matchingConn = relId 
+                            ? allConns.find(c => c.id === relId)
+                            : (senderId ? allConns.find(c => (c.senderId === senderId && c.receiverId === currentUserId) || (c.senderId === currentUserId && c.receiverId === senderId)) : null);
+
+                          const currentStatus = relationStatuses[n.id] || matchingConn?.status;
+
+                          const isAlreadyActive = currentStatus === "active" || (matchingConn && (matchingConn.status === "active" || (matchingConn as any).statut === "ACTIF")) || actionFeedback[n.id] === "accepted";
+                          if (isAlreadyActive) {
+                            return (
+                              <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Partenariat actif & confirmé</span>
+                              </div>
+                            );
+                          }
+
+                          const isAlreadyRejected = currentStatus === "refusee" || currentStatus === "refusée" || (matchingConn && (matchingConn.status === "refusée" || (matchingConn as any).statut === "BLOCKED")) || actionFeedback[n.id] === "rejected";
+                          if (isAlreadyRejected) {
+                            return (
+                              <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/30 px-2.5 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800">
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Demande de partenariat refusée</span>
+                              </div>
+                            );
+                          }
+
+                          // Strict check: Only show action buttons to the receiver of the connection request.
+                          // The sender of the connection request must not see the accept/reject buttons.
+                          const isReceiver = senderId ? (senderId !== currentUserId) : (matchingConn ? matchingConn.receiverId === currentUserId : true);
+
+                          if (!isReceiver) {
+                            return (
+                              <div className="mt-2 text-[10px] font-medium text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                                Demande de partenariat en attente de validation
+                              </div>
+                            );
+                          }
+
+                          const targetRelationId = relId || matchingConn?.id;
+                          const isLoading = actionLoadingId === n.id;
+
+                          return (
+                            <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setActionLoadingId(n.id);
+                                  try {
+                                    if (targetRelationId) {
+                                      await connectionService.acceptConnection(targetRelationId, currentUserId);
+                                    } else if (matchingConn) {
+                                      await connectionService.respondToConnectionRequest(matchingConn, "active");
+                                    }
+                                    await connectionService.markNotificationAsRead(currentUserId, n.id);
+                                    setActionFeedback(prev => ({ ...prev, [n.id]: "accepted" }));
+                                    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, lu: true, read: true } : item));
+                                  } catch (err) {
+                                    console.error("Error accepting from notification:", err);
+                                  } finally {
+                                    setActionLoadingId(null);
+                                  }
+                                }}
+                                className="flex-1 py-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                              >
+                                <Check className="w-3.5 h-3.5" /> {isLoading ? "Validation..." : "Accepter le partenariat"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isLoading}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setActionLoadingId(n.id);
+                                  try {
+                                    if (targetRelationId) {
+                                      await connectionService.rejectConnection(targetRelationId, currentUserId);
+                                    } else if (matchingConn) {
+                                      await connectionService.respondToConnectionRequest(matchingConn, "refusée");
+                                    }
+                                    await connectionService.markNotificationAsRead(currentUserId, n.id);
+                                    setActionFeedback(prev => ({ ...prev, [n.id]: "rejected" }));
+                                    setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, lu: true, read: true } : item));
+                                  } catch (err) {
+                                    console.error("Error rejecting from notification:", err);
+                                  } finally {
+                                    setActionLoadingId(null);
+                                  }
+                                }}
+                                className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 rounded-lg text-[10px] font-bold transition flex items-center justify-center border border-slate-200 cursor-pointer active:scale-95"
+                              >
+                                Refuser
+                              </button>
+                            </div>
+                          );
+                        })()}
+
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {n.dateCreation
+                            ? typeof n.dateCreation === "string"
+                              ? new Date(n.dateCreation).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+                              : new Date(n.dateCreation.seconds * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
+                            : "À l'instant"}
+                        </p>
+                      </div>
+                      {!n.lu && (
+                        <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0 mt-1.5" title="Non lu" />
+                      )}
                     </div>
-                    {!n.lu && (
-                      <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0 mt-1.5" title="Non lu" />
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
