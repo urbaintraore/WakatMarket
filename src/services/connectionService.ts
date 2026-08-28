@@ -275,23 +275,37 @@ export const connectionService = {
     }
 
     const relationId = [demandeur.id, destinataireUser.id].sort().join("_");
-    const demandeurNom = demandeur.name || demandeur.companyName || "Utilisateur";
-    const demandeurFullDisplay = demandeur.companyName && demandeur.companyName !== demandeur.name
-      ? `${demandeur.name} (${demandeur.companyName})`
+    
+    // Résolution rigoureuse du profil et du nom réel de l'émetteur
+    let senderProfile: UserProfile = demandeur;
+    const localSender = db.getUsers().find(u => u.id === demandeur.id);
+    if (localSender) {
+      senderProfile = { ...localSender, ...demandeur };
+    }
+
+    const demandeurNom = (senderProfile.name && senderProfile.name !== "Utilisateur" && senderProfile.name !== "Partenaire")
+      ? senderProfile.name
+      : (senderProfile.companyName || senderProfile.email || "Utilisateur");
+
+    const demandeurFullDisplay = senderProfile.companyName && senderProfile.companyName !== demandeurNom
+      ? `${demandeurNom} (${senderProfile.companyName})`
       : demandeurNom;
 
-    const destinataireNom = destinataireUser.name || destinataireUser.companyName || "Partenaire";
-    const destinataireFullDisplay = destinataireUser.companyName && destinataireUser.companyName !== destinataireUser.name
-      ? `${destinataireUser.name} (${destinataireUser.companyName})`
+    const destinataireNom = (destinataireUser.name && destinataireUser.name !== "Utilisateur" && destinataireUser.name !== "Partenaire")
+      ? destinataireUser.name
+      : (destinataireUser.companyName || destinataireUser.email || "Partenaire");
+
+    const destinataireFullDisplay = destinataireUser.companyName && destinataireUser.companyName !== destinataireNom
+      ? `${destinataireNom} (${destinataireUser.companyName})`
       : destinataireNom;
 
     // Re-enable if was previously deleted
     removeDeletedConnectionId(relationId);
     removeDeletedPartnerPair(demandeur.id, destinataireUser.id);
 
-    console.log("[ConnectionService] Generated Relation ID:", relationId);
-    console.log("[ConnectionService] Grossiste/Demandeur ID:", demandeur.id, "Nom:", demandeurNom);
-    console.log("[ConnectionService] Client/Destinataire ID:", destinataireUser.id, "Nom:", destinataireNom);
+    console.log(`[Pipeline Partenariat - Étape 1/7] Émetteur identifié : ID=${demandeur.id}, Nom='${demandeurNom}', Entreprise='${senderProfile.companyName || 'N/A'}', Rôle=${demandeur.role}`);
+    console.log(`[Pipeline Partenariat - Étape 2/7] Destinataire résolu : ID=${destinataireUser.id}, Nom='${destinataireNom}', Entreprise='${destinataireUser.companyName || 'N/A'}', Rôle=${destinataireUser.role}`);
+    console.log(`[Pipeline Partenariat - Étape 3/7] Identifiant relation généré : ${relationId}`);
 
     // Check existing connection
     const existingConn = db.getConnections().find(c => c.id === relationId);
@@ -323,7 +337,7 @@ export const connectionService = {
     const currentConns = db.getConnections();
     const filteredConns = currentConns.filter(c => c.id !== relationId);
     db.saveConnections([...filteredConns, newConnection]);
-    console.log("[ConnectionService] Local connection saved successfully to db.getConnections()");
+    console.log(`[Pipeline Partenariat - Étape 4/7] Relation locale sauvegardée (#${relationId}, statut: en_attente)`);
 
     // D. Notification locale pour le destinataire avec le vrai nom de la personne
     const newNotif: Notification = {
@@ -335,11 +349,12 @@ export const connectionService = {
       message: `${demandeurFullDisplay} (${demandeur.role}) souhaite établir un partenariat commercial avec vous.`,
       read: false,
       relatedId: relationId,
+      relationId: relationId,
       createdAt: nowIso
     };
     const currentNotifs = db.getNotifications();
     db.saveNotifications([newNotif, ...currentNotifs]);
-    console.log("[ConnectionService] Local notification saved successfully to db.getNotifications()");
+    console.log(`[Pipeline Partenariat - Étape 5/7] Notification créée pour destinataire ${destinataireUser.id} (#${newNotif.id})`);
 
     // Declencher les evenements UI pour les deux parties
     if (typeof window !== "undefined") {
@@ -350,7 +365,7 @@ export const connectionService = {
 
     // Ensure both sender and receiver profiles exist in Supabase so foreign key constraints succeed
     if (supabase) {
-      await ensureUserExistsInSupabase(demandeur);
+      await ensureUserExistsInSupabase(senderProfile);
       await ensureUserExistsInSupabase(destinataireUser);
     }
 
@@ -363,8 +378,7 @@ export const connectionService = {
         statut: "PENDING"
       };
 
-      console.log("[ConnectionService] Sending payload to Supabase 'relations' table:");
-      console.log(JSON.stringify(payloadSent, null, 2));
+      console.log(`[Pipeline Partenariat - Étape 6/7] Synchronisation Supabase 'relations' payload:`, payloadSent);
 
       try {
         const { data: relData, error: relError } = await supabase
@@ -392,7 +406,13 @@ export const connectionService = {
           title: newNotif.title,
           message: newNotif.message,
           type: "demande_connexion",
-          metadata: { related_id: relationId },
+          metadata: { 
+            related_id: relationId,
+            relation_id: relationId,
+            sender_id: demandeur.id,
+            sender_name: demandeurNom,
+            sender_role: demandeur.role
+          },
           read: false
         };
         console.log("[ConnectionService] Sending payload to Supabase 'notifications' table:", notifPayload);
@@ -441,7 +461,7 @@ export const connectionService = {
         receiverRole: destinataireUser.role,
         status: "en_attente"
       });
-      console.log(`[ConnectionService] Operation relation #${relationId} added to syncQueue`);
+      console.log(`[Pipeline Partenariat - Étape 7/7] Opération relation #${relationId} ajoutée à la file de synchronisation (SyncQueue)`);
     } catch (qErr) {
       console.warn("[ConnectionService] syncQueue enqueue notice:", qErr);
     }
@@ -913,8 +933,10 @@ export const connectionService = {
   subscribeToUserNotifications(userId: string, callback: (notifications: any[]) => void): () => void {
     if (!userId) return () => {};
 
+    console.log(`[NotificationService.subscribeToUserNotifications] Inscription aux notifications pour l'utilisateur ${userId}`);
+
     const emitNotifs = async () => {
-      const localNotifs = db.getNotifications().filter(n => n.userId === userId);
+      const localNotifs = db.getNotifications().filter(n => n.userId === userId || (n as any).user_id === userId);
       const mappedLocal = localNotifs.map(n => ({
         id: n.id,
         type: n.type || "demande_connexion",
@@ -925,7 +947,8 @@ export const connectionService = {
         read: Boolean(n.read),
         relationId: (n as any).relationId || (n as any).relatedId,
         relatedId: (n as any).relatedId || (n as any).relationId,
-        expediteurId: n.senderId,
+        expediteurId: n.senderId || (n as any).sender_id,
+        senderId: n.senderId || (n as any).sender_id,
         dateCreation: n.createdAt,
         timestamp: n.createdAt,
       }));
@@ -948,15 +971,16 @@ export const connectionService = {
               title: row.title || row.message,
               lu: Boolean(row.read),
               read: Boolean(row.read),
-              relationId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
-              relatedId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
+              relationId: row.related_id || row.relation_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
+              relatedId: row.related_id || row.relation_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
               expediteurId: row.sender_id || (row.metadata?.sender_id),
+              senderId: row.sender_id || (row.metadata?.sender_id),
               dateCreation: row.created_at || new Date().toISOString(),
               timestamp: row.created_at || new Date().toISOString(),
             }));
           }
         } catch (e) {
-          console.warn("Notice Supabase fetch notifs:", e);
+          console.warn("[NotificationService] Notice Supabase fetch notifs:", e);
         }
       }
 
@@ -966,7 +990,9 @@ export const connectionService = {
         if (!map.has(n.id)) map.set(n.id, n);
       });
 
-      callback(Array.from(map.values()));
+      const totalList = Array.from(map.values());
+      console.log(`[NotificationService.emitNotifs] Émission de ${totalList.length} notification(s) (${mappedLocal.length} locales, ${mappedSb.length} Supabase) pour l'utilisateur ${userId}`);
+      callback(totalList);
     };
 
     emitNotifs();

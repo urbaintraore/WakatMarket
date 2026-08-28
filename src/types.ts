@@ -412,10 +412,12 @@ export interface Notification {
   senderId?: string; // sender of the notification
   title: string;
   message: string;
-  type: "CONNECTION_REQUEST" | "CONNECTION_ACCEPTED" | "CONNECTION_REJECTED" | "MESSAGE" | "SYSTEM" | "demande_connexion" | "connexion_acceptee" | "connexion_refusee";
+  type: "CONNECTION_REQUEST" | "CONNECTION_ACCEPTED" | "CONNECTION_REJECTED" | "MESSAGE" | "SYSTEM" | "demande_connexion" | "connexion_acceptee" | "connexion_refusee" | string;
   read: boolean;
   createdAt: string;
   relatedId?: string; // e.g. Connection ID or Message ID
+  relationId?: string;
+  metadata?: Record<string, any>;
 }
 
 export function isConnectionActive(c: any): boolean {

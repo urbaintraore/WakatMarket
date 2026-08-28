@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2 } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2, Clock } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, OrderStatus, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
@@ -446,7 +446,12 @@ export const ClientManagement: React.FC<ClientListProps> = ({
           Relations d'Affaires B2B ({activeConnections.length})
           {pendingReceived.length > 0 && (
             <span className="ml-2 px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full animate-pulse">
-              {pendingReceived.length}
+              {pendingReceived.length} reçue{pendingReceived.length > 1 ? "s" : ""}
+            </span>
+          )}
+          {pendingSent.length > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">
+              {pendingSent.length} en attente
             </span>
           )}
         </button>
@@ -742,16 +747,20 @@ export const ClientManagement: React.FC<ClientListProps> = ({
           {/* Outgoing connection requests */}
           {pendingSent.length > 0 && (
             <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-                Demandes Envoyées ({pendingSent.length})
+              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 animate-pulse text-amber-600" />
+                Demandes Envoyées en attente ({pendingSent.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {pendingSent.map((req, idx) => (
-                  <div key={`${req.id}_${idx}`} className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-3">
+                  <div key={`${req.id}_${idx}`} className="p-4 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl flex flex-col justify-between gap-3 shadow-xs">
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.receiverName}</p>
                         <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight">{req.receiverRole}</p>
+                        {req.notes && (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 italic line-clamp-2">"{req.notes}"</p>
+                        )}
                       </div>
                       {confirmDeleteId === req.id ? (
                         <div className="flex gap-1 animate-in fade-in slide-in-from-right-2">
@@ -795,9 +804,10 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                         </button>
                       )}
                     </div>
-                    <span className="self-start text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2.5 py-1 rounded-lg">
-                      EN ATTENTE DE VALIDATION
-                    </span>
+                    <div className="flex items-center gap-1.5 self-start text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 px-2.5 py-1 rounded-lg">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block" />
+                      <span>En attente de confirmation par le destinataire</span>
+                    </div>
                   </div>
                 ))}
               </div>
