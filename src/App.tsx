@@ -2948,7 +2948,13 @@ export default function App() {
                   await supabaseLogout();
                   setFbMsg({ type: "success", text: "Déconnecté de la session." });
                   setCurrentUser(null);
+                  localStorage.removeItem("wakat_active_user_id");
                   setIsAuthScreen(true);
+                } else if (currentUser) {
+                  setCurrentUser(null);
+                  localStorage.removeItem("wakat_active_user_id");
+                  setIsAuthScreen(true);
+                  setFbMsg({ type: "success", text: "Déconnecté de la session." });
                 } else {
                   if (!isAIStudioOrDevEnvironment() && !currentUser) {
                     setIsAuthScreen(true);
@@ -3381,6 +3387,9 @@ export default function App() {
                 <button
                   onClick={async () => {
                     await supabaseLogout();
+                    setCurrentUser(null);
+                    localStorage.removeItem("wakat_active_user_id");
+                    setIsAuthScreen(true);
                     setFbMsg({ type: "success", text: "Session fermée avec succès." });
                   }}
                   className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 cursor-pointer"

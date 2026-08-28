@@ -283,6 +283,49 @@ export const connectionService = {
       senderProfile = { ...localSender, ...demandeur };
     }
 
+    if (supabase && demandeur?.id) {
+      try {
+        const { data: sData } = await supabase.from("profiles").select("*").eq("id", demandeur.id).maybeSingle();
+        if (sData) {
+          senderProfile = {
+            ...senderProfile,
+            name: [sData.nom, sData.prenom].filter(Boolean).join(" ").trim() || senderProfile.name || "Utilisateur",
+            companyName: sData.company_name || sData.nom || senderProfile.companyName,
+            role: (sData.role || senderProfile.role || UserRole.SEMI_WHOLESALER) as UserRole,
+            email: sData.email || senderProfile.email,
+            phone: sData.telephone || senderProfile.phone
+          };
+        }
+      } catch (err) {
+        console.warn("[ConnectionService] Error fetching sender profile from Supabase:", err);
+      }
+    }
+
+    // Save newly discovered profiles locally to prevent fictitious display before acceptance
+    const currentUsers = db.getUsers();
+    let usersUpdated = false;
+    const updatedUsers = [...currentUsers];
+    
+    if (!updatedUsers.some(u => u.id === senderProfile.id)) {
+      updatedUsers.push(senderProfile);
+      usersUpdated = true;
+    } else {
+      const idx = updatedUsers.findIndex(u => u.id === senderProfile.id);
+      if (idx >= 0) {
+        updatedUsers[idx] = { ...updatedUsers[idx], ...senderProfile };
+        usersUpdated = true;
+      }
+    }
+    
+    if (!updatedUsers.some(u => u.id === destinataireUser.id)) {
+      updatedUsers.push(destinataireUser as any);
+      usersUpdated = true;
+    }
+    
+    if (usersUpdated) {
+      db.saveUsers(updatedUsers);
+    }
+
     const demandeurNom = (senderProfile.name && senderProfile.name !== "Utilisateur" && senderProfile.name !== "Partenaire")
       ? senderProfile.name
       : (senderProfile.companyName || senderProfile.email || "Utilisateur");
@@ -685,27 +728,80 @@ export const connectionService = {
     const currentConns = db.getConnections();
     let conn = currentConns.find(c => c.id === connectionId);
 
-    // If connection was not in local cache, try fetching from Supabase
-    if (!conn && supabase) {
+    // Ensure we have the most up to date relation info and user profiles
+    if (supabase) {
       try {
-        console.log(`[ConnectionService.acceptConnection] 🔍 Querying Supabase 'relations' table for missing connection id=${connectionId}...`);
+        console.log(`[ConnectionService.acceptConnection] 🔍 Querying Supabase 'relations' table for connection id=${connectionId}...`);
         const { data } = await supabase.from("relations").select("*").eq("id", connectionId).maybeSingle();
-        if (data) {
-          console.log(`[ConnectionService.acceptConnection] ✅ Found relation in Supabase: grossiste_id=${data.grossiste_id}, client_id=${data.client_id}`);
+        
+        let grossiste_id = data?.grossiste_id || conn?.senderId;
+        let client_id = data?.client_id || conn?.receiverId;
+
+        if (grossiste_id && client_id) {
           const allUsers = db.getUsers();
-          const senderUser = allUsers.find(u => u.id === data.grossiste_id);
-          const receiverUser = allUsers.find(u => u.id === data.client_id);
+          let senderUser = allUsers.find(u => u.id === grossiste_id);
+          let receiverUser = allUsers.find(u => u.id === client_id);
+          
+          let newlyFetchedUsers: any[] = [];
+          
+          // Fetch missing sender profile from Supabase
+          if (!senderUser && grossiste_id) {
+            const { data: sData } = await supabase.from("profiles").select("*").eq("id", grossiste_id).maybeSingle();
+            if (sData) {
+              senderUser = { 
+                id: sData.id, 
+                name: [sData.nom, sData.prenom].filter(Boolean).join(" ").trim() || "Utilisateur", 
+                companyName: sData.company_name || sData.nom || "Entreprise", 
+                role: sData.role || UserRole.SEMI_WHOLESALER, 
+                email: sData.email, 
+                phone: sData.telephone 
+              } as any;
+              newlyFetchedUsers.push(senderUser);
+            }
+          }
+          
+          // Fetch missing receiver profile from Supabase
+          if (!receiverUser && client_id) {
+            const { data: rData } = await supabase.from("profiles").select("*").eq("id", client_id).maybeSingle();
+            if (rData) {
+              receiverUser = { 
+                id: rData.id, 
+                name: [rData.nom, rData.prenom].filter(Boolean).join(" ").trim() || "Utilisateur", 
+                companyName: rData.company_name || rData.nom || "Entreprise", 
+                role: rData.role || UserRole.RETAILER, 
+                email: rData.email, 
+                phone: rData.telephone 
+              } as any;
+              newlyFetchedUsers.push(receiverUser);
+            }
+          }
+          
+          if (newlyFetchedUsers.length > 0) {
+             const updatedUsersList = [...allUsers];
+             newlyFetchedUsers.forEach(nu => {
+               if (!updatedUsersList.some(u => u.id === nu.id)) {
+                 updatedUsersList.push(nu);
+               }
+             });
+             db.saveUsers(updatedUsersList);
+             console.log(`[ConnectionService.acceptConnection] ⬇️ Fetched and saved ${newlyFetchedUsers.length} missing profiles to local db.`);
+          }
+
+          // Build or overwrite the connection with the resolved real names
+          const finalSenderName = senderUser?.name && senderUser.name !== "Utilisateur" ? senderUser.name : (senderUser?.companyName || "Demandeur B2B");
+          const finalReceiverName = receiverUser?.name && receiverUser.name !== "Utilisateur" ? receiverUser.name : (receiverUser?.companyName || "Partenaire B2B");
+
           conn = {
-            id: data.id,
-            senderId: data.grossiste_id,
-            receiverId: data.client_id,
+            id: data?.id || connectionId,
+            senderId: grossiste_id,
+            receiverId: client_id,
             status: "active",
-            senderName: senderUser?.name || senderUser?.companyName || "Demandeur B2B",
+            senderName: finalSenderName,
             senderRole: senderUser?.role || UserRole.WHOLESALER,
-            receiverName: receiverUser?.name || receiverUser?.companyName || "Partenaire B2B",
+            receiverName: finalReceiverName,
             receiverRole: receiverUser?.role || UserRole.RETAILER,
-            notes: data.notes || "",
-            createdAt: data.created_at || new Date().toISOString(),
+            notes: data?.notes || conn?.notes || "",
+            createdAt: data?.created_at || conn?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
         }

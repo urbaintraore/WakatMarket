@@ -408,7 +408,10 @@ class ERPStorage {
   }
 
   saveUsers(users: UserProfile[]): void {
-    this.set("wakat_offline_users_cache", users);
+    this.set("wakat_erp_v2_users", users);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_users_updated", { detail: users }));
+    }
   }
 
   getProducts(): Product[] {
