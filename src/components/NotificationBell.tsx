@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Bell, Check, Users, CheckCircle2, XCircle, Info, Smartphone, FileText, AlertTriangle } from "lucide-react";
 import { connectionService } from "../services/connectionService";
 import { PartnerNotificationItem } from "../types";
+import { db } from "../data";
 
 interface NotificationBellProps {
   currentUserId: string;
@@ -125,6 +126,47 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       <p className={`text-xs ${!n.lu ? "font-semibold text-slate-900" : "text-slate-700"}`}>
                         {n.contenu}
                       </p>
+
+                      {/* Accept/Refuse Actions inside the Notification dropdown */}
+                      {n.type === "demande_connexion" && n.relationId && (() => {
+                        const relatedConn = db.getConnections().find(c => c.id === n.relationId);
+                        const isPending = relatedConn && (relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente");
+                        if (!isPending) return null;
+                        
+                        return (
+                          <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await connectionService.acceptConnection(n.relationId!);
+                                  await connectionService.markNotificationAsRead(currentUserId, n.id);
+                                } catch (err) {
+                                  console.error("Error accepting from notification:", err);
+                                }
+                              }}
+                              className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                            >
+                              <Check className="w-3 h-3" /> Accepter
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  await connectionService.rejectConnection(n.relationId!);
+                                  await connectionService.markNotificationAsRead(currentUserId, n.id);
+                                } catch (err) {
+                                  console.error("Error rejecting from notification:", err);
+                                }
+                              }}
+                              className="py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-bold transition flex items-center justify-center border border-slate-200 cursor-pointer"
+                            >
+                              Refuser
+                            </button>
+                          </div>
+                        );
+                      })()}
+
                       <p className="text-[10px] text-slate-400 mt-1">
                         {n.dateCreation
                           ? typeof n.dateCreation === "string"

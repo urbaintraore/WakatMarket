@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
 import { connectionService } from '../../services/connectionService';
-import { Conversation, UserProfile, Connection } from '../../types';
+import { Conversation, UserProfile, Connection, isConnectionActive } from '../../types';
 import { db } from '../../data';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatWindow } from './ChatWindow';
@@ -50,7 +50,14 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
 
   const getAllowedChatPartners = () => {
     if (!currentUser) return [];
-    return users.filter(u => u.id !== currentUser.id);
+    return users.filter(u => {
+      if (u.id === currentUser.id) return false;
+      const conn = connections.find(c => 
+        (c.senderId === currentUser.id && c.receiverId === u.id) ||
+        (c.senderId === u.id && c.receiverId === currentUser.id)
+      );
+      return !!conn && isConnectionActive(conn);
+    });
   };
 
   const allowedPartners = getAllowedChatPartners();

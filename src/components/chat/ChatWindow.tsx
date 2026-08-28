@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Info, Phone, Video, Mic, MicOff, Volume2, VolumeX, PhoneOff, Globe, Smartphone, AlertCircle } from 'lucide-react';
-import { Conversation, ChatMessage, UserProfile, MessageType } from '../../types';
+import { Conversation, ChatMessage, UserProfile, MessageType, isConnectionActive } from '../../types';
 import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
+import { connectionService } from '../../services/connectionService';
 import { db } from '../../data';
 import { ChatInput } from './ChatInput';
 import { MessageBubble } from './MessageBubble';
@@ -50,6 +51,29 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isPartnerActive, setIsPartnerActive] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!currentUser || conversation.type === "GROUP") {
+      setIsPartnerActive(true);
+      return;
+    }
+    const otherUserId = conversation.participants.find(p => p !== currentUser.id);
+    if (!otherUserId) {
+      setIsPartnerActive(true);
+      return;
+    }
+
+    const unsubscribe = connectionService.subscribeToUserConnections(currentUser.id, (conns) => {
+      const conn = conns.find(c => 
+        (c.senderId === currentUser.id && c.receiverId === otherUserId) ||
+        (c.senderId === otherUserId && c.receiverId === currentUser.id)
+      );
+      setIsPartnerActive(!!conn && isConnectionActive(conn));
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.id, conversation.id, conversation.participants]);
 
   // Voice Call States
   const [isCallingModalOpen, setIsCallingModalOpen] = useState(false);
@@ -203,6 +227,10 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
     transcription?: string
   ) => {
     if (!currentUser) return;
+    if (!isPartnerActive) {
+      alert("Envoi impossible : Vous devez être partenaires actifs pour vous envoyer des messages.");
+      return;
+    }
     
     console.log("=================================================================");
     console.log(`[ChatWindow] >>> TRANSMITTING MESSAGE ATTEMPT INITIATED`);
@@ -362,7 +390,21 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
 
       {/* Input */}
       <div className="shrink-0 relative z-10">
-        <ChatInput onSendMessage={handleSendMessage} disabled={!currentUser} />
+        {isPartnerActive ? (
+          <ChatInput onSendMessage={handleSendMessage} disabled={!currentUser} />
+        ) : (
+          <div className="p-4 bg-amber-50 dark:bg-zinc-900 border-t border-amber-200 dark:border-zinc-800 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-400">
+                Discussion bloquée : Partenariat non actif
+              </p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-0.5">
+                Vous devez être partenaires actifs pour vous envoyer des messages. Envoyez une demande de partenariat ou acceptez la demande reçue pour déverrouiller la discussion.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Voice Call Overlay Modal */}
