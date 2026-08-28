@@ -422,7 +422,7 @@ export const connectionService = {
 
     // E. Synchronisation Supabase avec logs ultra détaillés du payload et codes d'erreur
     if (supabase) {
-      const payloadSent = {
+      const payloadSent: Record<string, any> = {
         id: relationId,
         grossiste_id: demandeur.id,
         client_id: destinataireUser.id,
@@ -836,8 +836,8 @@ export const connectionService = {
         id: `notif-accept-sender-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
         userId: conn.senderId,
         type: "connexion_acceptee" as any,
-        title: "Partenariat d'affaires établi & actif",
-        message: `${receiverName} a validé votre demande de partenariat commercial. Votre relation d'affaires est désormais active : vous pouvez échanger des propositions commerciales, partager vos stocks et passer des commandes dès maintenant.`,
+        title: "Demande de partenariat acceptée",
+        message: `Votre demande de partenariat a été acceptée par ${receiverName}. Votre relation d'affaires est désormais active : vous pouvez échanger des propositions commerciales, partager vos stocks et passer des commandes dès maintenant.`,
         read: false,
         relatedId: connectionId,
         relationId: connectionId,

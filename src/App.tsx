@@ -260,6 +260,7 @@ export default function App() {
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>(() => db.getRecommendations());
   const [platformStats, setPlatformStats] = useState(() => db.getPlatformStats());
   const [lightClients, setLightClients] = useState<LightClient[]>(() => db.getLightClients());
+  const [connections, setConnections] = useState<Connection[]>(() => db.getConnections());
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => db.getStockMovements());
   const [payments, setPayments] = useState<DebtPayment[]>(() => db.getPayments());
   const [syncQueue, setSyncQueue] = useState<any[]>(() => db.getSyncQueue());
@@ -841,6 +842,18 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       console.log(`[App] Subscribing to notifications and connections for ${currentUser.id}`);
+      
+      const handleConnectionsUpdatedCustom = async () => {
+        setConnections(db.getConnections());
+        const unsub = connectionService.subscribeToUserConnections(currentUser.id, (freshConns) => {
+             setConnections(freshConns);
+        });
+        setTimeout(() => {
+             unsub();
+        }, 5000);
+      };
+      window.addEventListener("wakat_connections_updated", handleConnectionsUpdatedCustom);
+      
       const unsubNotifs = connectionService.subscribeToUserNotifications(currentUser.id, (notifs) => {
         // Find truly NEW unread notifications that we haven't toasted yet
         const newUnread = notifs.filter(n => !n.read && !knownNotificationIds.current.has(n.id));
@@ -860,6 +873,7 @@ export default function App() {
 
       return () => {
         unsubNotifs();
+        window.removeEventListener("wakat_connections_updated", handleConnectionsUpdatedCustom);
       };
     }
   }, [currentUser?.id]);
@@ -2436,18 +2450,25 @@ export default function App() {
         const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
         if (isMine) return true;
         
-        // Include products from partners we are linked in lightClients
+        // Include products from partners we are linked in lightClients or connections
+        const activeConnections = connections.filter(c => c.status === "active");
+        
         const isPartnerInventory = inventory.some(i => i.productId === p.id && (
-          lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId)
+          lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId) ||
+          activeConnections.some(c => (c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.receiverId === currentUser.id && c.senderId === i.ownerId))
         ));
 
         // Also allow products from Wholesalers/Semi-Wholesalers so Retailers can browse and order
         const isWholesalerProd = inventory.some(i => i.productId === p.id && users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER))) ||
           users.some(u => u.id === p.creatorId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
-
-        return isPartnerInventory || isWholesalerProd;
+          
+        const isVisible = isPartnerInventory || isWholesalerProd;
+        if (isVisible) {
+           console.log(`[displayProducts Debug] Product ${p.name} is visible. isPartnerInventory: ${isPartnerInventory}, activeConnectionsCount: ${activeConnections.length}`);
+        }
+        return isVisible;
       })
-    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, lightClients, users]);
+    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, lightClients, users, connections]);
 
   const displayInventory = useMemo(() => {
     return deduplicate(isRealUserAuthenticated
@@ -2455,18 +2476,24 @@ export default function App() {
           if (!currentUser) return false;
           if (i.ownerId === currentUser.id) return true;
           
-          // Include inventory from partners linked in lightClients
+          const activeConnections = connections.filter(c => c.status === "active");
+
+          // Include inventory from partners linked in lightClients or active connections
           const isLightClientPartner = lightClients.some(lc => 
             lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId
-          );
+          ) || activeConnections.some(c => (c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.receiverId === currentUser.id && c.senderId === i.ownerId));
 
           // Include inventory from Wholesalers/Semi-Wholesalers for Retailer replenishment
           const isWholesalerOwner = users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
-
-          return isLightClientPartner || isWholesalerOwner;
+          
+          const isVisible = isLightClientPartner || isWholesalerOwner;
+          if (isVisible) {
+            console.log(`[displayInventory Debug] Inventory for product ${i.productId} (owner ${i.ownerId}) is visible. isLightClientPartner: ${isLightClientPartner}, activeConnectionsCount: ${activeConnections.length}`);
+          }
+          return isVisible;
         })
       : inventory) as InventoryItem[];
-  }, [isRealUserAuthenticated, inventory, currentUser, lightClients, users]);
+  }, [isRealUserAuthenticated, inventory, currentUser, lightClients, users, connections]);
 
   const displayOrders = useMemo(() => deduplicate(isRealUserAuthenticated
     ? orders.filter(o => o.senderId === currentUser?.id || o.receiverId === currentUser?.id)
@@ -3559,7 +3586,7 @@ export default function App() {
                 <B2BProductComparator
                   products={displayProducts}
                   users={countryFilteredUsers}
-                  connections={db.getConnections()}
+                  connections={connections}
                   currentUser={currentUser}
                   onClose={() => setShowComparator(false)}
                   onSelectProductToOrder={(product) => {

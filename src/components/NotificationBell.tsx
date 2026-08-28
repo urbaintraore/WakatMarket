@@ -209,7 +209,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
                         {/* Accept/Refuse Actions inside the Notification dropdown */}
                         {(() => {
-                          if (!isPartnerReq) return null;
+                          if (!isPartnerReq || n.type === "connexion_acceptee") return null;
 
                           const relId = n.relationId || n.relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id || (n as any).metadata?.relationId;
                           const senderId = n.senderId || (n as any).expediteurId || (n as any).metadata?.sender_id;
