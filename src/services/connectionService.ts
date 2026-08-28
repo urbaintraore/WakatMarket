@@ -1118,11 +1118,25 @@ export const connectionService = {
         if (!map.has(c.id)) {
           map.set(c.id, c);
         } else {
-          // If local connection exists, enrich with real names if local was placeholder
           const existing = map.get(c.id)!;
-          if ((!existing.senderName || existing.senderName === "Grossiste/Partenaire") && c.senderName) {
-            map.set(c.id, { ...existing, senderName: c.senderName, receiverName: c.receiverName || existing.receiverName });
+          // Bulletproof status merge: once active or refusée, never downgrade back to pending
+          let resolvedStatus = existing.status;
+          if (existing.status === "active" || c.status === "active") {
+            resolvedStatus = "active";
+          } else if (existing.status === "refusée" || c.status === "refusée") {
+            resolvedStatus = "refusée";
           }
+
+          map.set(c.id, {
+            ...existing,
+            status: resolvedStatus,
+            senderName: c.senderName && c.senderName !== "Utilisateur" && c.senderName !== "Partenaire B2B" ? c.senderName : existing.senderName,
+            receiverName: c.receiverName && c.receiverName !== "Utilisateur" && c.receiverName !== "Partenaire B2B" ? c.receiverName : existing.receiverName,
+            senderRole: c.senderRole || existing.senderRole,
+            receiverRole: c.receiverRole || existing.receiverRole,
+            notes: c.notes || existing.notes,
+            updatedAt: c.updatedAt || existing.updatedAt
+          });
         }
       });
 
