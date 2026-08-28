@@ -1415,16 +1415,45 @@ export default function App() {
       clientRole = UserRole.CLIENT;
     }
 
+    const trimmed = identifier.trim().toLowerCase();
+    const cleanPhone = trimmed.replace(/[\s\-\+]/g, "");
+    
+    // Rechercher l'utilisateur dans la base globale/locale
+    const allUsers = [...db.getUsers(), ...countryFilteredUsers];
+    const existingUser = allUsers.find(u => 
+      u && u.id && (
+        u.id === identifier || 
+        (u.email && u.email.toLowerCase() === trimmed) || 
+        (u.phone && u.phone.toLowerCase().replace(/[\s\-\+]/g, "") === cleanPhone)
+      )
+    );
+
+    if (existingUser) {
+      // 1. Vérification stricte du profil / rôle
+      if (clientRole && existingUser.role !== clientRole) {
+        const errorMsg = `Erreur de profil : L'utilisateur "${existingUser.name}" possède le rôle "${existingUser.role}", qui ne correspond pas au profil sélectionné "${clientRole}". Veuillez adapter le profil ou choisir le bon utilisateur.`;
+        addNotification(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // 2. Si enregistrement partenaire, envoyer la demande de connexion
+      if (isPartnerRegistration) {
+        connectionService.sendConnectionRequest(currentUser, existingUser, notes);
+        addNotification(`Demande de partenariat envoyée avec succès à ${existingUser.name} (${existingUser.role}).`);
+        return;
+      }
+    }
+
     if (!isPartnerRegistration) {
       // Direct local creation (Client local / hors-ligne)
       const newLc: LightClient = {
         id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         ownerId: currentUser.id,
-        name: notes || identifier,
-        phone: identifier.includes("@") ? "" : identifier,
-        email: identifier.includes("@") ? identifier : "",
+        name: (existingUser ? existingUser.name : notes) || identifier,
+        phone: existingUser?.phone || (identifier.includes("@") ? "" : identifier),
+        email: existingUser?.email || (identifier.includes("@") ? identifier : ""),
         notes: `Abonné local [${clientRole}]`,
-        linkedUserId: undefined,
+        linkedUserId: existingUser?.id,
         createdAt: new Date().toISOString()
       };
       const updated = [newLc, ...lightClients];
@@ -1433,20 +1462,20 @@ export default function App() {
       return undefined as any;
     }
 
-    // "Système de mise en relation désactivé"
+    // Partenaire local (si aucun compte utilisateur sur la plateforme)
     const newLc: LightClient = {
       id: `lc-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       ownerId: currentUser.id,
       name: notes || identifier,
       phone: identifier.includes("@") ? "" : identifier,
       email: identifier.includes("@") ? identifier : "",
-      notes: notes || "Partenaire local",
+      notes: notes || `Partenaire local [${clientRole}]`,
       linkedUserId: undefined,
       createdAt: new Date().toISOString()
     };
     const updated = [newLc, ...lightClients];
     syncLightClients(updated);
-    addNotification(`Partenaire "${newLc.name}" ajouté localement.`);
+    addNotification(`Partenaire local "${newLc.name}" ajouté avec succès.`);
   };
 
   const onDeleteLightClient = (clientId: string) => {
@@ -3481,15 +3510,25 @@ export default function App() {
                 <B2BProductComparator
                   products={displayProducts}
                   users={countryFilteredUsers}
+                  connections={db.getConnections()}
                   currentUser={currentUser}
                   onClose={() => setShowComparator(false)}
                   onSelectProductToOrder={(product) => {
                     setShowComparator(false);
-                    addNotification(`Produit "${product.name}" sélectionné pour commande.`);
+                    handleSelectProduct(product);
+                    addNotification(`Produit "${product.name}" sélectionné.`);
                   }}
                   onContactSupplier={(supplierId) => {
                     setShowComparator(false);
                     setShowChat(true);
+                  }}
+                  onRequestConnection={async (targetUserId) => {
+                    try {
+                      await connectionService.sendConnectionRequest(currentUser, targetUserId);
+                      addNotification("Demande de connexion envoyée au fournisseur.");
+                    } catch (err: any) {
+                      addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
+                    }
                   }}
                 />
               )}

@@ -99,10 +99,20 @@ export function MyBuyersModule({
     });
   }, [addIdentifier, users]);
 
+  const isRoleMismatch = useMemo(() => {
+    if (!foundUser || !addRole) return false;
+    return foundUser.role !== addRole;
+  }, [foundUser, addRole]);
+
   const handleAddNewBuyerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!addIdentifier.trim()) {
       alert("Veuillez saisir un numéro de téléphone ou un e-mail.");
+      return;
+    }
+
+    if (isRoleMismatch && foundUser) {
+      alert(`Erreur de profil : L'utilisateur "${foundUser.name}" possède le rôle "${foundUser.role}", qui ne correspond pas au rôle sélectionné "${addRole}". Veuillez ajuster le rôle.`);
       return;
     }
 
@@ -117,9 +127,9 @@ export function MyBuyersModule({
       setAddNotes("");
       setAddIsPartner(false);
       setShowAddForm(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating light client:", err);
-      alert("Erreur lors de la création de l'acheteur.");
+      alert(err.message || "Erreur lors de la création de l'acheteur.");
     }
   };
 
@@ -628,20 +638,37 @@ export function MyBuyersModule({
               {addIdentifier.trim() && (
                 <div className="p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-800 text-xs">
                   {foundUser ? (
-                    <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-800 dark:text-emerald-400 flex items-start gap-3 p-1 rounded-lg">
-                      <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center font-bold text-emerald-600 dark:text-emerald-400 text-xs shrink-0">
-                        ✓
+                    isRoleMismatch ? (
+                      <div className="bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 text-rose-800 dark:text-rose-300 flex items-start gap-3 p-2 rounded-lg">
+                        <div className="w-6 h-6 rounded-lg bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center font-bold text-rose-600 dark:text-rose-400 text-xs shrink-0">
+                          ⚠️
+                        </div>
+                        <div>
+                          <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Erreur de profil / Rôle non correspondant</p>
+                          <p className="font-semibold text-[11px] mt-0.5">
+                            L'utilisateur <strong>{foundUser.name}</strong> a le rôle <strong>{foundUser.role}</strong>, qui ne correspond pas au rôle choisi (<strong>{addRole}</strong>).
+                          </p>
+                          <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 font-bold">
+                            Veuillez sélectionner le rôle "{foundUser.role}" ci-dessous dans la liste déroulante pour pouvoir enregistrer ce partenaire.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Partenaire Certifié Wakat ERP Trouvé !</p>
-                        <p className="font-semibold text-[11px] mt-0.5">
-                          <strong>{foundUser.name}</strong> ({foundUser.companyName || "Sans entreprise"}) • Rôle : {foundUser.role}
-                        </p>
-                        <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-1 font-bold">
-                          L'acheteur sera automatiquement connecté et lié à votre portefeuille de crédit.
-                        </p>
+                    ) : (
+                      <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-800 dark:text-emerald-400 flex items-start gap-3 p-1 rounded-lg">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center font-bold text-emerald-600 dark:text-emerald-400 text-xs shrink-0">
+                          ✓
+                        </div>
+                        <div>
+                          <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Partenaire Certifié Wakat ERP Trouvé !</p>
+                          <p className="font-semibold text-[11px] mt-0.5">
+                            <strong>{foundUser.name}</strong> ({foundUser.companyName || "Sans entreprise"}) • Rôle : {foundUser.role}
+                          </p>
+                          <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-1 font-bold">
+                            L'acheteur sera automatiquement connecté et lié à votre portefeuille de crédit.
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )
                   ) : (
                     <div className="bg-amber-50/60 dark:bg-amber-950/10 border-amber-100 dark:border-amber-900/20 text-amber-800 dark:text-amber-400 flex items-start gap-3 p-1 rounded-lg">
                       <div className="w-6 h-6 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center font-bold text-amber-600 dark:text-amber-400 text-xs shrink-0">

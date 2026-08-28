@@ -91,11 +91,43 @@ function saveDeletedPartnerPair(id1: string, id2: string) {
   } catch (e) {}
 }
 
+function removeDeletedConnectionId(id: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const set = getDeletedConnectionIds();
+    if (set.has(id)) {
+      set.delete(id);
+      localStorage.setItem("wakat_deleted_connection_ids", JSON.stringify(Array.from(set)));
+    }
+  } catch (e) {}
+}
+
+function removeDeletedPartnerPair(id1: string, id2: string) {
+  try {
+    if (typeof window === "undefined") return;
+    const set = getDeletedPartnerPairs();
+    let changed = false;
+    if (set.has(`${id1}:${id2}`)) {
+      set.delete(`${id1}:${id2}`);
+      changed = true;
+    }
+    if (set.has(`${id2}:${id1}`)) {
+      set.delete(`${id2}:${id1}`);
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem("wakat_deleted_partner_pairs", JSON.stringify(Array.from(set)));
+    }
+  } catch (e) {}
+}
+
 export const connectionService = {
   getDeletedConnectionIds,
   saveDeletedConnectionId,
+  removeDeletedConnectionId,
   getDeletedPartnerPairs,
   saveDeletedPartnerPair,
+  removeDeletedPartnerPair,
 
   /**
    * Envoyer une demande de connexion de partenariat B2B avec logs détaillés
@@ -215,9 +247,24 @@ export const connectionService = {
     const demandeurNom = demandeur.companyName || demandeur.name;
     const destinataireNom = destinataireUser.companyName || destinataireUser.name || "Partenaire";
 
+    // Re-enable if was previously deleted
+    removeDeletedConnectionId(relationId);
+    removeDeletedPartnerPair(demandeur.id, destinataireUser.id);
+
     console.log("[ConnectionService] Generated Relation ID:", relationId);
     console.log("[ConnectionService] Grossiste/Demandeur ID:", demandeur.id, "Nom:", demandeurNom);
     console.log("[ConnectionService] Client/Destinataire ID:", destinataireUser.id, "Nom:", destinataireNom);
+
+    // Check existing connection
+    const existingConn = db.getConnections().find(c => c.id === relationId);
+    if (existingConn && (existingConn.status === "active" || (existingConn.status as string) === "actif")) {
+      return {
+        success: true,
+        relationId,
+        destinataireNom,
+        message: `Vous êtes déjà connecté en tant que partenaire avec ${destinataireNom}.`
+      };
+    }
 
     // C. Mettre à jour la base locale
     const nowIso = new Date().toISOString();
@@ -231,7 +278,7 @@ export const connectionService = {
       receiverName: destinataireNom,
       receiverRole: destinataireUser.role,
       notes,
-      createdAt: nowIso,
+      createdAt: existingConn ? existingConn.createdAt : nowIso,
       updatedAt: nowIso
     };
 
@@ -358,23 +405,27 @@ export const connectionService = {
 
   async createConnectionRequest(
     sender: UserProfile,
-    receiver: UserProfile,
+    receiver: UserProfile | string,
     notes?: string,
     initialStatus: Connection["status"] = "en_attente"
   ): Promise<Connection> {
-    console.log("[ConnectionService.createConnectionRequest] Called with sender:", sender.id, "receiver:", receiver.id);
+    console.log("[ConnectionService.createConnectionRequest] Called with sender:", sender?.id, "receiver:", typeof receiver === "object" ? receiver.id : receiver);
     await this.envoyerDemandeConnexion(sender, receiver, notes || "");
-    const connectionId = [sender.id, receiver.id].sort().join("_");
+    const receiverId = typeof receiver === "object" ? receiver.id : receiver;
+    const connectionId = [sender.id, receiverId].sort().join("_");
     const existing = db.getConnections().find(c => c.id === connectionId);
-    return existing || {
+    if (existing) return existing;
+
+    const receiverUser = typeof receiver === "object" ? receiver : db.getUsers().find(u => u.id === receiverId);
+    return {
       id: connectionId,
       senderId: sender.id,
-      receiverId: receiver.id,
+      receiverId: receiverId,
       status: initialStatus,
       senderName: sender.companyName || sender.name,
       senderRole: sender.role,
-      receiverName: receiver.companyName || receiver.name,
-      receiverRole: receiver.role,
+      receiverName: receiverUser?.companyName || receiverUser?.name || "Partenaire",
+      receiverRole: receiverUser?.role || UserRole.RETAILER,
       notes,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -383,7 +434,7 @@ export const connectionService = {
 
   async sendConnectionRequest(
     sender: UserProfile,
-    receiver: UserProfile,
+    receiver: UserProfile | string,
     notes?: string,
     initialStatus: Connection["status"] = "en_attente"
   ): Promise<Connection> {
@@ -495,13 +546,48 @@ export const connectionService = {
     const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "active" as const, updatedAt: new Date().toISOString() } : c);
     db.saveConnections(updated);
 
+    removeDeletedConnectionId(connectionId);
+    const conn = updated.find(c => c.id === connectionId);
+    if (conn) {
+      removeDeletedPartnerPair(conn.senderId, conn.receiverId);
+
+      // Notification pour le demandeur
+      const receiverName = conn.receiverName || "Votre partenaire";
+      const acceptNotif: Notification = {
+        id: `notif-accept-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        userId: conn.senderId,
+        type: "connexion_acceptee" as any,
+        title: "Partenariat B2B accepté",
+        message: `${receiverName} a accepté votre demande de partenariat. Vous pouvez désormais collaborer et échanger.`,
+        read: false,
+        relatedId: connectionId,
+        createdAt: new Date().toISOString()
+      };
+      const currentNotifs = db.getNotifications();
+      db.saveNotifications([acceptNotif, ...currentNotifs]);
+
+      if (supabase) {
+        try {
+          await supabase.from("notifications").insert({
+            id: acceptNotif.id,
+            user_id: conn.senderId,
+            title: acceptNotif.title,
+            message: acceptNotif.message,
+            type: "connexion_acceptee",
+            metadata: { related_id: connectionId },
+            read: false
+          });
+        } catch (e) {
+          console.warn("Notice Supabase accept notif:", e);
+        }
+      }
+    }
+
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
       window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
       window.dispatchEvent(new CustomEvent("wakat_users_updated"));
     }
-
-    const conn = updated.find(c => c.id === connectionId);
 
     if (supabase) {
       try {

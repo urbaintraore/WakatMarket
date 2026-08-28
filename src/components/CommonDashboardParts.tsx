@@ -257,6 +257,12 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
   const [selectedTargetUser, setSelectedTargetUser] = React.useState<UserProfile | null>(null);
   const [notesInput, setNotesInput] = React.useState("");
   
+  React.useEffect(() => {
+    if (allowedRoles.length > 0 && !allowedRoles.some(r => r.role === selectedRole)) {
+      setSelectedRole(allowedRoles[0].role);
+    }
+  }, [allowedRoles, selectedRole]);
+
   const [paymentAmount, setPaymentAmount] = React.useState<string>("");
   const [showPaymentForm, setShowPaymentForm] = React.useState(false);
   
@@ -270,31 +276,49 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
   }, [users]);
 
   const filteredUsers = React.useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
     return allKnownUsers.filter(u => {
-      const q = searchQuery.trim().toLowerCase();
+      // 1. Exclure l'utilisateur connecté lui-même
+      if (currentUser?.id && u.id === currentUser.id) return false;
+
+      // 2. Exiger le rôle/profil sélectionné (ne jamais contourner cette règle)
+      if (selectedRole && u.role !== selectedRole) return false;
+
+      // 3. Filtrer par terme de recherche
       const cleanQ = q.replace(/[\s\-\+]/g, '');
       const uPhone = (u.phone || (u as any).téléphone || "").toLowerCase().replace(/[\s\-\+]/g, '');
       const uEmail = (u.email || "").toLowerCase();
       const uName = (u.name || "").toLowerCase();
-
-      if (q) {
-        const matchesQuery = 
-          (uPhone && (uPhone.includes(cleanQ) || cleanQ.includes(uPhone))) ||
-          (uEmail && uEmail.includes(q)) ||
-          (uName && uName.includes(q));
-        if (matchesQuery) return true;
-      }
-
-      if (u.role !== selectedRole) return false;
-      if (!q) return true;
+      const uCompany = (u.companyName || "").toLowerCase();
 
       return (
         (uPhone && (uPhone.includes(cleanQ) || cleanQ.includes(uPhone))) ||
         (uEmail && uEmail.includes(q)) ||
-        (uName && uName.includes(q))
+        (uName && uName.includes(q)) ||
+        (uCompany && uCompany.includes(q))
       );
     });
-  }, [allKnownUsers, selectedRole, searchQuery]);
+  }, [allKnownUsers, selectedRole, searchQuery, currentUser?.id]);
+
+  const mismatchedUser = React.useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    const q = searchQuery.trim().toLowerCase();
+    const cleanQ = q.replace(/[\s\-\+]/g, '');
+    return allKnownUsers.find(u => {
+      if (currentUser?.id && u.id === currentUser.id) return false;
+      if (u.role === selectedRole) return false;
+      const uPhone = (u.phone || (u as any).téléphone || "").toLowerCase().replace(/[\s\-\+]/g, '');
+      const uEmail = (u.email || "").toLowerCase();
+      const uName = (u.name || "").toLowerCase();
+      return (
+        (uPhone && (uPhone === cleanQ || uPhone.includes(cleanQ))) ||
+        (uEmail && uEmail === q) ||
+        (uName && uName === q)
+      );
+    });
+  }, [allKnownUsers, selectedRole, searchQuery, currentUser?.id]);
 
   const calculateDebt = (clientId: string) => {
     const clientOrders = orders.filter(o => o.clientId === clientId);
@@ -464,6 +488,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
                   onClick={() => {
                     setSelectedRole(r.role);
                     setSelectedTargetUser(null);
+                    setSearchQuery("");
                   }}
                   className={`px-3 py-2 rounded-xl text-xs font-bold border transition ${
                     selectedRole === r.role
@@ -495,51 +520,68 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
           </div>
 
           {/* 3. Résultats de recherche */}
-          {searchQuery.trim() && (
-            <div className="space-y-2">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
               <label className="text-[10px] font-bold uppercase text-zinc-500">
-                Résultats trouvés ({filteredUsers.length})
+                3. Utilisateurs ({allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}) disponibles : {filteredUsers.length}
               </label>
-              
-              {filteredUsers.length === 0 ? (
-                <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs">
-                  Aucun utilisateur trouvé avec le rôle "{selectedRole}" correspondant à "{searchQuery}".
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {filteredUsers.map((u, idx) => {
-                    const isSelected = selectedTargetUser?.id === u.id;
-                    return (
-                      <div 
-                        key={`${u.id}_${idx}`}
-                        onClick={() => setSelectedTargetUser(u)}
-                        className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition ${
-                          isSelected 
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/20' 
-                            : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <img src={u.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"} alt={u.name} className="w-10 h-10 rounded-full object-cover" />
-                          <div>
-                            <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{u.name}</p>
-                            <p className="text-[10px] text-zinc-500">{u.phone} • {u.email} • <span className="font-semibold text-emerald-600">{u.role}</span></p>
-                          </div>
-                        </div>
+            </div>
+            
+            {mismatchedUser && (
+              <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs space-y-1">
+                <p className="font-extrabold flex items-center gap-1.5">
+                  ⚠️ Profil non correspondant détecté
+                </p>
+                <p>
+                  L'utilisateur <strong>{mismatchedUser.name}</strong> ({mismatchedUser.phone || mismatchedUser.email}) possède le rôle <strong>{mismatchedUser.role}</strong>, mais vous avez sélectionné le profil <strong>{allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}</strong>.
+                </p>
+                <p className="text-[10.5px] font-bold text-rose-700 dark:text-rose-400">
+                  Veuillez cliquer sur le bouton du profil "{mismatchedUser.role}" dans l'étape 1 ci-dessus pour le sélectionner.
+                </p>
+              </div>
+            )}
+
+            {filteredUsers.length === 0 ? (
+              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs text-center py-6">
+                {searchQuery.trim() 
+                  ? (mismatchedUser ? `L'utilisateur correspondant à "${searchQuery}" n'a pas le bon profil.` : `Aucun utilisateur trouvé avec le profil "${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}" correspondant à "${searchQuery}".`)
+                  : `Saisissez un nom, un e-mail ou un numéro de téléphone ci-dessus pour rechercher un(e) ${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}.`
+                }
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {filteredUsers.map((u, idx) => {
+                  const isSelected = selectedTargetUser?.id === u.id;
+                  return (
+                    <div 
+                      key={`${u.id}_${idx}`}
+                      onClick={() => setSelectedTargetUser(u)}
+                      className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition ${
+                        isSelected 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/20' 
+                          : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <img src={u.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"} alt={u.name} className="w-10 h-10 rounded-full object-cover" />
                         <div>
-                          {isSelected ? (
-                            <span className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold">Sélectionné ✓</span>
-                          ) : (
-                            <span className="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs">Choisir</span>
-                          )}
+                          <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{u.name} {u.companyName ? `(${u.companyName})` : ''}</p>
+                          <p className="text-[10px] text-zinc-500">{u.phone || 'Pas de tél'} • {u.email || 'Pas d\'email'} • <span className="font-semibold text-emerald-600">{allowedRoles.find(r => r.role === u.role)?.label || u.role}</span></p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                      <div>
+                        {isSelected ? (
+                          <span className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold">Sélectionné ✓</span>
+                        ) : (
+                          <span className="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs">Choisir</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* 3. Informations récupérées */}
           {selectedTargetUser && (
