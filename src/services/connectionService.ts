@@ -314,7 +314,15 @@ export const connectionService = {
         success: true,
         relationId,
         destinataireNom,
-        message: `Vous êtes déjà connecté en tant que partenaire avec ${destinataireNom}.`
+        message: `Vous êtes déjà connecté en tant que partenaire actif avec ${destinataireNom}.`
+      };
+    }
+    if (existingConn && (existingConn.status === "en_attente" || (existingConn.status as string) === "PENDING" || (existingConn.status as string) === "pending")) {
+      return {
+        success: true,
+        relationId,
+        destinataireNom,
+        message: `Une demande de partenariat est déjà en attente de confirmation avec ${destinataireNom}.`
       };
     }
 
@@ -473,7 +481,7 @@ export const connectionService = {
       success: true,
       relationId,
       destinataireNom,
-      message: `Partenariat établi avec succès avec ${destinataireNom}.`
+      message: `Demande de partenariat envoyée avec succès à ${destinataireNom} (En attente de confirmation).`
     };
   },
 

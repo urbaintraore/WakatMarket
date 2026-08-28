@@ -3534,9 +3534,9 @@ export default function App() {
                   onRequestConnection={async (targetUserId) => {
                     try {
                       await connectionService.sendConnectionRequest(currentUser, targetUserId);
-                      addNotification("Demande de connexion envoyée au fournisseur.");
+                      addNotification("Demande de partenariat envoyée au fournisseur (En attente de confirmation).");
                     } catch (err: any) {
-                      addNotification(err.message || "Erreur lors de l'envoi de la demande de connexion.");
+                      addNotification(err.message || "Erreur lors de l'envoi de la demande de partenariat.");
                     }
                   }}
                 />
