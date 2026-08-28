@@ -416,9 +416,10 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                 setIsRegisteringPartner(true);
                 setIsAdding(true);
               }}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shadow-emerald-600/20"
             >
-              Enregistrer Partenaire
+              <Send className="w-3.5 h-3.5" />
+              Envoyer Demande de Partenariat
             </button>
           )}
           <button 
@@ -729,12 +730,12 @@ export const ClientManagement: React.FC<ClientListProps> = ({
             }`}
           >
             {selectedTargetUser ? 
-              (isRegisteringPartner 
-                ? `Enregistrer ${selectedTargetUser.name} comme partenaire` 
-                : (activeViewTab === "b2b" ? `Envoyer la demande de connexion à ${selectedTargetUser.name}` : `Enregistrer ${selectedTargetUser.name}`)
+              (isRegisteringPartner || activeViewTab === "b2b"
+                ? `Envoyer la demande de partenariat à ${selectedTargetUser.name}` 
+                : `Enregistrer ${selectedTargetUser.name}`
               ) 
               : (searchQuery.trim() 
-                  ? `Envoyer la demande de connexion à "${searchQuery.trim()}"`
+                  ? `Envoyer la demande de partenariat à "${searchQuery.trim()}"`
                   : 'Saisissez un numéro/e-mail ou choisissez un utilisateur'
                 )
             }

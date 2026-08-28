@@ -1212,6 +1212,7 @@ export function ManufacturerDashboard({
             onDeleteClient={onDeleteLightClient}
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
+            currentUser={currentUser}
             users={users}
             products={products}
             inventory={inventory}

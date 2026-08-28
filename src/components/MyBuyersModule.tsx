@@ -649,7 +649,7 @@ export function MyBuyersModule({
                             L'utilisateur <strong>{foundUser.name}</strong> a le rôle <strong>{foundUser.role}</strong>, qui ne correspond pas au rôle choisi (<strong>{addRole}</strong>).
                           </p>
                           <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-1 font-bold">
-                            Veuillez sélectionner le rôle "{foundUser.role}" ci-dessous dans la liste déroulante pour pouvoir enregistrer ce partenaire.
+                            Veuillez sélectionner le rôle "{foundUser.role}" ci-dessous dans la liste déroulante pour pouvoir envoyer une demande de partenariat à cet utilisateur.
                           </p>
                         </div>
                       </div>
@@ -659,12 +659,12 @@ export function MyBuyersModule({
                           ✓
                         </div>
                         <div>
-                          <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Partenaire Certifié Wakat ERP Trouvé !</p>
+                          <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Compte Partenaire Trouvé sur Wakat ERP</p>
                           <p className="font-semibold text-[11px] mt-0.5">
                             <strong>{foundUser.name}</strong> ({foundUser.companyName || "Sans entreprise"}) • Rôle : {foundUser.role}
                           </p>
                           <p className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 mt-1 font-bold">
-                            L'acheteur sera automatiquement connecté et lié à votre portefeuille de crédit.
+                            Une demande officielle de partenariat B2B lui sera transmise avec notification instantanée.
                           </p>
                         </div>
                       </div>
@@ -675,12 +675,12 @@ export function MyBuyersModule({
                         ℹ
                       </div>
                       <div>
-                        <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Aucun profil public correspondant</p>
+                        <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Aucun compte Wakat ERP correspondant</p>
                         <p className="font-semibold text-[11px] mt-0.5">
-                          Aucun utilisateur n'est actuellement inscrit avec cet identifiant.
+                          Aucun utilisateur en ligne n'est inscrit avec cet identifiant.
                         </p>
                         <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-1 font-bold">
-                          Un acheteur local sécurisé ("Client Fidèle") sera automatiquement créé sous ce numéro/email.
+                          Un acheteur local sécurisé ("Client Fidèle") sera créé dans votre carnet de créances.
                         </p>
                       </div>
                     </div>
@@ -699,7 +699,7 @@ export function MyBuyersModule({
                     className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                   />
                   <label htmlFor="add-is-partner" className="text-xs text-zinc-600 dark:text-zinc-300 font-bold select-none cursor-pointer">
-                    Enregistrer comme partenaire direct B2B
+                    Envoyer une demande de partenariat B2B
                   </label>
                 </div>
 
@@ -733,7 +733,7 @@ export function MyBuyersModule({
                   type="submit"
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-emerald-600/10 transition cursor-pointer"
                 >
-                  Ajouter l'Acheteur
+                  {addIsPartner || Boolean(foundUser) ? "Envoyer la Demande de Partenariat" : "Créer Client Local"}
                 </button>
               </div>
             </form>
