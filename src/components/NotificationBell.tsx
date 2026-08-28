@@ -128,9 +128,10 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                       </p>
 
                       {/* Accept/Refuse Actions inside the Notification dropdown */}
-                      {n.type === "demande_connexion" && n.relationId && (() => {
-                        const relatedConn = db.getConnections().find(c => c.id === n.relationId);
-                        const isPending = relatedConn && (relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente");
+                      {n.type === "demande_connexion" && (n.relationId || n.relatedId) && (() => {
+                        const relId = n.relationId || n.relatedId;
+                        const relatedConn = db.getConnections().find(c => c.id === relId);
+                        const isPending = !relatedConn || relatedConn.status === "en_attente" || (relatedConn as any).statut === "en_attente" || (relatedConn as any).statut === "PENDING";
                         if (!isPending) return null;
                         
                         return (
@@ -139,7 +140,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                               type="button"
                               onClick={async () => {
                                 try {
-                                  await connectionService.acceptConnection(n.relationId!);
+                                  if (relId) await connectionService.acceptConnection(relId, currentUserId);
                                   await connectionService.markNotificationAsRead(currentUserId, n.id);
                                 } catch (err) {
                                   console.error("Error accepting from notification:", err);
@@ -153,7 +154,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
                               type="button"
                               onClick={async () => {
                                 try {
-                                  await connectionService.rejectConnection(n.relationId!);
+                                  if (relId) await connectionService.rejectConnection(relId, currentUserId);
                                   await connectionService.markNotificationAsRead(currentUserId, n.id);
                                 } catch (err) {
                                   console.error("Error rejecting from notification:", err);

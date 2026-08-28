@@ -130,27 +130,48 @@ interface ClientListProps {
   onAddPayment: (clientId: string, amount: number) => void;
   onDeleteClient: (clientId: string) => void;
   currentUserRole?: UserRole;
+  currentUser?: UserProfile | null;
   users?: UserProfile[];
   products?: Product[];
   inventory?: InventoryItem[];
 }
 
-export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, payments, onCreateClient, onAddPayment, onDeleteClient, currentUserRole, users = [], products = [], inventory = [] }) => {
+export const ClientManagement: React.FC<ClientListProps> = ({ 
+  clients, 
+  orders, 
+  payments, 
+  onCreateClient, 
+  onAddPayment, 
+  onDeleteClient, 
+  currentUserRole, 
+  currentUser: propCurrentUser,
+  users = [], 
+  products = [], 
+  inventory = [] 
+}) => {
   const { dbUser } = useAuthContext();
   const currentUser: UserProfile | null = useMemo(() => {
-    if (!dbUser) return null;
-    return {
-      id: dbUser.uid,
-      name: `${dbUser.prénom} ${dbUser.nom}`,
-      email: dbUser.email,
-      role: dbUser.rôle as any,
-      phone: dbUser.téléphone || '',
-      avatar: dbUser.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-      country: dbUser.pays || "Côte d'Ivoire",
-      status: "ACTIVE" as const,
-      region: dbUser.région || "Abidjan"
-    };
-  }, [dbUser]);
+    if (propCurrentUser) return propCurrentUser;
+    if (dbUser) {
+      const prenom = (dbUser.prénom || "").trim();
+      const nom = (dbUser.nom || "").trim();
+      const fullName = [prenom, nom].filter(Boolean).join(" ").trim() || dbUser.email?.split("@")[0] || "Utilisateur";
+      return {
+        id: dbUser.uid,
+        name: fullName,
+        companyName: dbUser.companyName || nom || fullName,
+        email: dbUser.email,
+        role: dbUser.rôle as any,
+        phone: dbUser.téléphone || '',
+        avatar: dbUser.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+        country: dbUser.pays || "Côte d'Ivoire",
+        status: "ACTIVE" as const,
+        region: dbUser.région || "Abidjan"
+      };
+    }
+    const localUsers = db.getUsers();
+    return localUsers.find(u => u.role === currentUserRole) || localUsers[0] || null;
+  }, [propCurrentUser, dbUser, currentUserRole]);
 
   const [connections, setConnections] = useState<Connection[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -453,12 +474,17 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {pendingReceived.map((req, idx) => {
               const senderUser = allKnownUsers.find(u => u.id === req.senderId);
+              const senderDisplayName = senderUser 
+                ? (senderUser.name || senderUser.companyName || "Partenaire")
+                : (req.senderName && req.senderName !== "Grossiste/Partenaire" ? req.senderName : "Partenaire B2B");
+              const senderRoleDisplay = senderUser?.role || req.senderRole || "Partenaire";
+
               return (
                 <div key={`${req.id}_${idx}`} className="p-4 bg-white dark:bg-zinc-900 border-2 border-rose-200 dark:border-rose-900 rounded-2xl flex flex-col justify-between gap-3 shadow-sm">
                   <div>
                     <div className="flex justify-between items-start">
-                      <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{req.senderName}</p>
-                      <span className="text-[9px] px-2 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 rounded-full font-bold uppercase">{req.senderRole}</span>
+                      <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{senderDisplayName}</p>
+                      <span className="text-[9px] px-2 py-0.5 bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 rounded-full font-bold uppercase">{senderRoleDisplay}</span>
                     </div>
                     {req.notes && (
                       <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 italic">"{req.notes}"</p>
@@ -682,7 +708,8 @@ export const ClientManagement: React.FC<ClientListProps> = ({ clients, orders, p
             onClick={() => {
               const targetIdentifier = selectedTargetUser ? selectedTargetUser.id : searchQuery.trim();
               if (targetIdentifier) {
-                onCreateClient(targetIdentifier, notesInput, selectedRole, isRegisteringPartner);
+                const shouldRegisterPartner = isRegisteringPartner || activeViewTab === "b2b";
+                onCreateClient(targetIdentifier, notesInput, selectedRole, shouldRegisterPartner);
                 setIsAdding(false);
                 setIsRegisteringPartner(false);
                 setSearchQuery("");

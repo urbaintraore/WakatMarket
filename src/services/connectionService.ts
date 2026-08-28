@@ -22,23 +22,30 @@ export async function ensureUsersExistLocally(userIds: string[]): Promise<void> 
         .in("id", missingIds);
 
       if (!error && data && data.length > 0) {
-        const fetchedUsers: UserProfile[] = data.map((row: any) => ({
-          id: row.id,
-          name: [row.nom, row.prenom].filter(Boolean).join(" ").trim() || row.email?.split("@")[0] || "Utilisateur",
-          companyName: row.company_name || row.nom || `${row.prenom || ""} ${row.nom || ""}`.trim() || "Entreprise Partenaire",
-          email: row.email || "",
-          phone: row.telephone || "",
-          role: (row.role || UserRole.SEMI_WHOLESALER) as UserRole,
-          status: (row.statut || "ACTIVE") as any,
-          country: row.pays || "Burkina Faso",
-          region: row.ville || "Ouagadougou",
-          sector: row.quartier,
-          latitude: row.latitude,
-          longitude: row.longitude,
-          avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-          balance: 0,
-          address: [row.quartier, row.ville, row.pays].filter(Boolean).join(", ") || "Non spécifié"
-        }));
+        const fetchedUsers: UserProfile[] = data.map((row: any) => {
+          const prenom = (row.prenom || "").trim();
+          const nom = (row.nom || "").trim();
+          const fullName = [prenom, nom].filter(Boolean).join(" ").trim() || row.name || (row.email ? row.email.split("@")[0] : "") || "Partenaire";
+          const company = (row.company_name || row.companyName || nom || fullName).trim();
+
+          return {
+            id: row.id,
+            name: fullName,
+            companyName: company || fullName,
+            email: row.email || "",
+            phone: row.telephone || row.phone || "",
+            role: (row.role || row.rôle || UserRole.SEMI_WHOLESALER) as UserRole,
+            status: (row.statut || "ACTIVE") as any,
+            country: row.pays || "Burkina Faso",
+            region: row.ville || "Ouagadougou",
+            sector: row.quartier,
+            latitude: row.latitude,
+            longitude: row.longitude,
+            avatar: row.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+            balance: 0,
+            address: [row.quartier, row.ville, row.pays].filter(Boolean).join(", ") || "Non spécifié"
+          };
+        });
 
         const map = new Map<string, UserProfile>();
         currentUsers.forEach(u => map.set(u.id, u));
@@ -244,8 +251,15 @@ export const connectionService = {
     }
 
     const relationId = [demandeur.id, destinataireUser.id].sort().join("_");
-    const demandeurNom = demandeur.companyName || demandeur.name;
-    const destinataireNom = destinataireUser.companyName || destinataireUser.name || "Partenaire";
+    const demandeurNom = demandeur.name || demandeur.companyName || "Utilisateur";
+    const demandeurFullDisplay = demandeur.companyName && demandeur.companyName !== demandeur.name
+      ? `${demandeur.name} (${demandeur.companyName})`
+      : demandeurNom;
+
+    const destinataireNom = destinataireUser.name || destinataireUser.companyName || "Partenaire";
+    const destinataireFullDisplay = destinataireUser.companyName && destinataireUser.companyName !== destinataireUser.name
+      ? `${destinataireUser.name} (${destinataireUser.companyName})`
+      : destinataireNom;
 
     // Re-enable if was previously deleted
     removeDeletedConnectionId(relationId);
@@ -287,13 +301,14 @@ export const connectionService = {
     db.saveConnections([...filteredConns, newConnection]);
     console.log("[ConnectionService] Local connection saved successfully to db.getConnections()");
 
-    // D. Notification locale
+    // D. Notification locale pour le destinataire avec le vrai nom de la personne
     const newNotif: Notification = {
       id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       userId: destinataireUser.id,
+      senderId: demandeur.id,
       type: "demande_connexion",
-      title: "Demande de partenariat commercial",
-      message: `${demandeurNom} (${demandeur.role}) souhaite collaborer avec vous.`,
+      title: `Demande de partenariat de ${demandeurNom}`,
+      message: `${demandeurFullDisplay} (${demandeur.role}) souhaite établir un partenariat commercial avec vous.`,
       read: false,
       relatedId: relationId,
       createdAt: nowIso
@@ -740,7 +755,11 @@ export const connectionService = {
             .select("*")
             .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
-          if (!error && data) {
+          if (!error && data && data.length > 0) {
+            // Auto-fetch any missing partner profiles into local db BEFORE mapping!
+            const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
+            await ensureUsersExistLocally(partnerUserIds);
+
             const allUsers = db.getUsers();
             mappedSb = data
               .filter((row: any) => {
@@ -753,24 +772,28 @@ export const connectionService = {
                 const receiverUser = allUsers.find(u => u.id === row.client_id);
                 const isActif = row.statut === "ACTIF" || row.statut === "actif";
 
+                const resolvedSenderName = senderUser 
+                  ? (senderUser.name || senderUser.companyName || "Utilisateur") 
+                  : (row.sender_name || row.grossiste_nom || "Partenaire B2B");
+
+                const resolvedReceiverName = receiverUser
+                  ? (receiverUser.name || receiverUser.companyName || "Utilisateur")
+                  : (row.receiver_name || row.client_nom || "Partenaire B2B");
+
                 return {
                   id: row.id,
                   senderId: row.grossiste_id,
                   receiverId: row.client_id,
                   status: isActif ? "active" : row.statut === "BLOCKED" ? "refusée" : "en_attente",
-                  senderName: senderUser?.companyName || senderUser?.name || "Grossiste/Partenaire",
+                  senderName: resolvedSenderName,
                   senderRole: senderUser?.role || UserRole.WHOLESALER,
-                  receiverName: receiverUser?.companyName || receiverUser?.name || "Client/Détaillant",
+                  receiverName: resolvedReceiverName,
                   receiverRole: receiverUser?.role || UserRole.RETAILER,
-                  notes: "",
+                  notes: row.notes || "",
                   createdAt: row.created_at || new Date().toISOString(),
                   updatedAt: row.created_at || new Date().toISOString()
                 };
               });
-
-            // Auto-fetch any missing partner profiles into local db
-            const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
-            ensureUsersExistLocally(partnerUserIds);
           }
         } catch (e) {
           console.warn("Notice Supabase fetch connections:", e);
@@ -780,7 +803,15 @@ export const connectionService = {
       const map = new Map<string, Connection>();
       localConns.forEach(c => map.set(c.id, c));
       mappedSb.forEach(c => {
-        if (!map.has(c.id)) map.set(c.id, c);
+        if (!map.has(c.id)) {
+          map.set(c.id, c);
+        } else {
+          // If local connection exists, enrich with real names if local was placeholder
+          const existing = map.get(c.id)!;
+          if ((!existing.senderName || existing.senderName === "Grossiste/Partenaire") && c.senderName) {
+            map.set(c.id, { ...existing, senderName: c.senderName, receiverName: c.receiverName || existing.receiverName });
+          }
+        }
       });
 
       const mergedConns = Array.from(map.values()).filter(c => {
@@ -843,7 +874,9 @@ export const connectionService = {
         title: n.title || n.message,
         lu: Boolean(n.read),
         read: Boolean(n.read),
-        relatedId: (n as any).relatedId,
+        relationId: (n as any).relationId || (n as any).relatedId,
+        relatedId: (n as any).relatedId || (n as any).relationId,
+        expediteurId: n.senderId,
         dateCreation: n.createdAt,
         timestamp: n.createdAt,
       }));
@@ -866,7 +899,9 @@ export const connectionService = {
               title: row.title || row.message,
               lu: Boolean(row.read),
               read: Boolean(row.read),
-              relatedId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relatedId) || (row as any).relatedId,
+              relationId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
+              relatedId: row.related_id || (row.metadata?.related_id) || (row.metadata?.relationId) || (row as any).relationId,
+              expediteurId: row.sender_id || (row.metadata?.sender_id),
               dateCreation: row.created_at || new Date().toISOString(),
               timestamp: row.created_at || new Date().toISOString(),
             }));

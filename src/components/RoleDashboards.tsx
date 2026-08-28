@@ -35,6 +35,7 @@ import { PriceRangeSlider } from "./PriceRangeSlider";
 import { FavoritesSection } from "./FavoritesSection";
 import { OrderCreationDeliveryCalculator } from "./OrderCreationDeliveryCalculator";
 import { PartnerReviewsSection } from "./PartnerReviewsSection";
+import MerchantSalesDashboard from "./MerchantSalesDashboard";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -1344,7 +1345,7 @@ export function WholesalerDashboard({
   favoriteProductIds = [],
   onSelectProduct,
 }: WholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
+  const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -1540,6 +1541,7 @@ export function WholesalerDashboard({
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
+            { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
             { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
             { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
             { id: "procure", label: "S'approvisionner", icon: Landmark },
@@ -1575,6 +1577,18 @@ export function WholesalerDashboard({
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
+          {activeTab === "sales_dashboard" && (
+            <div className="animate-fade-in">
+              <MerchantSalesDashboard
+                orders={orders}
+                products={products}
+                currentUser={currentUser}
+                onUpdateOrderStatus={onUpdateOrderStatus}
+                onPlaceSale={onPlaceSale}
+              />
+            </div>
+          )}
+
           {activeTab === "dashboard" && (
             <div className="space-y-6 animate-fade-in">
               <ExpirationAlertsBanner alerts={wholesalerExpirationAlerts} />
@@ -2267,6 +2281,7 @@ export function WholesalerDashboard({
             onDeleteClient={onDeleteLightClient}
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
+            currentUser={currentUser}
             users={users}
             products={products}
             inventory={inventory}
@@ -2400,7 +2415,7 @@ export function RetailerDashboard({
   favoriteProductIds = [],
   onSelectProduct,
 }: RetailerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
+  const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "accounting" | "suppliers" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -2586,6 +2601,7 @@ export function RetailerDashboard({
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
           {[
+            { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
             { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
             { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
             { id: "procure", label: "Réappro Boutique", icon: Landmark },
@@ -2621,6 +2637,18 @@ export function RetailerDashboard({
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
         >
+          {activeTab === "sales_dashboard" && (
+            <div className="animate-fade-in">
+              <MerchantSalesDashboard
+                orders={orders}
+                products={products}
+                currentUser={currentUser}
+                onUpdateOrderStatus={onUpdateOrderStatus}
+                onPlaceSale={onPlaceSale}
+              />
+            </div>
+          )}
+
           {activeTab === "dashboard" && (
             <div className="space-y-6 animate-fade-in">
               <ExpirationAlertsBanner alerts={retailerExpirationAlerts} />
@@ -3416,6 +3444,7 @@ export function RetailerDashboard({
             onDeleteClient={onDeleteLightClient}
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
+            currentUser={currentUser}
             users={users}
             products={products}
             inventory={inventory}
@@ -4521,7 +4550,7 @@ export function SemiWholesalerDashboard({
   favoriteProductIds = [],
   onSelectProduct,
 }: SemiWholesalerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("dashboard");
+  const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [posCart, setPosCart] = useState<Record<string, number>>({});
@@ -4765,6 +4794,14 @@ export function SemiWholesalerDashboard({
       <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
         <div className="flex">
         <button
+          onClick={() => setActiveTab("sales_dashboard")}
+          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+            activeTab === "sales_dashboard" ? "border-orange-600 text-orange-600 font-bold" : "border-transparent text-zinc-500 hover:text-zinc-900"
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 inline mr-1.5" /> Dashboard de Vente
+        </button>
+        <button
           onClick={() => setActiveTab("dashboard")}
           className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
             activeTab === "dashboard" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
@@ -4879,6 +4916,18 @@ export function SemiWholesalerDashboard({
             onAddPayment={onAddPayment}
             onUpdateCreditLimit={onUpdateCreditLimit}
             onCreateLightClient={onCreateLightClient}
+          />
+        </div>
+      )}
+
+      {activeTab === "sales_dashboard" && (
+        <div className="animate-fade-in">
+          <MerchantSalesDashboard
+            orders={orders}
+            products={products}
+            currentUser={currentUser}
+            onUpdateOrderStatus={onUpdateOrderStatus}
+            onPlaceSale={onPlaceSale}
           />
         </div>
       )}
@@ -5665,6 +5714,7 @@ export function SemiWholesalerDashboard({
             onDeleteClient={onDeleteLightClient}
             onAddPayment={onAddPayment}
             currentUserRole={currentUser.role}
+            currentUser={currentUser}
             users={users}
             products={products}
             inventory={inventory}

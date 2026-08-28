@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { CheckCircle, AlertOctagon, Mic, Send, X, MessageSquare, Download, Share2, Smartphone, CheckCircle2, AlertTriangle } from "lucide-react";
+import { motion } from "motion/react";
 import { OrderStatus, Order, Product, UserProfile } from "../types";
 import { orderService } from "../services/orderService";
 
@@ -71,8 +72,67 @@ ${itemsText}
   const buyerProfile = order && users ? users.find(u => u.id === order.senderId) : null;
   const driverProfile = order && users && order.driverId ? users.find(u => u.id === order.driverId) : null;
 
+  const steps = [
+    { key: "PENDING", label: "Reçue" },
+    { key: "PREPARING", label: "Préparation" },
+    { key: "SHIPPED", label: "Expédiée" },
+    { key: "DELIVERED", label: "Livrée" }
+  ];
+
+  const getActiveStep = (s: OrderStatus) => {
+    if (s === OrderStatus.DELIVERED) return 3;
+    if (s === OrderStatus.SHIPPED || (s as string) === "LIVREUR_ASSIGNE" || (s as string) === "EN_ROUTE") return 2;
+    if (s === OrderStatus.CONFIRMED || s === OrderStatus.PREPARING || s === OrderStatus.READY) return 1;
+    return 0;
+  };
+
+  const activeIndex = getActiveStep(status);
+
   return (
     <>
+      {/* Visual Status Tracker with smooth Framer Motion transitions */}
+      <div className="bg-zinc-50 dark:bg-zinc-950/20 p-4 border border-zinc-150 dark:border-zinc-800 rounded-xl mt-2">
+        <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Suivi d'expédition en temps réel</p>
+        <div className="relative flex items-center justify-between w-full px-2">
+          {/* Progress Line Background */}
+          <div className="absolute left-6 right-6 top-[11px] h-1 bg-zinc-200 dark:bg-zinc-800 rounded-full z-0" />
+          
+          {/* Progress Line Foreground (Animated!) */}
+          <motion.div 
+            className="absolute left-6 top-[11px] h-1 bg-emerald-500 rounded-full z-0 origin-left"
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: activeIndex / 3 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            style={{ right: "24px" }}
+          />
+
+          {steps.map((step, idx) => {
+            const isCompleted = idx < activeIndex;
+            const isActive = idx === activeIndex;
+            return (
+              <div key={step.key} className="relative z-10 flex flex-col items-center flex-1">
+                <motion.div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center border-2 text-[10px] font-bold ${
+                    isCompleted 
+                      ? "bg-emerald-500 border-emerald-500 text-white" 
+                      : isActive
+                        ? "bg-white dark:bg-zinc-900 border-emerald-500 text-emerald-600"
+                        : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400"
+                  }`}
+                  animate={isActive ? { scale: [1, 1.15, 1], shadow: "0 0 8px rgba(16, 185, 129, 0.4)" } : { scale: 1 }}
+                  transition={isActive ? { repeat: Infinity, duration: 2, ease: "easeInOut" } : undefined}
+                >
+                  {isCompleted ? "✓" : idx + 1}
+                </motion.div>
+                <span className={`text-[10px] font-semibold mt-1.5 text-center ${isActive ? "text-zinc-900 dark:text-white font-bold" : "text-zinc-400"}`}>
+                  {step.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-2 justify-end items-center mt-3 border-t border-zinc-150 dark:border-zinc-800 pt-3">
         {/* Mobile Money Payment Proof Action & Badge */}
         {order && (
