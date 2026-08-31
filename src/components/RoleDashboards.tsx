@@ -40,6 +40,190 @@ import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // ----------------------------------------------------------------------
+// Re-usable Responsive Tab Bar Component (All tabs fully visible)
+// ----------------------------------------------------------------------
+export interface DashboardTabItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string;
+  badgeColor?: string;
+  highlight?: boolean;
+}
+
+export interface DashboardTabBarProps {
+  title?: string;
+  tabs: DashboardTabItem[];
+  activeTab: string;
+  onSelectTab: (id: string) => void;
+  syncStatus?: { isOnline: boolean; pendingCount: number };
+  accentColor?: "emerald" | "orange" | "amber" | "indigo" | "blue";
+}
+
+export function DashboardTabBar({
+  title = "Navigation Tableau de Bord",
+  tabs,
+  activeTab,
+  onSelectTab,
+  syncStatus,
+  accentColor = "emerald"
+}: DashboardTabBarProps) {
+  const [navLayoutMode, setNavLayoutMode] = useState<"tabbed" | "sidebar">("tabbed");
+
+  const getActiveStyles = () => {
+    switch (accentColor) {
+      case "orange":
+        return "bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md font-bold scale-[1.01] border-orange-600";
+      case "amber":
+        return "bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-md font-bold scale-[1.01] border-amber-600";
+      case "indigo":
+        return "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-bold scale-[1.01] border-indigo-600";
+      case "blue":
+        return "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md font-bold scale-[1.01] border-blue-600";
+      default:
+        return "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-bold scale-[1.01] border-emerald-600";
+    }
+  };
+
+  const getIconInactiveColor = () => {
+    switch (accentColor) {
+      case "orange": return "text-orange-600 dark:text-orange-400";
+      case "amber": return "text-amber-600 dark:text-amber-400";
+      case "indigo": return "text-indigo-600 dark:text-indigo-400";
+      case "blue": return "text-blue-600 dark:text-blue-400";
+      default: return "text-emerald-600 dark:text-emerald-400";
+    }
+  };
+
+  const activeTabItem = tabs.find(t => t.id === activeTab) || tabs[0];
+
+  return (
+    <div className="sticky top-2 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-3 transition-all duration-200">
+      {/* Header with Title, Active Tab Badge, Layout Switcher and Sync Status */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-150 dark:border-zinc-800/80 pb-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${
+            accentColor === "orange" ? "bg-orange-500" : accentColor === "amber" ? "bg-amber-500" : "bg-emerald-500"
+          }`} />
+          <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            {title}
+          </h3>
+          {activeTabItem && (
+            <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-zinc-100 dark:bg-zinc-800 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Menu: <strong className="font-extrabold">{activeTabItem.label}</strong>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Layout Mode Toggle: Tabbed Horizontal vs Sidebar Panel */}
+          <div className="flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-xl text-[11px] font-semibold border border-zinc-200 dark:border-zinc-750">
+            <button
+              onClick={() => setNavLayoutMode("tabbed")}
+              className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                navLayoutMode === "tabbed"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-2xs font-bold"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+              title="Barre d'onglets horizontale"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Onglets</span>
+            </button>
+            <button
+              onClick={() => setNavLayoutMode("sidebar")}
+              className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
+                navLayoutMode === "sidebar"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-2xs font-bold"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+              }`}
+              title="Grille / Sidebar complète"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Grille Sidebar</span>
+            </button>
+          </div>
+
+          {syncStatus && (
+            <SyncStatusIndicator isOnline={syncStatus.isOnline} pendingCount={syncStatus.pendingCount} />
+          )}
+        </div>
+      </div>
+
+      {/* Tabs rendering - NO text truncation, full length visibility */}
+      {navLayoutMode === "tabbed" ? (
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onSelectTab(tab.id)}
+                className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2.5 transition-all duration-150 cursor-pointer border whitespace-nowrap min-w-max shrink-0 ${
+                  isActive
+                    ? getActiveStyles()
+                    : "bg-zinc-100/90 dark:bg-zinc-800/90 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/90 dark:hover:bg-zinc-750 hover:text-zinc-900 dark:hover:text-white border-zinc-200/80 dark:border-zinc-700/80"
+                }`}
+              >
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : getIconInactiveColor()}`} />
+                <span className="whitespace-nowrap font-bold">{tab.label}</span>
+                {tab.badge !== undefined && tab.badge !== null && tab.badge !== 0 && (
+                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full shrink-0 ${
+                    isActive
+                      ? "bg-white text-zinc-900 shadow-2xs"
+                      : tab.highlight
+                      ? "bg-rose-500 text-white animate-pulse"
+                      : "bg-emerald-600 text-white"
+                  }`}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 pt-1">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => onSelectTab(tab.id)}
+                className={`w-full px-4 py-3 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-between gap-3 transition-all duration-150 cursor-pointer border shadow-2xs ${
+                  isActive
+                    ? getActiveStyles()
+                    : "bg-zinc-50 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-750"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Icon className={`w-4.5 h-4.5 shrink-0 ${isActive ? "text-white" : getIconInactiveColor()}`} />
+                  <span className="whitespace-nowrap font-bold text-left">{tab.label}</span>
+                </div>
+                {tab.badge !== undefined && tab.badge !== null && tab.badge !== 0 && (
+                  <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full shrink-0 ${
+                    isActive
+                      ? "bg-white text-zinc-900 shadow-2xs"
+                      : tab.highlight
+                      ? "bg-rose-500 text-white animate-pulse"
+                      : "bg-emerald-600 text-white"
+                  }`}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
 // PDF Invoice Export Helper
 // ----------------------------------------------------------------------
 export function handleDownloadOrderPDF(order: Order, productsList: Product[]) {
@@ -228,45 +412,18 @@ export function AdminDashboard({
       </div>
 
       {/* Admin Tabs */}
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800">
-        <button
-          onClick={() => setActiveTab("users")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "users" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Users className="w-4 h-4 inline mr-1.5" /> Comptes Utilisateurs
-        </button>
-        <button
-          onClick={() => setActiveTab("approvals")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition relative ${
-            activeTab === "approvals" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <UserCheck className="w-4 h-4 inline mr-1.5" /> Approbations
-          {pendingApprovals.length > 0 && (
-            <span className="absolute top-1 right-1 bg-rose-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-              {pendingApprovals.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("stats")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "stats" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <BarChart className="w-4 h-4 inline mr-1.5" /> Tendances & Périssabilité (30j)
-        </button>
-        <button
-          onClick={() => setActiveTab("config")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "config" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Settings className="w-4 h-4 inline mr-1.5" /> Commissions & Frais
-        </button>
-      </div>
+      <DashboardTabBar
+        title="Administration Système - Module de Contrôle"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        accentColor="emerald"
+        tabs={[
+          { id: "users", label: "Comptes Utilisateurs", icon: Users, badge: users.length },
+          { id: "approvals", label: "Approbations", icon: UserCheck, badge: pendingApprovals.length > 0 ? pendingApprovals.length : undefined, highlight: pendingApprovals.length > 0 },
+          { id: "stats", label: "Tendances & Périssabilité (30j)", icon: BarChart },
+          { id: "config", label: "Commissions & Frais", icon: Settings },
+        ]}
+      />
 
       {editingUser && (
         <AdminUserEditModal
@@ -688,32 +845,22 @@ export function ManufacturerDashboard({
 
   return (
     <div className="space-y-6" id="manufacturer-dashboard">
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
-        <div className="flex">
-          {[
-            { id: "catalog", label: "Catalogue & Stocks", icon: Layers },
-            { id: "orders", label: "Commandes B2B", icon: ShoppingCart },
-            { id: "sales", label: "Vente Comptoir", icon: ShoppingBag },
-            { id: "ai", label: "Prévisions IA", icon: Sparkles },
-            { id: "clients", label: "Clients & Adresses", icon: BookOpen },
-            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
-            { id: "sync", label: "Sync", icon: Cloud },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap ${
-                activeTab === tab.id ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-              }`}
-            >
-              <tab.icon className="w-3.5 h-3.5 inline mr-1.5" /> {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="px-4">
-          <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
-        </div>
-      </div>
+      <DashboardTabBar
+        title="Menu Fabricant - Operations & Catalogue"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        syncStatus={{ isOnline, pendingCount: syncQueue.length }}
+        accentColor="emerald"
+        tabs={[
+          { id: "catalog", label: "Catalogue & Stocks", icon: Layers },
+          { id: "orders", label: "Commandes B2B", icon: ShoppingCart },
+          { id: "sales", label: "Vente Comptoir", icon: ShoppingBag },
+          { id: "ai", label: "Prévisions IA", icon: Sparkles },
+          { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+          { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
+          { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
+        ]}
+      />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -1539,36 +1686,27 @@ export function WholesalerDashboard({
   return (
     <div className="space-y-6" id="wholesaler-dashboard">
       <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
-        <div className="flex">
-          {[
-            { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
-            { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
-            { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
-            { id: "procure", label: "S'approvisionner", icon: Landmark },
-            { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
-            { id: "sales", label: "Ventes & Comptoir", icon: ShoppingBag },
-            { id: "inventory", label: "Stocks", icon: Layers },
-            { id: "accounting", label: "Comptabilité", icon: Wallet },
-            { id: "clients", label: "Clients & Adresses", icon: BookOpen },
-            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
-            { id: "sync", label: "Sync", icon: Cloud },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap ${
-                activeTab === tab.id ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-              }`}
-            >
-              <tab.icon className="w-3.5 h-3.5 inline mr-1.5" /> {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="px-4">
-          <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
-        </div>
-      </div>
+      <DashboardTabBar
+        title="Menu Grossiste - Opérations & Dashboard de Vente"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        syncStatus={{ isOnline, pendingCount: syncQueue.length }}
+        accentColor="emerald"
+        tabs={[
+          { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
+          { id: "dashboard", label: "Tableau de Bord Personnalisé", icon: LayoutGrid },
+          { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
+          { id: "procure", label: "S'approvisionner", icon: Landmark },
+          { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
+          { id: "sales", label: "Ventes & Comptoir", icon: ShoppingBag },
+          { id: "inventory", label: "Stocks", icon: Layers },
+          { id: "accounting", label: "Comptabilité", icon: Wallet },
+          { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+          { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
+          { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
+          { id: "buyers", label: "Mes Acheteurs", icon: Users },
+        ]}
+      />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -2599,36 +2737,26 @@ export function RetailerDashboard({
   return (
     <div className="space-y-6" id="retailer-dashboard">
       <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
-        <div className="flex">
-          {[
-            { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
-            { id: "dashboard", label: "Dashboard Personnalisé", icon: LayoutGrid },
-            { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
-            { id: "procure", label: "Réappro Boutique", icon: Landmark },
-            { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
-            { id: "sales", label: "Vente & Commandes", icon: ShoppingBag },
-            { id: "inventory", label: "Mon Stock", icon: Layers },
-            { id: "accounting", label: "Comptabilité", icon: Wallet },
-            { id: "clients", label: "Clients & Adresses", icon: BookOpen },
-            { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
-            { id: "sync", label: "Sync", icon: Cloud },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 transition whitespace-nowrap ${
-                activeTab === tab.id ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-              }`}
-            >
-              <tab.icon className="w-3.5 h-3.5 inline mr-1.5" /> {tab.label}
-            </button>
-          ))}
-        </div>
-        <div className="px-4">
-          <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
-        </div>
-      </div>
+      <DashboardTabBar
+        title="Menu Détaillant - Opérations & Dashboard de Vente"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        syncStatus={{ isOnline, pendingCount: syncQueue.length }}
+        accentColor="emerald"
+        tabs={[
+          { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
+          { id: "dashboard", label: "Tableau de Bord Personnalisé", icon: LayoutGrid },
+          { id: "forecast", label: "Prévisions Stock IA", icon: Sparkles },
+          { id: "procure", label: "Réappro Boutique", icon: Landmark },
+          { id: "purchases", label: "Mes Achats", icon: ShoppingCart },
+          { id: "sales", label: "Vente & Commandes", icon: ShoppingBag },
+          { id: "inventory", label: "Mon Stock", icon: Layers },
+          { id: "accounting", label: "Comptabilité", icon: Wallet },
+          { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+          { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
+          { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
+        ]}
+      />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -3701,43 +3829,18 @@ export function ClientDashboard({
       </div>
 
       {/* Search and Navigation */}
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800">
-        <button
-          onClick={() => setActiveTab("feed")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "feed" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Sparkles className="w-4 h-4 inline mr-1.5" /> Fil d'actualité
-        </button>
-        <button
-          onClick={() => setActiveTab("market")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "market" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4 inline mr-1.5" /> Boutique & Produits locaux
-        </button>
-        <button
-          onClick={() => setActiveTab("orders")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition relative ${
-            activeTab === "orders" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <ShoppingCart className="w-4 h-4 inline mr-1.5" /> Mes Commandes & Suivi GPS
-          {myOrders.filter((o) => o.status === OrderStatus.DELIVERING).length > 0 && (
-            <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full animate-ping" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("addresses")}
-          className={`px-4 py-2.5 text-xs font-semibold border-b-2 transition ${
-            activeTab === "addresses" ? "border-emerald-600 text-emerald-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <MapPin className="w-4 h-4 inline mr-1.5" /> Carnet d'Adresses
-        </button>
-      </div>
+      <DashboardTabBar
+        title="Espace Client - Navigation"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        accentColor="emerald"
+        tabs={[
+          { id: "feed", label: "Fil d'actualité", icon: Sparkles },
+          { id: "market", label: "Boutique & Produits locaux", icon: ShoppingBag },
+          { id: "orders", label: "Mes Commandes & Suivi GPS", icon: ShoppingCart, badge: myOrders.filter((o) => o.status === OrderStatus.DELIVERING).length > 0 ? myOrders.filter((o) => o.status === OrderStatus.DELIVERING).length : undefined, highlight: myOrders.filter((o) => o.status === OrderStatus.DELIVERING).length > 0 },
+          { id: "addresses", label: "Carnet d'Adresses", icon: MapPin },
+        ]}
+      />
 
       {activeTab === "feed" && (
         <div className="space-y-4">
@@ -4792,114 +4895,27 @@ export function SemiWholesalerDashboard({
   return (
     <div className="space-y-6" id="semi-wholesaler-dashboard">
       {/* Tabs list with Sync Indicator */}
-      <div className="flex border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto scrollbar-none pb-px items-center justify-between">
-        <div className="flex">
-        <button
-          onClick={() => setActiveTab("sales_dashboard")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "sales_dashboard" ? "border-orange-600 text-orange-600 font-bold" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <TrendingUp className="w-4 h-4 inline mr-1.5" /> Dashboard de Vente
-        </button>
-        <button
-          onClick={() => setActiveTab("dashboard")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "dashboard" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <BarChart className="w-4 h-4 inline mr-1.5" /> Tableau de Bord
-        </button>
-        <button
-          onClick={() => setActiveTab("incoming")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "incoming" ? "border-orange-600 text-orange-600 font-bold" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <FileText className="w-4 h-4 inline mr-1.5 text-emerald-600" /> Commandes Clients Reçues
-          {incomingOrders.length > 0 && (
-            <span className="ml-1.5 text-[10px] bg-emerald-600 text-white rounded-full px-2 py-0.5 font-bold shadow-xs">
-              {incomingOrders.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("procure")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "procure" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <ShoppingCart className="w-4 h-4 inline mr-1.5" /> S'approvisionner
-        </button>
-        <button
-          onClick={() => setActiveTab("purchases")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "purchases" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <ShoppingCart className="w-4 h-4 inline mr-1.5" /> Mes Achats Grossiste
-        </button>
-        <button
-          onClick={() => setActiveTab("pos")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "pos" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Zap className="w-4 h-4 inline mr-1.5" /> Vente POS
-        </button>
-        <button
-          onClick={() => setActiveTab("inventory")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "inventory" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Package className="w-4 h-4 inline mr-1.5" /> Gérer Stock
-        </button>
-        <button
-          onClick={() => setActiveTab("accounting")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "accounting" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Wallet className="w-4 h-4 inline mr-1.5" /> Comptabilité
-        </button>
-        <button
-          onClick={() => setActiveTab("clients")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "clients" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <BookOpen className="w-4 h-4 inline mr-1.5" /> Clients & Adresses
-        </button>
-        <button
-          onClick={() => setActiveTab("reviews")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "reviews" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <MessageSquare className="w-4 h-4 inline mr-1.5" /> Avis Partenaires
-        </button>
-        <button
-          onClick={() => setActiveTab("sync")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap relative ${
-            activeTab === "sync" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Cloud className="w-4 h-4 inline mr-1.5" /> Sync {syncQueue.length > 0 && <span className="ml-1 text-[8px] bg-amber-500 text-white rounded-full px-1">{syncQueue.length}</span>}
-        </button>
-        <button
-          onClick={() => setActiveTab("buyers")}
-          className={`px-4 py-3 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
-            activeTab === "buyers" ? "border-orange-600 text-orange-600" : "border-transparent text-zinc-500 hover:text-zinc-900"
-          }`}
-        >
-          <Users className="w-4 h-4 inline mr-1.5" /> Mes Acheteurs
-        </button>
-        </div>
-        <div className="px-4 shrink-0">
-          <SyncStatusIndicator isOnline={isOnline} pendingCount={syncQueue.length} />
-        </div>
-      </div>
+      <DashboardTabBar
+        title="Menu Demi-Grossiste - Opérations & Commandes Reçues"
+        activeTab={activeTab}
+        onSelectTab={(id) => setActiveTab(id as any)}
+        syncStatus={{ isOnline, pendingCount: syncQueue.length }}
+        accentColor="orange"
+        tabs={[
+          { id: "sales_dashboard", label: "Dashboard de Vente", icon: TrendingUp },
+          { id: "dashboard", label: "Tableau de Bord", icon: BarChart },
+          { id: "incoming", label: "Commandes Clients Reçues", icon: FileText, badge: incomingOrders.length > 0 ? incomingOrders.length : undefined, highlight: incomingOrders.length > 0 },
+          { id: "procure", label: "S'approvisionner", icon: ShoppingCart },
+          { id: "purchases", label: "Mes Achats Grossiste", icon: ShoppingCart },
+          { id: "pos", label: "Vente POS", icon: Zap },
+          { id: "inventory", label: "Gérer Stock", icon: Package },
+          { id: "accounting", label: "Comptabilité", icon: Wallet },
+          { id: "clients", label: "Clients & Adresses", icon: BookOpen },
+          { id: "reviews", label: "Avis Partenaires", icon: MessageSquare },
+          { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
+          { id: "buyers", label: "Mes Acheteurs", icon: Users },
+        ]}
+      />
 
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">

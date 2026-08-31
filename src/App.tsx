@@ -9,7 +9,7 @@ import {
   Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
   Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
   Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale, Cloud
+  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale, Cloud, Menu
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -29,7 +29,7 @@ import { connectionService } from "./services/connectionService";
 import { chatService } from "./services/chatService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
-import { supabaseConfigError, isNetworkError } from "./supabase";
+import { supabase, supabaseConfigError, isNetworkError } from "./supabase";
 import { isAIStudioOrDevEnvironment } from "./utils/env";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
@@ -62,7 +62,31 @@ import { QuickActionsBar } from "./components/QuickActionsBar";
 import { B2BProductComparator } from "./components/B2BProductComparator";
 import { AddressAutocomplete } from "./components/AddressAutocomplete";
 
+export interface WidgetGridProps {
+  children: React.ReactNode;
+  className?: string;
+  minChildWidth?: string;
+}
+
+/**
+ * WidgetGrid organizes dashboard widgets using responsive CSS Grid auto-fit/minmax.
+ * Ensures each widget (Orders, Sales, Stocks, etc.) has adequate minimum width to prevent text truncation.
+ */
+export function WidgetGrid({ children, className = "", minChildWidth = "290px" }: WidgetGridProps) {
+  return (
+    <div 
+      className={`grid gap-4 sm:gap-6 w-full ${className}`}
+      style={{
+        gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minChildWidth}), 1fr))`
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showComparator, setShowComparator] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
@@ -841,20 +865,15 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
-      console.log(`[App] Subscribing to notifications and connections for ${currentUser.id}`);
+      console.log(`[App.tsx] 🔔 Subscribing to notifications and connections for active user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName})`);
       
-      const handleConnectionsUpdatedCustom = async () => {
-        setConnections(db.getConnections());
-        const unsub = connectionService.subscribeToUserConnections(currentUser.id, (freshConns) => {
-             setConnections(freshConns);
-        });
-        setTimeout(() => {
-             unsub();
-        }, 5000);
-      };
-      window.addEventListener("wakat_connections_updated", handleConnectionsUpdatedCustom);
+      const unsubConns = connectionService.subscribeToUserConnections(currentUser.id, (freshConns) => {
+        console.log(`[App.tsx:subscribeToUserConnections] 🔗 Real-time connections update received for user ${currentUser.id}. Total active/pending connections: ${freshConns.length}`, freshConns);
+        setConnections(freshConns);
+      });
       
       const unsubNotifs = connectionService.subscribeToUserNotifications(currentUser.id, (notifs) => {
+        console.log(`[App.tsx:subscribeToUserNotifications] 📬 Real-time notifications update received for user ${currentUser.id}. Total notifications: ${notifs.length}`, notifs);
         // Find truly NEW unread notifications that we haven't toasted yet
         const newUnread = notifs.filter(n => !n.read && !knownNotificationIds.current.has(n.id));
         
@@ -872,11 +891,78 @@ export default function App() {
       });
 
       return () => {
+        console.log(`[App.tsx] 🔕 Unsubscribing from connections and notifications for user ${currentUser.id}`);
+        unsubConns();
         unsubNotifs();
-        window.removeEventListener("wakat_connections_updated", handleConnectionsUpdatedCustom);
       };
     }
   }, [currentUser?.id]);
+
+  // Cleanup orphaned connections on initialization
+  const cleanupOrphanedConnections = async () => {
+    console.log("[App.tsx] 🧹 Executing cleanupOrphanedConnections at initialization...");
+    try {
+      const localConns = db.getConnections();
+      const allUsers = db.getUsers();
+      const validUserIds = new Set(allUsers.map(u => u.id));
+
+      if (supabase) {
+        try {
+          const { data: sbProfiles } = await supabase.from("profiles").select("id");
+          if (sbProfiles && Array.isArray(sbProfiles)) {
+            sbProfiles.forEach((p: any) => validUserIds.add(p.id));
+          }
+        } catch (e) {
+          console.warn("[cleanupOrphanedConnections] Could not query Supabase profiles:", e);
+        }
+      }
+
+      const activeOrPending = localConns.filter(c => 
+        c.status === "active" || c.status === "en_attente" || (c.status as string) === "pending"
+      );
+
+      const orphanedIds: string[] = [];
+
+      activeOrPending.forEach(conn => {
+        const isSenderValid = conn.senderId && (validUserIds.has(conn.senderId) || (conn.senderName && conn.senderName !== "Utilisateur"));
+        const isReceiverValid = conn.receiverId && (validUserIds.has(conn.receiverId) || (conn.receiverName && conn.receiverName !== "Utilisateur"));
+        const isSelfReferential = conn.senderId === conn.receiverId;
+
+        if (!conn.senderId || !conn.receiverId || isSelfReferential || (!isSenderValid && !isReceiverValid)) {
+          orphanedIds.push(conn.id);
+        }
+      });
+
+      if (orphanedIds.length > 0) {
+        console.log(`[cleanupOrphanedConnections] 🗑️ Found ${orphanedIds.length} orphaned active/pending connection(s) to remove:`, orphanedIds);
+        const cleaned = localConns.filter(c => !orphanedIds.includes(c.id));
+        db.saveConnections(cleaned);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(cleaned));
+        }
+        await offlineStorage.setItems("relations", cleaned);
+        if (currentUser) {
+          setConnections(cleaned.filter(c => c.senderId === currentUser.id || c.receiverId === currentUser.id));
+        }
+        if (supabase) {
+          try {
+            await supabase.from("relations").delete().in("id", orphanedIds);
+            console.log("[cleanupOrphanedConnections] Deleted orphaned relations from Supabase.");
+          } catch (e) {
+            console.warn("[cleanupOrphanedConnections] Supabase orphan deletion warning:", e);
+          }
+        }
+      } else {
+        console.log("[cleanupOrphanedConnections] ✅ No orphaned connections found.");
+      }
+    } catch (err) {
+      console.error("[cleanupOrphanedConnections] Error during cleanup:", err);
+    }
+  };
+
+  useEffect(() => {
+    cleanupOrphanedConnections();
+  }, []);
 
   // Automatic real-time monitoring of seller stock levels to trigger critical stock push notifications
   useEffect(() => {
@@ -2646,6 +2732,17 @@ export default function App() {
 
           {/* Clean Primary Navigation & Tool Triggers */}
           <div className="flex items-center gap-2 sm:gap-2.5">
+            {/* Mobile Navigation Hamburger Trigger (Mobile screen replacement for horizontal bar) */}
+            <button
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="p-2 sm:p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition md:hidden cursor-pointer flex items-center gap-1.5"
+              title="Ouvrir le menu de navigation mobile"
+              id="mobile-hamburger-btn"
+            >
+              <Menu className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-xs font-bold hidden sm:inline">Menu</span>
+            </button>
+
             {/* Quick Support & FAQ IA shortcut in Header */}
             <button
               onClick={() => setShowSupportModal(true)}
@@ -2998,6 +3095,177 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Mobile Navigation Drawer Panel */}
+      <AnimatePresence>
+        {isMobileDrawerOpen && (
+          <div className="fixed inset-0 z-50 md:hidden flex">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileDrawerOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+            />
+
+            {/* Drawer Content */}
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="relative w-80 max-w-[85vw] bg-white dark:bg-zinc-900 shadow-2xl h-full flex flex-col z-50 overflow-y-auto"
+            >
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-900/80">
+                <div className="flex items-center gap-2.5">
+                  <img src={wakatLogo} alt="WakatMarket" className="w-8 h-8 rounded-lg object-cover" />
+                  <div>
+                    <h3 className="font-extrabold text-sm text-zinc-900 dark:text-white">WakatMarket</h3>
+                    <p className="text-[10px] text-zinc-500 font-medium">Menu Navigation Mobile</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsMobileDrawerOpen(false)}
+                  className="p-2 text-zinc-400 hover:text-zinc-700 dark:hover:text-white rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4 flex-1">
+                {currentUser && (
+                  <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 p-3.5 rounded-xl space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Rôle Actif</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-600 text-white">{currentUser.role}</span>
+                    </div>
+                    <p className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{currentUser.name || currentUser.companyName}</p>
+                    <p className="text-[10px] text-zinc-500">{currentUser.email || currentUser.phone}</p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-1 mb-2">
+                    Menu & Outils ERP
+                  </p>
+
+                  <button
+                    onClick={() => { setShowSupportModal(true); setIsMobileDrawerOpen(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-emerald-600" />
+                    <span>Support Client & Guide IA</span>
+                  </button>
+
+                  {currentUser && currentUser.role !== "Admin" && currentUser.role !== "Client Final" && currentUser.role !== "Chauffeur / Livreur" && (
+                    <button
+                      onClick={() => { setShowPaiementsAValider(!showPaiementsAValider); setIsMobileDrawerOpen(false); }}
+                      className="w-full px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-300 hover:bg-amber-100 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                    >
+                      <Smartphone className="w-4 h-4 text-amber-600" />
+                      <span>Validation Paiements Mobile Money</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => { setShowPitchDeck(!showPitchDeck); setIsMobileDrawerOpen(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Presentation className="w-4 h-4 text-amber-500" />
+                    <span>Présentation Pitch Deck</span>
+                  </button>
+
+                  {currentUser && (
+                    <button
+                      onClick={() => { setShowComparator(!showComparator); setIsMobileDrawerOpen(false); }}
+                      className="w-full px-3 py-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                    >
+                      <Scale className="w-4 h-4 text-emerald-600" />
+                      <span>Comparateur B2B Multi-Fournisseurs</span>
+                    </button>
+                  )}
+
+                  {currentUser && (
+                    <button
+                      onClick={() => { setShowChat(!showChat); setIsMobileDrawerOpen(false); }}
+                      className="w-full px-3 py-2.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300 hover:bg-blue-100 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4 text-blue-600" />
+                      <span>Messagerie Directe B2B</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => { setShowScanner(!showScanner); setIsMobileDrawerOpen(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Scan className="w-4 h-4 text-emerald-600" />
+                    <span>Scanner Code-barres</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowAICopilot(!showAICopilot); setIsMobileDrawerOpen(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <span>Assistant Copilote IA</span>
+                  </button>
+
+                  <button
+                    onClick={() => { setShowReports(!showReports); setIsMobileDrawerOpen(false); }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
+                  >
+                    <BarChart2 className="w-4 h-4 text-emerald-600" />
+                    <span>Rapports & Analytics</span>
+                  </button>
+                </div>
+
+                {isAIStudioOrDevEnvironment() && (
+                  <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                      Changer de Rôle (Démo) :
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { label: "Admin", role: UserRole.ADMIN },
+                        { label: "Grossiste", role: UserRole.WHOLESALER },
+                        { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
+                        { label: "Détaillant", role: UserRole.RETAILER },
+                        { label: "Fabricant", role: UserRole.MANUFACTURER },
+                        { label: "Livreur", role: UserRole.DRIVER_R2C },
+                        { label: "Client", role: UserRole.CLIENT }
+                      ].map((btn) => (
+                        <button
+                          key={btn.role}
+                          type="button"
+                          onClick={() => {
+                            const list = db.getUsers();
+                            const found = list.find((u) => u.role === btn.role) || list[0];
+                            if (found) {
+                              setCurrentUser(found);
+                              localStorage.setItem("wakat_active_user_id", found.id);
+                            }
+                            setIsAuthScreen(false);
+                            setIsMobileDrawerOpen(false);
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition text-left cursor-pointer ${
+                            currentUser?.role === btn.role
+                              ? "bg-emerald-600 text-white"
+                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Offline Banner */}
       {!isOnline && (

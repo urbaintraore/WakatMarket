@@ -2,6 +2,7 @@ import { Connection, Notification, UserProfile, UserRole } from "../types";
 import { supabase } from "../supabase";
 import { db } from "../data";
 import { syncService } from "./syncService";
+import { offlineStorage } from "./offlineStorage";
 
 export async function ensureUserExistsInSupabase(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
   if (!supabase || !user?.id) return;
@@ -906,17 +907,24 @@ export const connectionService = {
 
     if (supabase) {
       try {
-        console.log(`[ConnectionService.acceptConnection] 📡 Updating Supabase 'relations' table to statut='ACTIF' for id=${connectionId}...`);
+        console.log(`[ConnectionService.acceptConnection] 📡 Upserting Supabase 'relations' table to statut='ACTIF' for id=${connectionId}...`);
+        const upsertPayload: Record<string, any> = {
+          id: connectionId,
+          statut: "ACTIF",
+          updated_at: nowIso
+        };
+        if (conn?.senderId) upsertPayload.grossiste_id = conn.senderId;
+        if (conn?.receiverId) upsertPayload.client_id = conn.receiverId;
+
         const { data: updateData, error: updateErr } = await supabase
           .from("relations")
-          .update({ statut: "ACTIF", updated_at: nowIso })
-          .eq("id", connectionId)
+          .upsert(upsertPayload)
           .select();
 
         if (updateErr) {
-          console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase relation update error:", updateErr.message);
+          console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase relation upsert error:", updateErr.message);
         } else {
-          console.log(`[ConnectionService.acceptConnection] ✅ Supabase 'relations' updated successfully (statut=ACTIF):`, updateData);
+          console.log(`[ConnectionService.acceptConnection] ✅ Supabase 'relations' upserted successfully (statut=ACTIF):`, updateData);
         }
       } catch (e) {
         console.warn("Notice Supabase accept connection:", e);
@@ -1145,25 +1153,57 @@ export const connectionService = {
   subscribeToUserConnections(userId: string, callback: (connections: Connection[]) => void): () => void {
     if (!userId) return () => {};
 
+    console.log(`[ConnectionService.subscribeToUserConnections] 🚀 Subscribing to connections for userId="${userId}"`);
+
     const emitConnections = async () => {
       const deletedIds = getDeletedConnectionIds();
       const deletedPairs = getDeletedPartnerPairs();
 
-      const localConns = db.getConnections().filter(c => {
+      let localConns = db.getConnections().filter(c => {
         if (deletedIds.has(c.id)) return false;
         if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
         return c.senderId === userId || c.receiverId === userId;
       });
 
+      console.log(`[ConnectionService.subscribeToUserConnections] 💾 [1/4] Memory DB connections for user ${userId}:`, localConns.length, "item(s)");
+
+      // Fetch from IndexedDB offlineStorage as fallback/additional cache
+      try {
+        const offlineConns = await offlineStorage.getAll<Connection>("relations");
+        if (offlineConns && offlineConns.length > 0) {
+          const userOfflineConns = offlineConns.filter(c => 
+            (c.senderId === userId || c.receiverId === userId) &&
+            !deletedIds.has(c.id) &&
+            !deletedPairs.has(`${c.senderId}:${c.receiverId}`) &&
+            !deletedPairs.has(`${c.receiverId}:${c.senderId}`)
+          );
+          console.log(`[ConnectionService.subscribeToUserConnections] 📦 [2/4] IndexedDB offlineStorage 'relations':`, userOfflineConns.length, "item(s) found for user.");
+
+          // Add any connections from offlineStorage missing from memory DB
+          userOfflineConns.forEach(c => {
+            if (!localConns.some(lc => lc.id === c.id)) {
+              localConns.push(c);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("[ConnectionService.subscribeToUserConnections] ⚠️ Warning reading offlineStorage:", e);
+      }
+
       let mappedSb: Connection[] = [];
       if (supabase) {
         try {
+          console.log(`[ConnectionService.subscribeToUserConnections] 📡 [3/4] Fetching connections from Supabase 'relations' table for grossiste_id=${userId} OR client_id=${userId}...`);
           const { data, error } = await supabase
             .from("relations")
             .select("*")
             .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
 
-          if (!error && data && data.length > 0) {
+          if (error) {
+            console.warn(`[ConnectionService.subscribeToUserConnections] ⚠️ Supabase fetch warning:`, error.message);
+          } else if (data && data.length > 0) {
+            console.log(`[ConnectionService.subscribeToUserConnections] ✅ Supabase returned ${data.length} relation row(s) for user ${userId}:`, data);
+
             // Auto-fetch any missing partner profiles into local db BEFORE mapping!
             const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
             await ensureUsersExistLocally(partnerUserIds);
@@ -1202,19 +1242,28 @@ export const connectionService = {
                   updatedAt: row.created_at || new Date().toISOString()
                 };
               });
+          } else {
+            console.log(`[ConnectionService.subscribeToUserConnections] ℹ️ Supabase returned 0 relation rows for user ${userId}.`);
           }
         } catch (e) {
-          console.warn("Notice Supabase fetch connections:", e);
+          console.warn("[ConnectionService.subscribeToUserConnections] Notice Supabase fetch connections exception:", e);
         }
       }
 
       const map = new Map<string, Connection>();
-      localConns.forEach(c => map.set(c.id, c));
+      localConns.forEach(c => {
+        const pairKey = [c.senderId, c.receiverId].sort().join("_");
+        map.set(c.id, c);
+        map.set(pairKey, c);
+      });
       mappedSb.forEach(c => {
-        if (!map.has(c.id)) {
+        const pairKey = [c.senderId, c.receiverId].sort().join("_");
+        const existing = map.get(c.id) || map.get(pairKey);
+
+        if (!existing) {
           map.set(c.id, c);
+          map.set(pairKey, c);
         } else {
-          const existing = map.get(c.id)!;
           // Bulletproof status merge: once active or refusée, never downgrade back to pending
           let resolvedStatus = existing.status;
           if (existing.status === "active" || c.status === "active") {
@@ -1223,8 +1272,9 @@ export const connectionService = {
             resolvedStatus = "refusée";
           }
 
-          map.set(c.id, {
+          const merged: Connection = {
             ...existing,
+            id: c.id || existing.id,
             status: resolvedStatus,
             senderName: c.senderName && c.senderName !== "Utilisateur" && c.senderName !== "Partenaire B2B" ? c.senderName : existing.senderName,
             receiverName: c.receiverName && c.receiverName !== "Utilisateur" && c.receiverName !== "Partenaire B2B" ? c.receiverName : existing.receiverName,
@@ -1232,7 +1282,10 @@ export const connectionService = {
             receiverRole: c.receiverRole || existing.receiverRole,
             notes: c.notes || existing.notes,
             updatedAt: c.updatedAt || existing.updatedAt
-          });
+          };
+
+          map.set(merged.id, merged);
+          map.set(pairKey, merged);
         }
       });
 
@@ -1242,14 +1295,22 @@ export const connectionService = {
         return true;
       });
 
-      // Update local storage without re-triggering recursive local update events
+      console.log(`[ConnectionService.subscribeToUserConnections] 🔄 [4/4] Final merged connections count: ${mergedConns.length}. Connections:`, mergedConns);
+
+      // Persist to local memory DB, localStorage, and IndexedDB offlineStorage
       const allLocal = db.getConnections();
-      const hasDifferences = mergedConns.some(mc => !allLocal.some(lc => lc.id === mc.id && lc.status === mc.status));
-      if (hasDifferences) {
-        const remaining = allLocal.filter(lc => !mergedConns.some(mc => mc.id === lc.id));
-        try {
-          localStorage.setItem("wakat_erp_v2_connections", JSON.stringify([...remaining, ...mergedConns]));
-        } catch (e) {}
+      const remaining = allLocal.filter(lc => !mergedConns.some(mc => mc.id === lc.id));
+      const updatedAll = [...remaining, ...mergedConns];
+
+      try {
+        db.saveConnections(updatedAll);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(updatedAll));
+        }
+        await offlineStorage.setItems("relations", updatedAll);
+        console.log(`[ConnectionService.subscribeToUserConnections] 💾 Successfully persisted ${updatedAll.length} total connections to local DB, localStorage, and IndexedDB offlineStorage.`);
+      } catch (e) {
+        console.warn("[ConnectionService.subscribeToUserConnections] Warning persisting connections:", e);
       }
 
       callback(mergedConns);
@@ -1273,13 +1334,14 @@ export const connectionService = {
           .on(
             "postgres_changes",
             { event: "*", schema: "public", table: "relations" },
-            (payload: any) => {
-              console.log(`[ConnectionService:Realtime] 📥 Supabase 'relations' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
-              emitConnections();
+            async (payload: any) => {
+              console.log(`[ConnectionService:Realtime] ⚡ Real-time 'relations' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
+              // Run emitConnections to sync Supabase, local state, and immediately persist to localStorage
+              await emitConnections();
             }
           )
           .subscribe((status: string) => {
-            console.log(`[ConnectionService:Realtime] 📡 Supabase relations channel status for ${userId}: ${status}`);
+            console.log(`[ConnectionService:Realtime] 📡 Supabase relations realtime channel status for ${userId}: ${status}`);
           });
       } catch (e) {
         console.warn("Notice Supabase channel conn:", e);
