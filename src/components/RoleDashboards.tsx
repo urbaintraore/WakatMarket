@@ -9,7 +9,7 @@ import {
   Settings, UserCheck, UserX, ToggleLeft, ToggleRight, Plus, Tag, 
   BarChart, Sparkles, Check, Play, Map, Navigation, CheckCircle, 
   Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
-  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet, Calendar
+  Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet, Calendar, Archive
 } from "lucide-react";
 import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive, isBonkoungou } from "../types";
 import { formatCFA, estimateShipping, generateOTP, calculateClientDebt, calculateApplicablePrice } from "../data";
@@ -36,6 +36,7 @@ import { FavoritesSection } from "./FavoritesSection";
 import { OrderCreationDeliveryCalculator } from "./OrderCreationDeliveryCalculator";
 import { PartnerReviewsSection } from "./PartnerReviewsSection";
 import MerchantSalesDashboard from "./MerchantSalesDashboard";
+import { WidgetGrid, WidgetCard, OrderWidgetCard } from "./WidgetGrid";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -4774,6 +4775,45 @@ export function SemiWholesalerDashboard({
   // Selected driver per order
   const [selectedDrivers, setSelectedDrivers] = useState<Record<string, string>>({});
 
+  // Persistent Order Archiving & Active Orders Filter State
+  const [archivedOrderIds, setArchivedOrderIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("wakat_archived_order_ids");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [orderFilterMode, setOrderFilterMode] = useState<"active_only" | "all" | "archived">("active_only");
+
+  const toggleArchiveOrder = (orderId: string) => {
+    setArchivedOrderIds(prev => {
+      const isArchived = prev.includes(orderId);
+      const updated = isArchived ? prev.filter(id => id !== orderId) : [...prev, orderId];
+      try {
+        localStorage.setItem("wakat_archived_order_ids", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Error saving archived order IDs:", e);
+      }
+      return updated;
+    });
+  };
+
+  const activeIncomingOrders = useMemo(() => {
+    return incomingOrders.filter(o => !archivedOrderIds.includes(o.id));
+  }, [incomingOrders, archivedOrderIds]);
+
+  const archivedIncomingOrders = useMemo(() => {
+    return incomingOrders.filter(o => archivedOrderIds.includes(o.id));
+  }, [incomingOrders, archivedOrderIds]);
+
+  const displayedIncomingOrders = useMemo(() => {
+    if (orderFilterMode === "active_only") return activeIncomingOrders;
+    if (orderFilterMode === "archived") return archivedIncomingOrders;
+    return incomingOrders;
+  }, [orderFilterMode, activeIncomingOrders, archivedIncomingOrders, incomingOrders]);
+
   // Calculations for dashboard
   const totalProcurementCost = myPurchases.reduce((sum, o) => sum + o.totalAmount, 0);
   const incomingCompletedSales = incomingOrders.filter((o) => o.status === OrderStatus.DELIVERED);
@@ -5274,141 +5314,88 @@ export function SemiWholesalerDashboard({
       {/* Tab: Incoming Orders */}
       {activeTab === "incoming" && (
         <div className="space-y-4 animate-fade-in">
-          <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100">Commandes Clients Reçues (Boutiques & Particuliers)</h4>
-          {incomingOrders.length === 0 ? (
-            <p className="text-xs text-zinc-500 py-6 text-center">Aucune commande reçue de la part de détaillants ou de particuliers.</p>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-2 border-b border-zinc-150 dark:border-zinc-800">
+            <div>
+              <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100">
+                Commandes Clients Reçues ({displayedIncomingOrders.length})
+              </h4>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Cliquez sur une commande pour l'étendre sur 2 colonnes et afficher la liste détaillée des produits.
+              </p>
+            </div>
+
+            {/* Default Filter Toggle: Active Orders Only */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                onClick={() => setOrderFilterMode("active_only")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  orderFilterMode === "active_only"
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                }`}
+                title="Masque les anciennes commandes archivées"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>Commandes actives uniquement</span>
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeIncomingOrders.length}</span>
+              </button>
+
+              <button
+                onClick={() => setOrderFilterMode("all")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  orderFilterMode === "all"
+                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                }`}
+              >
+                <span>Toutes les commandes</span>
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{incomingOrders.length}</span>
+              </button>
+
+              <button
+                onClick={() => setOrderFilterMode("archived")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  orderFilterMode === "archived"
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                }`}
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>Archives ({archivedIncomingOrders.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {displayedIncomingOrders.length === 0 ? (
+            <div className="p-8 text-center bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500">
+              <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+              <p className="text-xs font-bold">
+                {orderFilterMode === "active_only" && "Aucune commande active reçue."}
+                {orderFilterMode === "archived" && "Aucune commande dans la vue archivée."}
+                {orderFilterMode === "all" && "Aucune commande enregistrée."}
+              </p>
+            </div>
           ) : (
-            <div className="space-y-4">
-              {incomingOrders.map((order) => {
+            <WidgetGrid minChildWidth="300px">
+              {displayedIncomingOrders.map((order) => {
                 const buyerObj = users.find((u) => u.id === order.senderId);
                 const assignedDriverObj = users.find((u) => u.id === order.driverId);
+                const isArchived = archivedOrderIds.includes(order.id);
+
                 return (
-                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="font-bold text-xs text-orange-600">{order.id}</span>
-                        <p className="text-[11px] text-zinc-900 dark:text-zinc-200 font-bold mt-1">
-                          Client : {buyerObj?.companyName || buyerObj?.name} ({order.orderType === "B2B_SG2R" ? "Détaillant B2B" : "Client Particulier B2C"})
-                        </p>
-                        {buyerObj && (
-                          <div className="mt-1 text-[10px] text-zinc-500 space-y-0.5">
-                            <p>👤 {buyerObj.name}</p>
-                            <p>📞 {buyerObj.phone} | ✉️ {buyerObj.email}</p>
-                            <p>📍 {buyerObj.region}, {buyerObj.country} {buyerObj.sector ? `- ${buyerObj.sector}` : ''}</p>
-                          </div>
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        order.status === OrderStatus.PENDING ? "bg-amber-500/10 text-amber-600" : "bg-zinc-100 text-zinc-600"
-                      }`}>
-                        Statut: {order.status}
-                      </span>
-                    </div>
-
-                    <div className="border-t border-zinc-100 dark:border-zinc-800 pt-2 space-y-1">
-                      {order.items.map((i, idx) => {
-                        const prod = products.find((p) => p.id === i.productId);
-                        return (
-                          <div key={i.productId + '_' + idx} className="flex justify-between text-[11px] text-zinc-500">
-                            <span>{prod?.name}</span>
-                            <span>{i.quantity} x {formatCFA(i.priceAtOrder)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs pt-2 font-bold border-t border-zinc-100 dark:border-zinc-800">
-                      <span>Total :</span>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-emerald-600 text-sm">{formatCFA(order.totalAmount)}</span>
-                        <button
-                          onClick={() => handleDownloadOrderPDF(order, products)}
-                          className="px-2.5 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                          title="Télécharger ou imprimer la facture officielle"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-emerald-600" /> Facture PDF
-                        </button>
-                      </div>
-                    </div>
-
-                    {order.status === OrderStatus.PENDING && (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] py-1.5 px-3 rounded-lg font-bold transition"
-                        >
-                          Valider la commande
-                        </button>
-                        <button
-                          onClick={() => {
-                            onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED);
-                            handleDownloadOrderPDF(order, products);
-                          }}
-                          className="bg-orange-600 hover:bg-orange-500 text-white text-[11px] py-1.5 px-3 rounded-lg font-bold transition flex items-center gap-1"
-                        >
-                          <Printer className="w-3.5 h-3.5" /> Valider & Imprimer Facture
-                        </button>
-                        <button
-                          onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CANCELLED)}
-                          className="bg-zinc-100 hover:bg-zinc-200 text-zinc-600 text-[11px] py-1.5 px-3 rounded-lg font-bold transition"
-                        >
-                          Rejeter
-                        </button>
-                      </div>
-                    )}
-
-                    {order.status === OrderStatus.CONFIRMED && (
-                      <div className="bg-zinc-50 dark:bg-zinc-950/50 p-3 rounded-xl space-y-2 border border-zinc-200/50">
-                        <p className="text-[10px] uppercase font-bold text-zinc-500">Expédition par livreur partenaire</p>
-                        <div className="flex gap-2 items-center">
-                          <select
-                            value={selectedDrivers[order.id] || ""}
-                            onChange={(e) => setSelectedDrivers({ ...selectedDrivers, [order.id]: e.target.value })}
-                            className="flex-1 px-2.5 py-1 text-xs border border-zinc-200 dark:border-zinc-850 bg-white dark:bg-zinc-800 rounded-lg text-zinc-900 dark:text-zinc-100"
-                          >
-                            <option value="">Sélectionner un livreur...</option>
-                            {(order.orderType === "B2B_SG2R" ? sg2rDrivers : r2cDrivers).map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name} ({d.role === UserRole.DRIVER_SG2R ? "Demi-Grossiste➔Détaillant" : "Livraison Client"})
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => {
-                              const drvId = selectedDrivers[order.id];
-                              if (!drvId) {
-                                alert("Veuillez sélectionner un livreur actif !");
-                                return;
-                              }
-                              onUpdateOrderStatus(order.id, OrderStatus.SHIPPED, drvId);
-                              alert("Commande expédiée avec succès !");
-                            }}
-                            className="bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold py-1 px-3 rounded-lg transition"
-                          >
-                            Expédier
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {order.status === OrderStatus.SHIPPED && (
-                      <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/10 rounded-xl text-[11px] text-zinc-600 dark:text-zinc-400 flex justify-between items-center">
-                        <span>Livreur assigné : <strong>{assignedDriverObj?.name || "Partenaire"}</strong></span>
-                        <button
-                          onClick={() => {
-                            onUpdateOrderStatus(order.id, OrderStatus.DELIVERED);
-                            alert("Commande marquée comme livrée !");
-                          }}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded transition"
-                        >
-                          Forcer la livraison
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <OrderWidgetCard
+                    key={order.id}
+                    order={order}
+                    products={products}
+                    users={users}
+                    onUpdateOrderStatus={onUpdateOrderStatus}
+                    onArchiveOrder={toggleArchiveOrder}
+                    onDownloadPDF={handleDownloadOrderPDF}
+                    isArchived={isArchived}
+                  />
                 );
               })}
-            </div>
+            </WidgetGrid>
           )}
         </div>
       )}

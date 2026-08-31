@@ -61,29 +61,9 @@ import { NotificationBell } from "./components/NotificationBell";
 import { QuickActionsBar } from "./components/QuickActionsBar";
 import { B2BProductComparator } from "./components/B2BProductComparator";
 import { AddressAutocomplete } from "./components/AddressAutocomplete";
-
-export interface WidgetGridProps {
-  children: React.ReactNode;
-  className?: string;
-  minChildWidth?: string;
-}
-
-/**
- * WidgetGrid organizes dashboard widgets using responsive CSS Grid auto-fit/minmax.
- * Ensures each widget (Orders, Sales, Stocks, etc.) has adequate minimum width to prevent text truncation.
- */
-export function WidgetGrid({ children, className = "", minChildWidth = "290px" }: WidgetGridProps) {
-  return (
-    <div 
-      className={`grid gap-4 sm:gap-6 w-full ${className}`}
-      style={{
-        gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minChildWidth}), 1fr))`
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+import { WidgetGrid, WidgetCard, OrderWidgetCard } from "./components/WidgetGrid";
+export { WidgetGrid, WidgetCard, OrderWidgetCard };
+export type { WidgetGridProps } from "./components/WidgetGrid";
 
 export default function App() {
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);

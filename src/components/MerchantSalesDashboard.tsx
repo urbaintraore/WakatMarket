@@ -6,12 +6,13 @@
 import React, { useState, useMemo } from "react";
 import { 
   Scan, ShoppingBag, Clock, DollarSign, Barcode, TrendingUp, 
-  Check, ArrowRight, Package, Smartphone, AlertCircle 
+  Check, ArrowRight, Package, Smartphone, AlertCircle, Archive, Filter 
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Order, Product, OrderStatus, UserProfile } from "../types";
 import { formatCFA } from "../data";
 import BarcodeScanner from "./BarcodeScanner";
+import { WidgetGrid, OrderWidgetCard } from "./WidgetGrid";
 
 interface MerchantSalesDashboardProps {
   orders: Order[];
@@ -32,13 +33,57 @@ export default function MerchantSalesDashboard({
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
+  // Persistent Archive State
+  const [archivedOrderIds, setArchivedOrderIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("wakat_archived_order_ids");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Filter mode: 'active_only' (default), 'all', 'archived'
+  const [orderFilterMode, setOrderFilterMode] = useState<"active_only" | "all" | "archived">("active_only");
+
+  const toggleArchiveOrder = (orderId: string) => {
+    setArchivedOrderIds(prev => {
+      const isArchived = prev.includes(orderId);
+      const updated = isArchived ? prev.filter(id => id !== orderId) : [...prev, orderId];
+      try {
+        localStorage.setItem("wakat_archived_order_ids", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Error saving archived order IDs:", e);
+      }
+      return updated;
+    });
+  };
+
+  // Merchant incoming orders
+  const myIncomingOrders = useMemo(() => {
+    return orders.filter(o => o.receiverId === currentUser.id || o.receiverId === currentUser.email);
+  }, [orders, currentUser.id, currentUser.email]);
+
+  const activeOrders = useMemo(() => {
+    return myIncomingOrders.filter(o => !archivedOrderIds.includes(o.id));
+  }, [myIncomingOrders, archivedOrderIds]);
+
+  const archivedOrders = useMemo(() => {
+    return myIncomingOrders.filter(o => archivedOrderIds.includes(o.id));
+  }, [myIncomingOrders, archivedOrderIds]);
+
+  const displayedOrders = useMemo(() => {
+    if (orderFilterMode === "active_only") return activeOrders;
+    if (orderFilterMode === "archived") return archivedOrders;
+    return myIncomingOrders;
+  }, [orderFilterMode, activeOrders, archivedOrders, myIncomingOrders]);
+
   // Compute Today's Revenue
   const todayRevenue = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     return orders
       .filter(o => {
         if (!o.createdAt) return false;
-        // Check if the current user is the receiver/seller of this order
         const isMySale = o.receiverId === currentUser.id;
         const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
         const isValid = o.status !== "CANCELLED" && (o.status as string) !== "annulee";
@@ -168,57 +213,84 @@ export default function MerchantSalesDashboard({
         </motion.div>
       )}
 
-      {/* Pending Orders List Quick View */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
-        <div className="flex justify-between items-center mb-4 pb-3 border-b border-zinc-150 dark:border-zinc-800/80">
-          <h3 className="font-bold text-zinc-900 dark:text-white text-sm flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-500" />
-            Commandes en attente de validation ({pendingOrders.length})
-          </h3>
-          <span className="text-xs text-zinc-500 font-semibold">Vue rapide marchand</span>
+      {/* Orders List & Interactive WidgetGrid */}
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-zinc-150 dark:border-zinc-800/80">
+          <div>
+            <h3 className="font-bold text-zinc-900 dark:text-white text-sm flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-emerald-600" />
+              Commandes Clients Reçues ({displayedOrders.length})
+            </h3>
+            <p className="text-[11px] text-zinc-500 mt-0.5">
+              Cliquez sur une carte pour l'étendre sur 2 colonnes et afficher le résumé détaillé des produits.
+            </p>
+          </div>
+
+          {/* Filter Bar Controls */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setOrderFilterMode("active_only")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                orderFilterMode === "active_only"
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+              }`}
+              title="Affiche uniquement les commandes non archivées"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>Commandes actives uniquement</span>
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeOrders.length}</span>
+            </button>
+
+            <button
+              onClick={() => setOrderFilterMode("all")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                orderFilterMode === "all"
+                  ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+              }`}
+            >
+              <span>Toutes les commandes</span>
+              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{myIncomingOrders.length}</span>
+            </button>
+
+            <button
+              onClick={() => setOrderFilterMode("archived")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                orderFilterMode === "archived"
+                  ? "bg-amber-600 text-white shadow-xs"
+                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>Archives ({archivedOrders.length})</span>
+            </button>
+          </div>
         </div>
 
-        {pendingOrders.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500">
+        {displayedOrders.length === 0 ? (
+          <div className="text-center py-10 text-zinc-500 bg-zinc-50 dark:bg-zinc-950/40 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800">
             <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-            <p className="text-xs font-semibold">Toutes les commandes ont été traitées !</p>
+            <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+              {orderFilterMode === "active_only" && "Aucune commande active en cours."}
+              {orderFilterMode === "archived" && "Aucune commande dans les archives."}
+              {orderFilterMode === "all" && "Aucune commande enregistrée."}
+            </p>
+            <p className="text-[11px] text-zinc-400 mt-1">Les dossiers de commandes apparaîtront ici.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {pendingOrders.map(order => (
-              <div key={order.id} className="p-4 bg-zinc-50 dark:bg-zinc-850 border border-zinc-150 dark:border-zinc-800 rounded-xl flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-mono">
-                      #{order.id}
-                    </span>
-                    <span className="text-xs text-zinc-500 font-semibold">
-                      Par: {order.senderId}
-                    </span>
-                  </div>
-                  <div className="text-xs font-bold text-zinc-900 dark:text-white mt-1.5">
-                    {order.items.length} article(s) • Total: {formatCFA(order.totalAmount)}
-                  </div>
-                  <p className="text-[10px] text-zinc-400 mt-0.5">Adresse : {order.deliveryAddress || "Comptoir"}</p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
-                  >
-                    Accepter & Confirmer
-                  </button>
-                  <button
-                    onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CANCELLED)}
-                    className="px-3 py-1.5 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-bold transition cursor-pointer"
-                  >
-                    Refuser
-                  </button>
-                </div>
-              </div>
+          <WidgetGrid minChildWidth="300px">
+            {displayedOrders.map(order => (
+              <OrderWidgetCard
+                key={order.id}
+                order={order}
+                products={products}
+                onUpdateOrderStatus={onUpdateOrderStatus}
+                onArchiveOrder={toggleArchiveOrder}
+                isArchived={archivedOrderIds.includes(order.id)}
+              />
             ))}
-          </div>
+          </WidgetGrid>
         )}
       </div>
     </div>
