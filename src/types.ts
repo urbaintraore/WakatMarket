@@ -422,8 +422,15 @@ export interface Notification {
 
 export function isConnectionActive(c: any): boolean {
   if (!c) return false;
-  const status = (c.status || c.statut || "").toLowerCase();
-  return status === "active" || status === "actif";
+  const status = (c.status || c.statut || "").toString().toLowerCase().trim();
+  return (
+    status === "active" ||
+    status === "actif" ||
+    status === "accepte" ||
+    status === "accepté" ||
+    status === "accepted" ||
+    status === "confirmed"
+  );
 }
 
 /* ==========================================================================

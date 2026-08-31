@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { X, Upload, Link as LinkIcon, Package, Calendar, Layers, Box, Tag, DollarSign, CheckCircle2 } from "lucide-react";
+import { X, Upload, Link as LinkIcon, Package, Calendar, Layers, Box, Tag, DollarSign, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Product, UserRole } from "../types";
 import { formatCFA } from "../data";
 import { productService } from "../services/productService";
@@ -15,7 +15,8 @@ interface CreateProductModalProps {
     prixDetail?: number,
     quantiteMinimum?: number,
     threshold?: number,
-    expirationDate?: string
+    expirationDate?: string,
+    costPrice?: number
   ) => void;
   currentUserRole?: UserRole;
   defaultBrand?: string;
@@ -62,6 +63,15 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
   const [prixDetail, setPrixDetail] = useState<number>(5500);
   const [costPrice, setCostPrice] = useState<number>(3000);
   const [quantiteMinimum, setQuantiteMinimum] = useState<number>(1);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Compute effective minimum selling price to detect loss selling
+  const minSellingPrice = Math.min(
+    price || Infinity,
+    prixGros || Infinity,
+    prixDetail || Infinity
+  );
+  const isLossSelling = costPrice > 0 && minSellingPrice < costPrice;
 
   // Upload image state
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
@@ -124,8 +134,24 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+
     if (!name.trim()) {
       alert("Veuillez saisir un nom pour le produit.");
+      return;
+    }
+
+    // Validation : Empêcher le prix de vente inférieur au prix d'achat (Vente à perte)
+    const currentMinSellingPrice = Math.min(
+      Number(price) || Infinity,
+      Number(prixGros) || Infinity,
+      Number(prixDetail) || Infinity
+    );
+
+    if (Number(costPrice) > 0 && currentMinSellingPrice < Number(costPrice)) {
+      const errorText = `Validation Échouée : Le prix de vente (${formatCFA(currentMinSellingPrice)}) ne peut pas être inférieur au prix d'achat (${formatCFA(costPrice)}). La vente à perte est strictement interdite.`;
+      setFormError(errorText);
+      alert(errorText);
       return;
     }
 
@@ -158,7 +184,8 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
       Number(prixDetail) || Number(price),
       Number(quantiteMinimum) || 1,
       Number(threshold) || 10,
-      expirationDate || undefined
+      expirationDate || undefined,
+      Number(costPrice) || 0
     );
 
     onClose();
@@ -470,6 +497,25 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
             <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
               <Layers className="w-4 h-4" /> 3. Quantité en Stock & Tarifications
             </h4>
+
+            {/* Immediate Visual Alert Banner for Loss Selling or Form Error */}
+            {(isLossSelling || formError) && (
+              <div className="p-4 bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 rounded-2xl flex items-start gap-3 shadow-sm animate-fade-in">
+                <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <h5 className="font-extrabold uppercase tracking-wide text-rose-900 dark:text-rose-200">
+                    Avertissement de Sécurité Tarifaire (Vente à perte)
+                  </h5>
+                  <p className="font-medium leading-relaxed">
+                    {formError || (
+                      <>
+                        Le prix de vente le plus bas saisi (<strong>{formatCFA(minSellingPrice)}</strong>) est inférieur au prix d'achat/coût d'acquisition (<strong>{formatCFA(costPrice)}</strong>). La création de ce produit entraînera une vente à perte et est strictement interdite par le système.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3 rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40">

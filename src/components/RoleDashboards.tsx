@@ -36,7 +36,7 @@ import { FavoritesSection } from "./FavoritesSection";
 import { OrderCreationDeliveryCalculator } from "./OrderCreationDeliveryCalculator";
 import { PartnerReviewsSection } from "./PartnerReviewsSection";
 import MerchantSalesDashboard from "./MerchantSalesDashboard";
-import { WidgetGrid, WidgetCard, OrderWidgetCard } from "./WidgetGrid";
+import { WidgetGrid, WidgetCard, OrderWidgetCard, SortOrder } from "./WidgetGrid";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -4786,6 +4786,7 @@ export function SemiWholesalerDashboard({
   });
 
   const [orderFilterMode, setOrderFilterMode] = useState<"active_only" | "all" | "archived">("active_only");
+  const [orderSortOrder, setOrderSortOrder] = useState<SortOrder>("desc");
 
   const toggleArchiveOrder = (orderId: string) => {
     setArchivedOrderIds(prev => {
@@ -4813,6 +4814,28 @@ export function SemiWholesalerDashboard({
     if (orderFilterMode === "archived") return archivedIncomingOrders;
     return incomingOrders;
   }, [orderFilterMode, activeIncomingOrders, archivedIncomingOrders, incomingOrders]);
+
+  const sortedDisplayedIncomingOrders = useMemo(() => {
+    const list = [...displayedIncomingOrders];
+    return list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return orderSortOrder === "desc" ? timeB - timeA : timeA - timeB;
+    });
+  }, [displayedIncomingOrders, orderSortOrder]);
+
+  const handleClearAllIncomingOrders = () => {
+    const idsToArchive = sortedDisplayedIncomingOrders.map(o => o.id);
+    setArchivedOrderIds(prev => {
+      const updated = Array.from(new Set([...prev, ...idsToArchive]));
+      try {
+        localStorage.setItem("wakat_archived_order_ids", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Error saving archived order IDs:", e);
+      }
+      return updated;
+    });
+  };
 
   // Calculations for dashboard
   const totalProcurementCost = myPurchases.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -5313,71 +5336,116 @@ export function SemiWholesalerDashboard({
 
       {/* Tab: Incoming Orders */}
       {activeTab === "incoming" && (
-        <div className="space-y-4 animate-fade-in">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-2 border-b border-zinc-150 dark:border-zinc-800">
-            <div>
-              <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100">
-                Commandes Clients Reçues ({displayedIncomingOrders.length})
-              </h4>
-              <p className="text-[11px] text-zinc-500 mt-0.5">
-                Cliquez sur une commande pour l'étendre sur 2 colonnes et afficher la liste détaillée des produits.
-              </p>
-            </div>
+        <div className="space-y-4 animate-fade-in bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5">
+          {sortedDisplayedIncomingOrders.length === 0 ? (
+            <WidgetGrid
+              title="Commandes Clients Reçues"
+              subtitle="Cliquez sur une commande pour l'étendre sur 2 colonnes et afficher la liste détaillée des produits."
+              icon={<ShoppingBag className="w-4 h-4 text-emerald-600" />}
+              count={0}
+              sortOrder={orderSortOrder}
+              onSortChange={setOrderSortOrder}
+              filterControls={
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setOrderFilterMode("active_only")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "active_only"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                    title="Masque les commandes archivées"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Actives ({activeIncomingOrders.length})</span>
+                  </button>
 
-            {/* Default Filter Toggle: Active Orders Only */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                onClick={() => setOrderFilterMode("active_only")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  orderFilterMode === "active_only"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                }`}
-                title="Masque les anciennes commandes archivées"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                <span>Commandes actives uniquement</span>
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeIncomingOrders.length}</span>
-              </button>
+                  <button
+                    onClick={() => setOrderFilterMode("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "all"
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <span>Toutes ({incomingOrders.length})</span>
+                  </button>
 
-              <button
-                onClick={() => setOrderFilterMode("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  orderFilterMode === "all"
-                    ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                }`}
-              >
-                <span>Toutes les commandes</span>
-                <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{incomingOrders.length}</span>
-              </button>
-
-              <button
-                onClick={() => setOrderFilterMode("archived")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  orderFilterMode === "archived"
-                    ? "bg-amber-600 text-white shadow-xs"
-                    : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                }`}
-              >
-                <Archive className="w-3.5 h-3.5" />
-                <span>Archives ({archivedIncomingOrders.length})</span>
-              </button>
-            </div>
-          </div>
-
-          {displayedIncomingOrders.length === 0 ? (
-            <div className="p-8 text-center bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500">
-              <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-              <p className="text-xs font-bold">
-                {orderFilterMode === "active_only" && "Aucune commande active reçue."}
-                {orderFilterMode === "archived" && "Aucune commande dans la vue archivée."}
-                {orderFilterMode === "all" && "Aucune commande enregistrée."}
-              </p>
-            </div>
+                  <button
+                    onClick={() => setOrderFilterMode("archived")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "archived"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Archives ({archivedIncomingOrders.length})</span>
+                  </button>
+                </div>
+              }
+              minChildWidth="300px"
+            >
+              <div className="col-span-full p-8 text-center bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-500">
+                <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs font-bold">
+                  {orderFilterMode === "active_only" && "Aucune commande active reçue."}
+                  {orderFilterMode === "archived" && "Aucune commande dans la vue archivée."}
+                  {orderFilterMode === "all" && "Aucune commande enregistrée."}
+                </p>
+              </div>
+            </WidgetGrid>
           ) : (
-            <WidgetGrid minChildWidth="300px">
-              {displayedIncomingOrders.map((order) => {
+            <WidgetGrid 
+              title="Commandes Clients Reçues"
+              subtitle="Cliquez sur une commande pour l'étendre sur 2 colonnes et afficher la liste détaillée des produits."
+              icon={<ShoppingBag className="w-4 h-4 text-emerald-600" />}
+              count={sortedDisplayedIncomingOrders.length}
+              sortOrder={orderSortOrder}
+              onSortChange={setOrderSortOrder}
+              onClearAll={handleClearAllIncomingOrders}
+              filterControls={
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setOrderFilterMode("active_only")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "active_only"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                    title="Masque les commandes archivées"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Actives ({activeIncomingOrders.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOrderFilterMode("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "all"
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <span>Toutes ({incomingOrders.length})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOrderFilterMode("archived")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "archived"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Archives ({archivedIncomingOrders.length})</span>
+                  </button>
+                </div>
+              }
+              minChildWidth="300px"
+            >
+              {sortedDisplayedIncomingOrders.map((order) => {
                 const buyerObj = users.find((u) => u.id === order.senderId);
                 const assignedDriverObj = users.find((u) => u.id === order.driverId);
                 const isArchived = archivedOrderIds.includes(order.id);

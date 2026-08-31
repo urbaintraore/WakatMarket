@@ -724,15 +724,228 @@ export const connectionService = {
     return "inconnu";
   },
 
+  /**
+   * Met à jour explicitement l'objet connexion dans le cache local (db, localStorage, offlineStorage)
+   * et le synchronise avec Supabase avec le statut spécifié (ex: 'active').
+   */
+  async updateConnection(
+    connectionId: string,
+    updates: Partial<Connection> | { status?: Connection["status"]; statut?: string; [key: string]: any }
+  ): Promise<Connection | null> {
+    console.log(`[ConnectionService.updateConnection] 🔄 [START] Explicitly updating connection #${connectionId} with:`, updates);
+    const currentConns = db.getConnections();
+    const nowIso = new Date().toISOString();
+    const sId = (updates as any).senderId;
+    const rId = (updates as any).receiverId;
+    const targetPairKey = (sId && rId) ? [sId, rId].sort().join("_") : null;
+
+    let targetIndex = currentConns.findIndex(c => c.id === connectionId);
+    if (targetIndex === -1 && targetPairKey) {
+      targetIndex = currentConns.findIndex(c => [c.senderId, c.receiverId].sort().join("_") === targetPairKey);
+    }
+
+    let updatedConn: Connection;
+    const normalizedStatus: Connection["status"] = (updates.status === "active" || (updates as any).statut === "ACTIF") 
+      ? "active" 
+      : (updates.status === "refusée" || (updates as any).statut === "BLOCKED" || updates.status === "refusee") 
+      ? "refusée" 
+      : (updates.status || "active");
+
+    if (targetIndex !== -1) {
+      const existing = currentConns[targetIndex];
+      updatedConn = {
+        ...existing,
+        ...updates,
+        status: normalizedStatus,
+        updatedAt: nowIso
+      } as Connection;
+      currentConns[targetIndex] = updatedConn;
+    } else {
+      updatedConn = {
+        id: connectionId,
+        senderId: sId || "",
+        receiverId: rId || "",
+        status: normalizedStatus,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        ...updates
+      } as Connection;
+      currentConns.push(updatedConn);
+    }
+
+    // 1. Save explicitly to memory db and window localStorage
+    db.saveConnections(currentConns);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(currentConns));
+    }
+    console.log(`[ConnectionService.updateConnection] 💾 Saved ${currentConns.length} connections to memory db & localStorage (Status: ${updatedConn.status})`);
+
+    // 2. Persist to IndexedDB offlineStorage
+    try {
+      await offlineStorage.setItems("relations", currentConns);
+      console.log(`[ConnectionService.updateConnection] 📦 IndexedDB offlineStorage updated with connection #${connectionId}`);
+    } catch (e) {
+      console.warn("[ConnectionService.updateConnection] Warning saving to offlineStorage:", e);
+    }
+
+    // 3. Sync to Supabase
+    if (supabase) {
+      try {
+        const sbStatut = updatedConn.status === "active" ? "ACTIF" : (updatedConn.status === "refusée" ? "BLOCKED" : "PENDING");
+        const upsertPayload: Record<string, any> = {
+          id: connectionId,
+          statut: sbStatut,
+          updated_at: nowIso
+        };
+        if (updatedConn.senderId) upsertPayload.grossiste_id = updatedConn.senderId;
+        if (updatedConn.receiverId) upsertPayload.client_id = updatedConn.receiverId;
+
+        const { error: sbErr } = await supabase.from("relations").upsert(upsertPayload);
+        if (sbErr) {
+          console.warn("[ConnectionService.updateConnection] ⚠️ Supabase upsert error:", sbErr.message);
+        } else {
+          console.log(`[ConnectionService.updateConnection] 📡 Supabase relation #${connectionId} successfully synced with statut='${sbStatut}'`);
+        }
+      } catch (sbEx) {
+        console.warn("[ConnectionService.updateConnection] Exception syncing to Supabase:", sbEx);
+      }
+    }
+
+    // 4. Dispatch synchronization events
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+        detail: { connectionId, connection: updatedConn, status: updatedConn.status, timestamp: nowIso }
+      }));
+      if (updatedConn.status === "active") {
+        window.dispatchEvent(new CustomEvent("wakat_partnership_established", {
+          detail: { connection: updatedConn, senderId: updatedConn.senderId, receiverId: updatedConn.receiverId, timestamp: nowIso }
+        }));
+      }
+    }
+
+    return updatedConn;
+  },
+
+  /**
+   * Scanne les relations et répare les incohérences d'état (ex: relation en attente alors que l'un des deux partenaires a validé ou que Supabase/notifications indiquent un accord).
+   * Force la synchronisation de l'état 'active' entre le sender et le receiver pour garantir l'intégrité des statuts de partenariat.
+   */
+  async repairPendingConnections(userId?: string): Promise<{ scanned: number; repaired: number; repairedConnections: Connection[] }> {
+    console.log(`[ConnectionService.repairPendingConnections] 🛠️ [START] Scanning and repairing pending relationship inconsistencies... (targetUser: ${userId || 'ALL'})`);
+    const allConns = db.getConnections();
+    const allNotifs = db.getNotifications();
+    const repairedList: Connection[] = [];
+    const nowIso = new Date().toISOString();
+
+    let sbRelationsMap = new Map<string, any>();
+    if (supabase) {
+      try {
+        const { data: sbData } = await supabase.from("relations").select("*");
+        if (sbData && Array.isArray(sbData)) {
+          sbData.forEach((row: any) => {
+            sbRelationsMap.set(row.id, row);
+            const pairKey = [row.grossiste_id, row.client_id].sort().join("_");
+            sbRelationsMap.set(`pair_${pairKey}`, row);
+          });
+        }
+      } catch (err) {
+        console.warn("[ConnectionService.repairPendingConnections] Could not fetch remote relations:", err);
+      }
+    }
+
+    // Find all accepted notification relationIds
+    const acceptedNotifRelIds = new Set<string>();
+    allNotifs.forEach(n => {
+      if (n.type === "connexion_acceptee" || (n.title && n.title.toLowerCase().includes("acceptée")) || (n.message && n.message.toLowerCase().includes("acceptée"))) {
+        const rId = (n as any).relationId || (n as any).relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id;
+        if (rId) acceptedNotifRelIds.add(rId);
+      }
+    });
+
+    let hasChanges = false;
+    const scanned = allConns.length;
+
+    const repairedConns = allConns.map(c => {
+      if (userId && c.senderId !== userId && c.receiverId !== userId) {
+        return c;
+      }
+
+      const pairKey = [c.senderId, c.receiverId].sort().join("_");
+      const sbRow = sbRelationsMap.get(c.id) || sbRelationsMap.get(`pair_${pairKey}`);
+      const isSbActive = sbRow && (sbRow.statut === "ACTIF" || sbRow.statut === "ACTIVE" || sbRow.statut === "actif");
+      const hasAcceptedNotif = acceptedNotifRelIds.has(c.id);
+
+      const isDivergent = (c.status === "en_attente" || (c.status as string) === "pending") && (isSbActive || hasAcceptedNotif);
+
+      if (isDivergent) {
+        console.log(`[ConnectionService.repairPendingConnections] 🔧 Repaired divergent connection #${c.id} (Sender: ${c.senderId}, Receiver: ${c.receiverId}): FORCED ACTIVE (Reason: ${isSbActive ? 'Supabase was ACTIF' : 'Accepted notification found'})`);
+        hasChanges = true;
+        const fixed: Connection = {
+          ...c,
+          status: "active",
+          updatedAt: nowIso
+        };
+        repairedList.push(fixed);
+        return fixed;
+      }
+
+      return c;
+    });
+
+    if (hasChanges) {
+      db.saveConnections(repairedConns);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(repairedConns));
+      }
+      try {
+        await offlineStorage.setItems("relations", repairedConns);
+      } catch (e) {}
+
+      // Update Supabase for repaired items
+      if (supabase && repairedList.length > 0) {
+        for (const rep of repairedList) {
+          try {
+            await supabase.from("relations").upsert({
+              id: rep.id,
+              grossiste_id: rep.senderId,
+              client_id: rep.receiverId,
+              statut: "ACTIF",
+              updated_at: nowIso
+            });
+          } catch (e) {}
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+          detail: { repairedCount: repairedList.length, timestamp: nowIso }
+        }));
+        window.dispatchEvent(new CustomEvent("wakat_partnership_established", {
+          detail: { timestamp: nowIso }
+        }));
+      }
+
+      console.log(`[ConnectionService.repairPendingConnections] 🎉 [DONE] Successfully reconciled and repaired ${repairedList.length} connection(s).`);
+    } else {
+      console.log(`[ConnectionService.repairPendingConnections] ✅ [CLEAN] All scanned relations (${scanned}) are consistent.`);
+    }
+
+    return {
+      scanned,
+      repaired: repairedList.length,
+      repairedConnections: repairedList
+    };
+  },
+
   async acceptConnection(connectionId: string, currentUserId?: string): Promise<void> {
     console.log(`[ConnectionService.acceptConnection] 🚀 [START] Accepting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
     let conn = currentConns.find(c => c.id === connectionId);
 
-    // Ensure we have the most up to date relation info and user profiles
+    // Step 1: Ensure we have the most up to date relation info and user profiles
     if (supabase) {
       try {
-        console.log(`[ConnectionService.acceptConnection] 🔍 Querying Supabase 'relations' table for connection id=${connectionId}...`);
+        console.log(`[ConnectionService.acceptConnection] 🔍 Step 1: Querying Supabase 'relations' table for connection id=${connectionId}...`);
         const { data } = await supabase.from("relations").select("*").eq("id", connectionId).maybeSingle();
         
         let grossiste_id = data?.grossiste_id || conn?.senderId;
@@ -811,19 +1024,45 @@ export const connectionService = {
       }
     }
 
-    // Update local connections list
+    // Step 2: Explicitly update connection state in local cache and via updateConnection with status 'active'
+    console.log(`[ConnectionService.acceptConnection] 🔄 Step 2: Explicitly updating connection #${connectionId} with status='active'...`);
     const nowIso = new Date().toISOString();
-    let updated: Connection[];
-    if (conn) {
-      conn = { ...conn, status: "active", updatedAt: nowIso };
-      const filtered = currentConns.filter(c => c.id !== connectionId);
-      updated = [...filtered, conn];
-    } else {
-      updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "active" as const, updatedAt: nowIso } : c);
-      conn = updated.find(c => c.id === connectionId);
+    const targetPairKey = conn ? [conn.senderId, conn.receiverId].sort().join("_") : null;
+
+    const updatedResult = await this.updateConnection(connectionId, {
+      id: connectionId,
+      status: "active",
+      statut: "ACTIF",
+      senderId: conn?.senderId,
+      receiverId: conn?.receiverId,
+      senderName: conn?.senderName,
+      receiverName: conn?.receiverName,
+      senderRole: conn?.senderRole,
+      receiverRole: conn?.receiverRole,
+      notes: conn?.notes,
+      updatedAt: nowIso
+    });
+
+    if (updatedResult) {
+      conn = updatedResult;
     }
-    db.saveConnections(updated);
-    console.log(`[ConnectionService.acceptConnection] 💾 Local storage saved with ${updated.length} connection(s).`);
+
+    // Step 3: Consistency check of 'active' state in local cache
+    console.log(`[ConnectionService.acceptConnection] 🔍 Step 3: Checking consistency of 'active' status in local cache...`);
+    const freshConns = db.getConnections();
+    const verifiedConn = freshConns.find(c => c.id === connectionId || (targetPairKey && [c.senderId, c.receiverId].sort().join("_") === targetPairKey));
+    
+    if (verifiedConn && (verifiedConn.status === "active" || (verifiedConn as any).statut === "ACTIF")) {
+      console.log(`[ConnectionService.acceptConnection] ✅ [CONSISTENCY CHECK PASSED] Connection #${connectionId} is confirmed ACTIVE in local db & cache.`);
+      console.log(`[ConnectionService.acceptConnection] 📊 Verified details: id="${verifiedConn.id}", sender="${verifiedConn.senderId}" (${verifiedConn.senderName}), receiver="${verifiedConn.receiverId}" (${verifiedConn.receiverName}), status="${verifiedConn.status}"`);
+    } else {
+      console.warn(`[ConnectionService.acceptConnection] ⚠️ [CONSISTENCY WARNING] Connection #${connectionId} was not confirmed active. Enforcing active status directly...`);
+      const forced = freshConns.map(c => (c.id === connectionId || (targetPairKey && [c.senderId, c.receiverId].sort().join("_") === targetPairKey)) ? { ...c, status: "active" as const, updatedAt: nowIso } : c);
+      db.saveConnections(forced);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(forced));
+      }
+    }
 
     removeDeletedConnectionId(connectionId);
     if (conn) {
@@ -1250,25 +1489,36 @@ export const connectionService = {
         }
       }
 
-      const map = new Map<string, Connection>();
+      const isAct = (st: any) => {
+        const s = String(st || "").toLowerCase().trim();
+        return s === "active" || s === "actif" || s === "accepte" || s === "accepté" || s === "accepted" || s === "confirmed";
+      };
+      const isRef = (st: any) => {
+        const s = String(st || "").toLowerCase().trim();
+        return s === "refusée" || s === "refusee" || s === "blocked" || s === "rejected";
+      };
+
+      const pairMap = new Map<string, Connection>();
+
       localConns.forEach(c => {
+        if (!c.senderId || !c.receiverId) return;
         const pairKey = [c.senderId, c.receiverId].sort().join("_");
-        map.set(c.id, c);
-        map.set(pairKey, c);
+        pairMap.set(pairKey, c);
       });
+
       mappedSb.forEach(c => {
+        if (!c.senderId || !c.receiverId) return;
         const pairKey = [c.senderId, c.receiverId].sort().join("_");
-        const existing = map.get(c.id) || map.get(pairKey);
+        const existing = pairMap.get(pairKey);
 
         if (!existing) {
-          map.set(c.id, c);
-          map.set(pairKey, c);
+          pairMap.set(pairKey, c);
         } else {
           // Bulletproof status merge: once active or refusée, never downgrade back to pending
-          let resolvedStatus = existing.status;
-          if (existing.status === "active" || c.status === "active") {
+          let resolvedStatus: Connection["status"] = "en_attente";
+          if (isAct(existing.status) || isAct(c.status)) {
             resolvedStatus = "active";
-          } else if (existing.status === "refusée" || c.status === "refusée") {
+          } else if (isRef(existing.status) || isRef(c.status)) {
             resolvedStatus = "refusée";
           }
 
@@ -1281,15 +1531,14 @@ export const connectionService = {
             senderRole: c.senderRole || existing.senderRole,
             receiverRole: c.receiverRole || existing.receiverRole,
             notes: c.notes || existing.notes,
-            updatedAt: c.updatedAt || existing.updatedAt
+            updatedAt: c.updatedAt || existing.updatedAt || new Date().toISOString()
           };
 
-          map.set(merged.id, merged);
-          map.set(pairKey, merged);
+          pairMap.set(pairKey, merged);
         }
       });
 
-      const mergedConns = Array.from(map.values()).filter(c => {
+      const mergedConns = Array.from(pairMap.values()).filter(c => {
         if (deletedIds.has(c.id)) return false;
         if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
         return true;
@@ -1297,10 +1546,10 @@ export const connectionService = {
 
       console.log(`[ConnectionService.subscribeToUserConnections] 🔄 [4/4] Final merged connections count: ${mergedConns.length}. Connections:`, mergedConns);
 
-      // Persist to local memory DB, localStorage, and IndexedDB offlineStorage
+      // Persist without duplicates
       const allLocal = db.getConnections();
-      const remaining = allLocal.filter(lc => !mergedConns.some(mc => mc.id === lc.id));
-      const updatedAll = [...remaining, ...mergedConns];
+      const nonUserConns = allLocal.filter(lc => lc.senderId !== userId && lc.receiverId !== userId);
+      const updatedAll = [...nonUserConns, ...mergedConns];
 
       try {
         db.saveConnections(updatedAll);

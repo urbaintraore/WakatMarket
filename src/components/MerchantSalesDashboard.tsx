@@ -12,7 +12,7 @@ import { motion } from "motion/react";
 import { Order, Product, OrderStatus, UserProfile } from "../types";
 import { formatCFA } from "../data";
 import BarcodeScanner from "./BarcodeScanner";
-import { WidgetGrid, OrderWidgetCard } from "./WidgetGrid";
+import { WidgetGrid, OrderWidgetCard, SortOrder } from "./WidgetGrid";
 
 interface MerchantSalesDashboardProps {
   orders: Order[];
@@ -20,6 +20,7 @@ interface MerchantSalesDashboardProps {
   currentUser: UserProfile;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string) => void;
   onPlaceSale?: (buyerId: string, items: { productId: string; quantity: number }[], amountPaid: number, method: string) => void;
+  isLoading?: boolean;
 }
 
 export default function MerchantSalesDashboard({
@@ -27,7 +28,8 @@ export default function MerchantSalesDashboard({
   products,
   currentUser,
   onUpdateOrderStatus,
-  onPlaceSale
+  onPlaceSale,
+  isLoading = false
 }: MerchantSalesDashboardProps) {
   const [showScanner, setShowScanner] = useState(false);
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null);
@@ -45,6 +47,7 @@ export default function MerchantSalesDashboard({
 
   // Filter mode: 'active_only' (default), 'all', 'archived'
   const [orderFilterMode, setOrderFilterMode] = useState<"active_only" | "all" | "archived">("active_only");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   const toggleArchiveOrder = (orderId: string) => {
     setArchivedOrderIds(prev => {
@@ -77,6 +80,28 @@ export default function MerchantSalesDashboard({
     if (orderFilterMode === "archived") return archivedOrders;
     return myIncomingOrders;
   }, [orderFilterMode, activeOrders, archivedOrders, myIncomingOrders]);
+
+  const sortedDisplayedOrders = useMemo(() => {
+    const list = [...displayedOrders];
+    return list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return sortOrder === "desc" ? timeB - timeA : timeA - timeB;
+    });
+  }, [displayedOrders, sortOrder]);
+
+  const handleClearAllDisplayedOrders = () => {
+    const idsToArchive = sortedDisplayedOrders.map(o => o.id);
+    setArchivedOrderIds(prev => {
+      const updated = Array.from(new Set([...prev, ...idsToArchive]));
+      try {
+        localStorage.setItem("wakat_archived_order_ids", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Error saving archived order IDs:", e);
+      }
+      return updated;
+    });
+  };
 
   // Compute Today's Revenue
   const todayRevenue = useMemo(() => {
@@ -214,73 +239,126 @@ export default function MerchantSalesDashboard({
       )}
 
       {/* Orders List & Interactive WidgetGrid */}
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-zinc-150 dark:border-zinc-800/80">
-          <div>
-            <h3 className="font-bold text-zinc-900 dark:text-white text-sm flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4 text-emerald-600" />
-              Commandes Clients Reçues ({displayedOrders.length})
-            </h3>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Cliquez sur une carte pour l'étendre sur 2 colonnes et afficher le résumé détaillé des produits.
-            </p>
-          </div>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-sm">
+        {sortedDisplayedOrders.length === 0 ? (
+          <div className="space-y-4">
+            <WidgetGrid
+              title="Commandes Clients Reçues"
+              subtitle="Cliquez sur une carte pour l'étendre sur 2 colonnes et afficher le résumé détaillé."
+              icon={<ShoppingBag className="w-4 h-4 text-emerald-600" />}
+              count={0}
+              isLoading={isLoading}
+              sortOrder={sortOrder}
+              onSortChange={setSortOrder}
+              onClearAll={sortedDisplayedOrders.length > 0 ? handleClearAllDisplayedOrders : undefined}
+              filterControls={
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => setOrderFilterMode("active_only")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "active_only"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                    title="Affiche uniquement les commandes non archivées"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Actives</span>
+                    <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeOrders.length}</span>
+                  </button>
 
-          {/* Filter Bar Controls */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button
-              onClick={() => setOrderFilterMode("active_only")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                orderFilterMode === "active_only"
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-              }`}
-              title="Affiche uniquement les commandes non archivées"
+                  <button
+                    onClick={() => setOrderFilterMode("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "all"
+                        ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <span>Toutes</span>
+                    <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{myIncomingOrders.length}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setOrderFilterMode("archived")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      orderFilterMode === "archived"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                    }`}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Archives ({archivedOrders.length})</span>
+                  </button>
+                </div>
+              }
+              minChildWidth="300px"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              <span>Commandes actives uniquement</span>
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeOrders.length}</span>
-            </button>
-
-            <button
-              onClick={() => setOrderFilterMode("all")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                orderFilterMode === "all"
-                  ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-              }`}
-            >
-              <span>Toutes les commandes</span>
-              <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{myIncomingOrders.length}</span>
-            </button>
-
-            <button
-              onClick={() => setOrderFilterMode("archived")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                orderFilterMode === "archived"
-                  ? "bg-amber-600 text-white shadow-xs"
-                  : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-              }`}
-            >
-              <Archive className="w-3.5 h-3.5" />
-              <span>Archives ({archivedOrders.length})</span>
-            </button>
-          </div>
-        </div>
-
-        {displayedOrders.length === 0 ? (
-          <div className="text-center py-10 text-zinc-500 bg-zinc-50 dark:bg-zinc-950/40 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800">
-            <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-            <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
-              {orderFilterMode === "active_only" && "Aucune commande active en cours."}
-              {orderFilterMode === "archived" && "Aucune commande dans les archives."}
-              {orderFilterMode === "all" && "Aucune commande enregistrée."}
-            </p>
-            <p className="text-[11px] text-zinc-400 mt-1">Les dossiers de commandes apparaîtront ici.</p>
+              <div className="col-span-full text-center py-10 text-zinc-500 bg-zinc-50 dark:bg-zinc-950/40 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-800">
+                <Check className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                  {orderFilterMode === "active_only" && "Aucune commande active en cours."}
+                  {orderFilterMode === "archived" && "Aucune commande dans les archives."}
+                  {orderFilterMode === "all" && "Aucune commande enregistrée."}
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-1">Les dossiers de commandes apparaîtront ici.</p>
+              </div>
+            </WidgetGrid>
           </div>
         ) : (
-          <WidgetGrid minChildWidth="300px">
-            {displayedOrders.map(order => (
+          <WidgetGrid 
+            title="Commandes Clients Reçues"
+            subtitle="Cliquez sur une carte pour l'étendre sur 2 colonnes et afficher le résumé détaillé."
+            icon={<ShoppingBag className="w-4 h-4 text-emerald-600" />}
+            count={sortedDisplayedOrders.length}
+            isLoading={isLoading}
+            sortOrder={sortOrder}
+            onSortChange={setSortOrder}
+            onClearAll={handleClearAllDisplayedOrders}
+            filterControls={
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setOrderFilterMode("active_only")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    orderFilterMode === "active_only"
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                  }`}
+                  title="Affiche uniquement les commandes non archivées"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  <span>Actives</span>
+                  <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{activeOrders.length}</span>
+                </button>
+
+                <button
+                  onClick={() => setOrderFilterMode("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    orderFilterMode === "all"
+                      ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 shadow-xs"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                  }`}
+                >
+                  <span>Toutes</span>
+                  <span className="ml-1 px-1.5 py-0.2 text-[10px] bg-black/20 rounded-full font-mono">{myIncomingOrders.length}</span>
+                </button>
+
+                <button
+                  onClick={() => setOrderFilterMode("archived")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                    orderFilterMode === "archived"
+                      ? "bg-amber-600 text-white shadow-xs"
+                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
+                  }`}
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                  <span>Archives ({archivedOrders.length})</span>
+                </button>
+              </div>
+            }
+            minChildWidth="300px"
+          >
+            {sortedDisplayedOrders.map(order => (
               <OrderWidgetCard
                 key={order.id}
                 order={order}
@@ -288,6 +366,7 @@ export default function MerchantSalesDashboard({
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onArchiveOrder={toggleArchiveOrder}
                 isArchived={archivedOrderIds.includes(order.id)}
+                isLoading={isLoading}
               />
             ))}
           </WidgetGrid>

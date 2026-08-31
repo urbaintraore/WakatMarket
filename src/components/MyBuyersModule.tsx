@@ -5,8 +5,8 @@ import {
   Download, FileText, Users, TrendingDown, AlertCircle, Eye, ArrowUpRight, Trash2
 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import { UserProfile, Order, DebtPayment, LightClient, Product } from "../types";
-import { formatCFA } from "../data";
+import { UserProfile, Order, DebtPayment, LightClient, Product, isConnectionActive } from "../types";
+import { formatCFA, db } from "../data";
 import { BuyerDetailModal } from "./BuyerDetailModal";
 import { PartialPaymentModal } from "./PartialPaymentModal";
 import { connectionService } from "../services/connectionService";
@@ -301,7 +301,7 @@ export function MyBuyersModule({
       }
     };
 
-    // A. Real users who have placed B2B orders with the currentUser OR are connected
+    // A. Real users who have placed B2B orders with the currentUser OR are active connected partners
     const realUserIds = new Set<string>();
     orders.forEach((o) => {
       if (o.receiverId === currentUser.id && o.senderId && o.senderId !== currentUser.id) {
@@ -311,6 +311,20 @@ export function MyBuyersModule({
         realUserIds.add(o.receiverId);
       }
     });
+
+    // Also include active partner relations from connection service / local DB
+    try {
+      const activeConns = db.getConnections().filter(c => {
+        const isPart = c.senderId === currentUser.id || c.receiverId === currentUser.id;
+        return isPart && isConnectionActive(c);
+      });
+      activeConns.forEach(c => {
+        const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
+        if (partnerId && partnerId !== currentUser.id) {
+          realUserIds.add(partnerId);
+        }
+      });
+    } catch (e) {}
 
     realUserIds.forEach((uid) => {
       if (removedIds.has(uid) || deletedConnIds.has(uid)) return;

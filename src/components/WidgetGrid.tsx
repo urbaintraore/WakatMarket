@@ -7,76 +7,424 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   FileText, ShoppingBag, Clock, Check, ChevronDown, ChevronUp, 
-  Archive, Download, User, MapPin, Phone, Package, ArrowRight, Printer 
+  Archive, Download, User, MapPin, Phone, Package, ArrowRight, Printer,
+  Trash2, Maximize2, Minimize2, Loader2, ArrowUpDown, AlertTriangle, X, RefreshCw
 } from "lucide-react";
 import { Order, Product, UserProfile, OrderStatus } from "../types";
 import { formatCFA } from "../data";
+
+export type SortOrder = "desc" | "asc";
+
+export interface WidgetGridHeaderProps {
+  title?: React.ReactNode;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  count?: number;
+  isLoading?: boolean;
+  sortOrder?: SortOrder;
+  onSortChange?: (order: SortOrder) => void;
+  onClearAll?: () => void;
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
+  filterControls?: React.ReactNode;
+  className?: string;
+}
+
+/**
+ * WidgetGridHeader provides a standardized header bar with:
+ * - Title & Count
+ * - Minimalist Loading/Sync Spinner
+ * - Date Sort Dropdown (Ascending / Descending)
+ * - Fullscreen Maximize/Minimize Toggle
+ * - Clear All ('Tout supprimer') Button with Confirmation
+ */
+export function WidgetGridHeader({
+  title,
+  subtitle,
+  icon,
+  count,
+  isLoading = false,
+  sortOrder = "desc",
+  onSortChange,
+  onClearAll,
+  isFullScreen = false,
+  onToggleFullScreen,
+  filterControls,
+  className = ""
+}: WidgetGridHeaderProps) {
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
+
+  const handleClearConfirm = () => {
+    setShowConfirmClear(false);
+    if (onClearAll) {
+      onClearAll();
+    }
+  };
+
+  return (
+    <div className={`space-y-3 pb-3 border-b border-zinc-150 dark:border-zinc-800/80 ${className}`}>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        {/* Left Title & Status */}
+        <div className="flex items-center gap-2.5">
+          {icon && (
+            <div className="p-2 rounded-xl bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 shrink-0">
+              {icon}
+            </div>
+          )}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {typeof title === "string" ? (
+                <h3 className="font-extrabold text-zinc-900 dark:text-white text-sm sm:text-base flex items-center gap-2">
+                  {title}
+                  {count !== undefined && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700">
+                      {count}
+                    </span>
+                  )}
+                </h3>
+              ) : (
+                title
+              )}
+
+              {/* Minimalist Sync Loader Indicator */}
+              {isLoading && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200/60 dark:border-emerald-800/40 animate-pulse">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                  Synchronisation...
+                </span>
+              )}
+            </div>
+            {subtitle && (
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                {subtitle}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Right Controls: Filter, Sort Dropdown, Fullscreen & Clear All */}
+        <div className="flex items-center gap-2 flex-wrap self-end sm:self-center">
+          {filterControls}
+
+          {/* Date Sort Dropdown */}
+          {onSortChange && (
+            <div className="relative flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700">
+              <ArrowUpDown className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+              <select
+                value={sortOrder}
+                onChange={(e) => onSortChange(e.target.value as SortOrder)}
+                className="bg-transparent font-bold text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none cursor-pointer pr-1"
+                aria-label="Trier par date"
+              >
+                <option value="desc">Date : Plus récente ➔ Plus ancienne</option>
+                <option value="asc">Date : Plus ancienne ➔ Plus récente</option>
+              </select>
+            </div>
+          )}
+
+          {/* Fullscreen Toggle Button */}
+          {onToggleFullScreen && (
+            <button
+              onClick={onToggleFullScreen}
+              className="p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition cursor-pointer border border-zinc-200/80 dark:border-zinc-700"
+              title={isFullScreen ? "Quitter le mode plein écran" : "Afficher en plein écran (Fullscreen)"}
+            >
+              {isFullScreen ? <Minimize2 className="w-4 h-4 text-emerald-600" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          )}
+
+          {/* Clear All Button */}
+          {onClearAll && (
+            <button
+              onClick={() => setShowConfirmClear(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-rose-200/60 dark:border-rose-800/40"
+              title="Vider rapidement le contenu de ce widget"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Tout supprimer</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Confirmation Modal / Banner for 'Tout supprimer' */}
+      <AnimatePresence>
+        {showConfirmClear && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            className="p-3 bg-rose-100 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center justify-between gap-3 text-xs text-rose-900 dark:text-rose-200 shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                Êtes-vous sûr de vouloir <strong>tout supprimer / vider</strong> dans ce widget ? Cette action est immédiate.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleClearConfirm}
+                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
+              >
+                Confirmer
+              </button>
+              <button
+                onClick={() => setShowConfirmClear(false)}
+                className="px-3 py-1 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                Annuler
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export interface WidgetGridProps {
   children: React.ReactNode;
   className?: string;
   minChildWidth?: string;
+  title?: React.ReactNode;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  count?: number;
+  isLoading?: boolean;
+  sortOrder?: SortOrder;
+  onSortChange?: (order: SortOrder) => void;
+  onClearAll?: () => void;
+  isFullScreen?: boolean;
+  onToggleFullScreen?: () => void;
+  filterControls?: React.ReactNode;
 }
 
 /**
  * WidgetGrid organizes dashboard widgets using responsive CSS Grid auto-fit/minmax.
- * Ensures each widget (Orders, Sales, Stocks) has adequate minimum width to prevent text truncation.
+ * Includes optional full header, fullscreen overlay, and sync indicator.
  */
-export function WidgetGrid({ children, className = "", minChildWidth = "290px" }: WidgetGridProps) {
-  return (
-    <div 
-      className={`grid gap-4 sm:gap-6 w-full ${className}`}
-      style={{
-        gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minChildWidth}), 1fr))`
-      }}
-    >
-      {children}
+export function WidgetGrid({ 
+  children, 
+  className = "", 
+  minChildWidth = "290px",
+  title,
+  subtitle,
+  icon,
+  count,
+  isLoading = false,
+  sortOrder,
+  onSortChange,
+  onClearAll,
+  isFullScreen: externalFullScreen,
+  onToggleFullScreen: externalToggleFullScreen,
+  filterControls
+}: WidgetGridProps) {
+  const [internalFullScreen, setInternalFullScreen] = useState(false);
+  const isFullScreen = externalFullScreen !== undefined ? externalFullScreen : internalFullScreen;
+
+  const handleToggleFullScreen = () => {
+    if (externalToggleFullScreen) {
+      externalToggleFullScreen();
+    } else {
+      setInternalFullScreen(!internalFullScreen);
+    }
+  };
+
+  const hasHeader = title || onClearAll || onSortChange || isLoading || filterControls || isFullScreen;
+
+  const content = (
+    <div className={`space-y-4 ${isFullScreen ? "w-full max-w-7xl mx-auto p-4 sm:p-6 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl overflow-y-auto max-h-[90vh]" : ""}`}>
+      {hasHeader && (
+        <WidgetGridHeader
+          title={title}
+          subtitle={subtitle}
+          icon={icon}
+          count={count}
+          isLoading={isLoading}
+          sortOrder={sortOrder}
+          onSortChange={onSortChange}
+          onClearAll={onClearAll}
+          isFullScreen={isFullScreen}
+          onToggleFullScreen={handleToggleFullScreen}
+          filterControls={filterControls}
+        />
+      )}
+
+      {/* Grid Container */}
+      <div 
+        className={`grid gap-4 sm:gap-6 w-full ${className}`}
+        style={{
+          gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${minChildWidth}), 1fr))`
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
+
+  if (isFullScreen) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-md p-4 sm:p-6 flex items-center justify-center overflow-y-auto">
+        <div className="relative w-full max-w-7xl">
+          <button
+            onClick={handleToggleFullScreen}
+            className="absolute -top-10 right-0 p-2 rounded-full bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 transition cursor-pointer shadow-lg z-10"
+            title="Quitter le plein écran (Échap)"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {content}
+        </div>
+      </div>
+    );
+  }
+
+  return content;
 }
 
 export interface WidgetCardProps {
+  key?: React.Key;
   children: React.ReactNode;
   className?: string;
   onClick?: () => void;
   isExpanded?: boolean;
+  title?: string;
+  icon?: React.ReactNode;
+  isLoading?: boolean;
+  onClear?: () => void;
+  onToggleFullScreen?: () => void;
 }
 
 /**
  * WidgetCard wraps individual dashboard widgets with smooth 'motion' hover animation (scale + subtle shadow).
+ * Supports header, fullscreen zoom icon, minimalist sync loader, and clear button.
  */
-export function WidgetCard({ children, className = "", onClick, isExpanded = false }: WidgetCardProps) {
-  return (
+export function WidgetCard({ 
+  children, 
+  className = "", 
+  onClick, 
+  isExpanded = false,
+  title,
+  icon,
+  isLoading = false,
+  onClear,
+  onToggleFullScreen
+}: WidgetCardProps) {
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
+
+  const toggleFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onToggleFullScreen) {
+      onToggleFullScreen();
+    } else {
+      setIsFullScreen(!isFullScreen);
+    }
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmClear(true);
+  };
+
+  const confirmClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmClear(false);
+    if (onClear) onClear();
+  };
+
+  const cardContent = (
     <motion.div
-      whileHover={{ 
+      whileHover={!isFullScreen ? { 
         scale: 1.015, 
         boxShadow: "0 12px 28px -5px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.04)"
-      }}
+      } : {}}
       transition={{ type: "spring", stiffness: 350, damping: 25 }}
       onClick={onClick}
       className={`bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs transition-colors relative ${
         isExpanded ? "col-span-1 md:col-span-2 lg:col-span-2 ring-2 ring-emerald-500/30" : ""
       } ${className}`}
     >
+      {(title || onClear || isLoading || onToggleFullScreen) && (
+        <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-zinc-150 dark:border-zinc-800/80">
+          <div className="flex items-center gap-2">
+            {icon}
+            {title && <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{title}</h4>}
+            {isLoading && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin" /> Synchro...
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleFullscreen}
+              className="p-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition cursor-pointer"
+              title={isFullScreen ? "Réduire le widget" : "Afficher ce widget en plein écran"}
+            >
+              {isFullScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+
+            {onClear && (
+              <button
+                onClick={handleClear}
+                className="p-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+                title="Vider ce widget"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showConfirmClear && (
+        <div className="mb-3 p-2 bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center justify-between text-xs text-rose-900 dark:text-rose-200">
+          <span>Vider ce widget ?</span>
+          <div className="flex items-center gap-1">
+            <button onClick={confirmClear} className="px-2 py-0.5 bg-rose-600 text-white rounded font-bold text-[10px]">Oui</button>
+            <button onClick={(e) => { e.stopPropagation(); setShowConfirmClear(false); }} className="px-2 py-0.5 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded font-bold text-[10px]">Non</button>
+          </div>
+        </div>
+      )}
+
       {children}
     </motion.div>
   );
+
+  if (isFullScreen) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-md p-4 sm:p-6 flex items-center justify-center overflow-y-auto">
+        <div className="relative w-full max-w-4xl">
+          {cardContent}
+        </div>
+      </div>
+    );
+  }
+
+  return cardContent;
 }
 
 export interface OrderWidgetCardProps {
+  key?: React.Key;
   order: Order;
   products: Product[];
   users?: UserProfile[];
-  onUpdateOrderStatus?: (orderId: string, status: OrderStatus) => void;
+  onUpdateOrderStatus?: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: any) => void;
   onArchiveOrder?: (orderId: string) => void;
   onDownloadPDF?: (order: Order, products: Product[]) => void;
+  onDeleteOrder?: (orderId: string) => void;
   isArchived?: boolean;
   defaultExpanded?: boolean;
+  isLoading?: boolean;
 }
 
 /**
  * OrderWidgetCard is an interactive Order widget designed for WidgetGrid.
  * On click, it spans two columns (col-span-2) and displays a detailed summary including the full product list.
+ * Supports fullscreen toggle icon, clear/delete button with confirmation, and sync loader.
  */
 export function OrderWidgetCard({
   order,
@@ -85,24 +433,43 @@ export function OrderWidgetCard({
   onUpdateOrderStatus,
   onArchiveOrder,
   onDownloadPDF,
+  onDeleteOrder,
   isArchived = false,
-  defaultExpanded = false
+  defaultExpanded = false,
+  isLoading = false
 }: OrderWidgetCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
   const buyer = users.find(u => u.id === order.senderId);
 
-  return (
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmDelete(true);
+  };
+
+  const confirmDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmDelete(false);
+    if (onDeleteOrder) {
+      onDeleteOrder(order.id);
+    } else if (onArchiveOrder) {
+      onArchiveOrder(order.id);
+    }
+  };
+
+  const cardContent = (
     <motion.div
-      layout
-      whileHover={{ 
+      layout={!isFullScreen}
+      whileHover={!isFullScreen ? { 
         scale: 1.012, 
         boxShadow: "0 14px 30px -6px rgba(0, 0, 0, 0.09), 0 4px 12px -2px rgba(0, 0, 0, 0.04)"
-      }}
+      } : {}}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
       className={`bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-xs transition-all ${
-        isExpanded ? "col-span-1 md:col-span-2 ring-2 ring-emerald-500/40 dark:ring-emerald-500/30 shadow-md" : ""
-      }`}
+        isExpanded && !isFullScreen ? "col-span-1 md:col-span-2 ring-2 ring-emerald-500/40 dark:ring-emerald-500/30 shadow-md" : ""
+      } ${isFullScreen ? "w-full max-w-4xl shadow-2xl ring-2 ring-orange-500/40" : ""}`}
     >
       {/* Header Bar */}
       <div className="flex items-start justify-between gap-3">
@@ -111,7 +478,7 @@ export function OrderWidgetCard({
             <ShoppingBag className="w-4 h-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-extrabold text-xs font-mono text-orange-600 dark:text-orange-400">
                 #{order.id}
               </span>
@@ -129,6 +496,11 @@ export function OrderWidgetCard({
                   Archivée
                 </span>
               )}
+              {isLoading && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                </span>
+              )}
             </div>
             <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">
               Client : {buyer?.companyName || buyer?.name || order.senderId}
@@ -144,6 +516,27 @@ export function OrderWidgetCard({
             </span>
           </div>
 
+          {/* Fullscreen Icon */}
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="p-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition cursor-pointer"
+            title={isFullScreen ? "Quitter le plein écran" : "Afficher en plein écran"}
+          >
+            {isFullScreen ? <Minimize2 className="w-4 h-4 text-emerald-600" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
+
+          {/* Delete / Clear Button */}
+          {(onDeleteOrder || onArchiveOrder) && (
+            <button
+              onClick={handleDelete}
+              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 transition cursor-pointer"
+              title="Supprimer / Vider cette commande"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* Expand/Collapse Toggle Button */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition cursor-pointer"
@@ -154,8 +547,39 @@ export function OrderWidgetCard({
         </div>
       </div>
 
+      {/* Confirmation Modal / Banner for Delete */}
+      <AnimatePresence>
+        {showConfirmDelete && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mt-3 p-3 bg-rose-100 dark:bg-rose-950/70 border border-rose-300 dark:border-rose-800 rounded-xl flex items-center justify-between gap-2 text-xs text-rose-900 dark:text-rose-200"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Voulez-vous supprimer / vider cette commande #{order.id} ?</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={confirmDelete}
+                className="px-2.5 py-1 bg-rose-600 text-white rounded font-bold text-xs hover:bg-rose-500 transition cursor-pointer"
+              >
+                Confirmer
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowConfirmDelete(false); }}
+                className="px-2.5 py-1 bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded font-bold text-xs hover:bg-zinc-300 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Basic summary row (collapsed mode) */}
-      {!isExpanded && (
+      {!isExpanded && !isFullScreen && (
         <div 
           onClick={() => setIsExpanded(true)} 
           className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between text-xs text-zinc-500 cursor-pointer hover:text-zinc-800 dark:hover:text-zinc-200"
@@ -167,9 +591,9 @@ export function OrderWidgetCard({
         </div>
       )}
 
-      {/* Expanded Detailed Summary View (2 columns span) */}
+      {/* Expanded Detailed Summary View (2 columns span or fullscreen) */}
       <AnimatePresence>
-        {isExpanded && (
+        {(isExpanded || isFullScreen) && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -280,4 +704,15 @@ export function OrderWidgetCard({
       </AnimatePresence>
     </motion.div>
   );
+
+  if (isFullScreen) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-zinc-950/80 backdrop-blur-md p-4 sm:p-6 flex items-center justify-center overflow-y-auto">
+        {cardContent}
+      </div>
+    );
+  }
+
+  return cardContent;
 }
+

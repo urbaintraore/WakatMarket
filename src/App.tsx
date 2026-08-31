@@ -834,21 +834,52 @@ export default function App() {
     const handleUsersUpdated = () => {
       setUsers(db.getUsers());
     };
+    const handleConnectionsUpdated = (e?: any) => {
+      const allConns = db.getConnections();
+      console.log(`[App.tsx:handleConnectionsUpdated] 🔄 Event received (${e?.type || 'manual'}), checking consistency across ${allConns.length} stored connection(s)...`, e?.detail);
+      
+      if (currentUser) {
+        const userConns = allConns.filter(c => c.senderId === currentUser.id || c.receiverId === currentUser.id);
+        const activeConns = userConns.filter(c => c.status === "active" || (c as any).statut === "ACTIF");
+        const pendingConns = userConns.filter(c => c.status === "en_attente" || (c.status as string) === "pending");
+        
+        console.log(`[App.tsx:handleConnectionsUpdated] ✅ Consistency verified for user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName}): ${activeConns.length} ACTIVE partnership(s), ${pendingConns.length} pending request(s).`);
+        activeConns.forEach(c => {
+          const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
+          const partnerName = c.senderId === currentUser.id ? c.receiverName : c.senderName;
+          console.log(`  - 🤝 ACTIVE Partner: #${c.id} with partner "${partnerName || partnerId}" (Sender=${c.senderId}, Receiver=${c.receiverId}, Status=${c.status})`);
+        });
+
+        setConnections(userConns);
+      }
+    };
+
     window.addEventListener("wakat_users_updated", handleUsersUpdated);
+    window.addEventListener("wakat_connections_updated", handleConnectionsUpdated);
+    window.addEventListener("wakat_partnership_established", handleConnectionsUpdated);
 
     return () => {
       window.removeEventListener("wakat_open_upload_proof", handleOpenUploadProof);
       window.removeEventListener("wakat_open_valider_paiements", handleOpenValiderPaiements);
       window.removeEventListener("wakat_users_updated", handleUsersUpdated);
+      window.removeEventListener("wakat_connections_updated", handleConnectionsUpdated);
+      window.removeEventListener("wakat_partnership_established", handleConnectionsUpdated);
     };
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (currentUser) {
       console.log(`[App.tsx] 🔔 Subscribing to notifications and connections for active user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName})`);
       
+      // Auto-repair any pending relationship inconsistencies
+      connectionService.repairPendingConnections(currentUser.id).catch(err => {
+        console.warn("[App.tsx] Non-blocking notice during repairPendingConnections:", err);
+      });
+
       const unsubConns = connectionService.subscribeToUserConnections(currentUser.id, (freshConns) => {
         console.log(`[App.tsx:subscribeToUserConnections] 🔗 Real-time connections update received for user ${currentUser.id}. Total active/pending connections: ${freshConns.length}`, freshConns);
+        const verifiedActive = freshConns.filter(c => c.status === "active" || (c as any).statut === "ACTIF");
+        console.log(`[App.tsx:subscribeToUserConnections] ✅ Verified active connections count: ${verifiedActive.length}`);
         setConnections(freshConns);
       });
       
@@ -1419,17 +1450,35 @@ export default function App() {
     addNotification(`Taux de commission mis à jour à ${rate}%`);
   };
 
-  // Manufacturer catalogs creation (Offline-First Resilient)
+  // Manufacturer catalogs creation (Offline-First Resilient with Automatic Price Validation)
   const handleCreateProduct = async (
     p: Omit<Product, "id" | "creatorId">, 
     initialStock: number, 
     price: number,
     prixGros?: number,
     prixDetail?: number,
-    quantiteMinimum?: number
+    quantiteMinimum?: number,
+    threshold?: number,
+    expirationDate?: string,
+    costPrice?: number
   ) => {
     if (!currentUser || !currentUser.id) {
       addNotification("Erreur: Vous devez être connecté avec un compte valide pour créer un produit.");
+      return;
+    }
+
+    // Automatic Validation: Check if selling price is lower than purchase/cost price
+    const buyingPrice = Number(costPrice) > 0 ? Number(costPrice) : 0;
+    const minSellingPrice = Math.min(
+      price > 0 ? price : Infinity,
+      prixGros !== undefined && prixGros > 0 ? prixGros : Infinity,
+      prixDetail !== undefined && prixDetail > 0 ? prixDetail : Infinity
+    );
+
+    if (buyingPrice > 0 && minSellingPrice < buyingPrice) {
+      const errorMsg = `❌ Validation Échouée : Le prix de vente (${formatCFA(minSellingPrice)}) ne peut pas être inférieur au prix d'achat (${formatCFA(buyingPrice)}). Vente à perte interdite.`;
+      addNotification(errorMsg);
+      alert(`[Avertissement Vente à Perte]\n\nLe prix de vente le plus bas (${formatCFA(minSellingPrice)}) est inférieur au prix d'achat (${formatCFA(buyingPrice)}).\n\nLa création du produit est annulée pour préserver vos marges.`);
       return;
     }
 
