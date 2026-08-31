@@ -747,7 +747,7 @@ export const connectionService = {
     let updatedConn: Connection;
     const normalizedStatus: Connection["status"] = (updates.status === "active" || (updates as any).statut === "ACTIF") 
       ? "active" 
-      : (updates.status === "refusée" || (updates as any).statut === "BLOCKED" || updates.status === "refusee") 
+      : (updates.status === "refusée" || (updates as any).statut === "BLOCKED" || (updates.status as string) === "refusee") 
       ? "refusée" 
       : (updates.status || "active");
 
@@ -837,10 +837,19 @@ export const connectionService = {
     const repairedList: Connection[] = [];
     const nowIso = new Date().toISOString();
 
+    const isAct = (st: any) => {
+      const s = String(st || "").toLowerCase().trim();
+      return s === "active" || s === "actif" || s === "active" || s === "accepte" || s === "accepté" || s === "accepted" || s === "confirmed";
+    };
+
     let sbRelationsMap = new Map<string, any>();
     if (supabase) {
       try {
-        const { data: sbData } = await supabase.from("relations").select("*");
+        let query = supabase.from("relations").select("*");
+        if (userId) {
+          query = query.or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
+        }
+        const { data: sbData } = await query;
         if (sbData && Array.isArray(sbData)) {
           sbData.forEach((row: any) => {
             sbRelationsMap.set(row.id, row);
@@ -853,14 +862,36 @@ export const connectionService = {
       }
     }
 
-    // Find all accepted notification relationIds
+    // Find all accepted notification relationIds and partner pairs
     const acceptedNotifRelIds = new Set<string>();
-    allNotifs.forEach(n => {
-      if (n.type === "connexion_acceptee" || (n.title && n.title.toLowerCase().includes("acceptée")) || (n.message && n.message.toLowerCase().includes("acceptée"))) {
-        const rId = (n as any).relationId || (n as any).relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id;
+    const acceptedPartnerPairs = new Set<string>();
+
+    const scanNotif = (n: any) => {
+      const type = String(n.type || "").toLowerCase();
+      const title = String(n.title || "").toLowerCase();
+      const msg = String(n.message || "").toLowerCase();
+      const isAccepted = type.includes("accepte") || title.includes("accepté") || title.includes("partenariat") || msg.includes("accepté") || msg.includes("partenariat");
+      if (isAccepted) {
+        const rId = n.relationId || n.relatedId || n.metadata?.related_id || n.metadata?.relation_id || n.metadata?.relationId;
         if (rId) acceptedNotifRelIds.add(rId);
+        const sId = n.senderId || n.expediteurId || n.metadata?.sender_id;
+        const uId = n.userId || n.user_id;
+        if (sId && uId) {
+          acceptedPartnerPairs.add([sId, uId].sort().join("_"));
+        }
       }
-    });
+    };
+
+    allNotifs.forEach(scanNotif);
+
+    if (supabase && userId) {
+      try {
+        const { data: sbNotifs } = await supabase.from("notifications").select("*").eq("user_id", userId);
+        if (sbNotifs && Array.isArray(sbNotifs)) {
+          sbNotifs.forEach(scanNotif);
+        }
+      } catch (err) {}
+    }
 
     let hasChanges = false;
     const scanned = allConns.length;
@@ -872,8 +903,8 @@ export const connectionService = {
 
       const pairKey = [c.senderId, c.receiverId].sort().join("_");
       const sbRow = sbRelationsMap.get(c.id) || sbRelationsMap.get(`pair_${pairKey}`);
-      const isSbActive = sbRow && (sbRow.statut === "ACTIF" || sbRow.statut === "ACTIVE" || sbRow.statut === "actif");
-      const hasAcceptedNotif = acceptedNotifRelIds.has(c.id);
+      const isSbActive = sbRow && isAct(sbRow.statut);
+      const hasAcceptedNotif = acceptedNotifRelIds.has(c.id) || acceptedNotifRelIds.has(pairKey) || acceptedPartnerPairs.has(pairKey);
 
       const isDivergent = (c.status === "en_attente" || (c.status as string) === "pending") && (isSbActive || hasAcceptedNotif);
 
@@ -912,6 +943,16 @@ export const connectionService = {
               statut: "ACTIF",
               updated_at: nowIso
             });
+            const pairKey = [rep.senderId, rep.receiverId].sort().join("_");
+            if (rep.id !== pairKey) {
+              await supabase.from("relations").upsert({
+                id: pairKey,
+                grossiste_id: rep.senderId,
+                client_id: rep.receiverId,
+                statut: "ACTIF",
+                updated_at: nowIso
+              });
+            }
           } catch (e) {}
         }
       }
@@ -940,267 +981,234 @@ export const connectionService = {
   async acceptConnection(connectionId: string, currentUserId?: string): Promise<void> {
     console.log(`[ConnectionService.acceptConnection] 🚀 [START] Accepting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
+    const currentNotifs = db.getNotifications();
+
+    // 1. Resolve conn and both sender & receiver IDs with absolute certainty
     let conn = currentConns.find(c => c.id === connectionId);
+    if (!conn && currentUserId) {
+      conn = currentConns.find(c => (c.senderId === currentUserId || c.receiverId === currentUserId) && (c.id === connectionId || [c.senderId, c.receiverId].sort().join("_") === connectionId));
+    }
+    if (!conn && currentUserId) {
+      conn = currentConns.find(c => (c.senderId === currentUserId || c.receiverId === currentUserId) && (c.status === "en_attente" || (c.status as string) === "pending"));
+    }
 
-    // Step 1: Ensure we have the most up to date relation info and user profiles
-    if (supabase) {
-      try {
-        console.log(`[ConnectionService.acceptConnection] 🔍 Step 1: Querying Supabase 'relations' table for connection id=${connectionId}...`);
-        const { data } = await supabase.from("relations").select("*").eq("id", connectionId).maybeSingle();
-        
-        let grossiste_id = data?.grossiste_id || conn?.senderId;
-        let client_id = data?.client_id || conn?.receiverId;
+    // Look up notification linked to connectionId or sender
+    const matchingNotif = currentNotifs.find(n => n.id === connectionId || n.relationId === connectionId || n.relatedId === connectionId || (n as any).metadata?.relation_id === connectionId);
 
-        if (grossiste_id && client_id) {
-          const allUsers = db.getUsers();
-          let senderUser = allUsers.find(u => u.id === grossiste_id);
-          let receiverUser = allUsers.find(u => u.id === client_id);
-          
-          let newlyFetchedUsers: any[] = [];
-          
-          // Fetch missing sender profile from Supabase
-          if (!senderUser && grossiste_id) {
-            const { data: sData } = await supabase.from("profiles").select("*").eq("id", grossiste_id).maybeSingle();
-            if (sData) {
-              senderUser = { 
-                id: sData.id, 
-                name: [sData.nom, sData.prenom].filter(Boolean).join(" ").trim() || "Utilisateur", 
-                companyName: sData.company_name || sData.nom || "Entreprise", 
-                role: sData.role || UserRole.SEMI_WHOLESALER, 
-                email: sData.email, 
-                phone: sData.telephone 
-              } as any;
-              newlyFetchedUsers.push(senderUser);
-            }
-          }
-          
-          // Fetch missing receiver profile from Supabase
-          if (!receiverUser && client_id) {
-            const { data: rData } = await supabase.from("profiles").select("*").eq("id", client_id).maybeSingle();
-            if (rData) {
-              receiverUser = { 
-                id: rData.id, 
-                name: [rData.nom, rData.prenom].filter(Boolean).join(" ").trim() || "Utilisateur", 
-                companyName: rData.company_name || rData.nom || "Entreprise", 
-                role: rData.role || UserRole.RETAILER, 
-                email: rData.email, 
-                phone: rData.telephone 
-              } as any;
-              newlyFetchedUsers.push(receiverUser);
-            }
-          }
-          
-          if (newlyFetchedUsers.length > 0) {
-             const updatedUsersList = [...allUsers];
-             newlyFetchedUsers.forEach(nu => {
-               if (!updatedUsersList.some(u => u.id === nu.id)) {
-                 updatedUsersList.push(nu);
-               }
-             });
-             db.saveUsers(updatedUsersList);
-             console.log(`[ConnectionService.acceptConnection] ⬇️ Fetched and saved ${newlyFetchedUsers.length} missing profiles to local db.`);
-          }
+    let senderId = conn?.senderId || (matchingNotif as any)?.senderId || (matchingNotif as any)?.expediteurId || (matchingNotif as any)?.metadata?.sender_id;
+    let receiverId = conn?.receiverId || (matchingNotif as any)?.userId || (matchingNotif as any)?.user_id;
 
-          // Build or overwrite the connection with the resolved real names
-          const finalSenderName = senderUser?.name && senderUser.name !== "Utilisateur" ? senderUser.name : (senderUser?.companyName || "Demandeur B2B");
-          const finalReceiverName = receiverUser?.name && receiverUser.name !== "Utilisateur" ? receiverUser.name : (receiverUser?.companyName || "Partenaire B2B");
-
-          conn = {
-            id: data?.id || connectionId,
-            senderId: grossiste_id,
-            receiverId: client_id,
-            status: "active",
-            senderName: finalSenderName,
-            senderRole: senderUser?.role || UserRole.WHOLESALER,
-            receiverName: finalReceiverName,
-            receiverRole: receiverUser?.role || UserRole.RETAILER,
-            notes: data?.notes || conn?.notes || "",
-            createdAt: data?.created_at || conn?.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
+    if (currentUserId) {
+      if (!receiverId || receiverId !== currentUserId) {
+        if (senderId && senderId === currentUserId) {
+          senderId = receiverId;
         }
-      } catch (e) {
-        console.warn("[ConnectionService.acceptConnection] Notice fetching missing connection from Supabase:", e);
+        receiverId = currentUserId;
       }
     }
 
-    // Step 2: Explicitly update connection state in local cache and via updateConnection with status 'active'
-    console.log(`[ConnectionService.acceptConnection] 🔄 Step 2: Explicitly updating connection #${connectionId} with status='active'...`);
-    const nowIso = new Date().toISOString();
-    const targetPairKey = conn ? [conn.senderId, conn.receiverId].sort().join("_") : null;
+    // If still missing, query Supabase relations & notifications
+    if ((!senderId || !receiverId) && supabase) {
+      try {
+        const { data: relData } = await supabase.from("relations").select("*").or(`id.eq.${connectionId},grossiste_id.eq.${connectionId},client_id.eq.${connectionId}`).maybeSingle();
+        if (relData) {
+          senderId = senderId || relData.grossiste_id;
+          receiverId = receiverId || relData.client_id;
+        }
+      } catch (e) {}
+    }
 
-    const updatedResult = await this.updateConnection(connectionId, {
-      id: connectionId,
-      status: "active",
-      statut: "ACTIF",
-      senderId: conn?.senderId,
-      receiverId: conn?.receiverId,
-      senderName: conn?.senderName,
-      receiverName: conn?.receiverName,
-      senderRole: conn?.senderRole,
-      receiverRole: conn?.receiverRole,
-      notes: conn?.notes,
-      updatedAt: nowIso
+    if (currentUserId && !senderId && supabase) {
+      try {
+        const { data: relUser } = await supabase.from("relations").select("*").or(`grossiste_id.eq.${currentUserId},client_id.eq.${currentUserId}`).eq("statut", "PENDING").maybeSingle();
+        if (relUser) {
+          senderId = relUser.grossiste_id === currentUserId ? relUser.client_id : relUser.grossiste_id;
+          receiverId = currentUserId;
+        }
+      } catch (e) {}
+    }
+
+    const canonicalPairKey = (senderId && receiverId) ? [senderId, receiverId].sort().join("_") : connectionId;
+    console.log(`[ConnectionService.acceptConnection] 📌 Resolved IDs: connectionId="${connectionId}", canonicalPairKey="${canonicalPairKey}", senderId="${senderId}", receiverId="${receiverId}"`);
+
+    // Ensure sender and receiver user profiles exist in local DB
+    if (senderId || receiverId) {
+      const idsToFetch = [senderId, receiverId].filter(Boolean) as string[];
+      await ensureUsersExistLocally(idsToFetch);
+    }
+
+    const allUsers = db.getUsers();
+    const senderUser = senderId ? allUsers.find(u => u.id === senderId) : null;
+    const receiverUser = receiverId ? allUsers.find(u => u.id === receiverId) : null;
+
+    const senderName = senderUser?.name && senderUser.name !== "Utilisateur" ? senderUser.name : (senderUser?.companyName || conn?.senderName || "Partenaire Demandeur");
+    const receiverName = receiverUser?.name && receiverUser.name !== "Utilisateur" ? receiverUser.name : (receiverUser?.companyName || conn?.receiverName || "Partenaire B2B");
+
+    const nowIso = new Date().toISOString();
+
+    // 2. Explicitly update local connections for ALL matching records (by ID, pair key, or participant IDs)
+    const allConns = db.getConnections();
+    let foundMatch = false;
+    const updatedConns = allConns.map(c => {
+      const isPairMatch = senderId && receiverId && ((c.senderId === senderId && c.receiverId === receiverId) || (c.senderId === receiverId && c.receiverId === senderId));
+      const isIdMatch = c.id === connectionId || c.id === canonicalPairKey;
+      if (isIdMatch || isPairMatch) {
+        foundMatch = true;
+        return {
+          ...c,
+          id: c.id || canonicalPairKey,
+          senderId: senderId || c.senderId,
+          receiverId: receiverId || c.receiverId,
+          senderName: senderName || c.senderName,
+          receiverName: receiverName || c.receiverName,
+          status: "active" as const,
+          statut: "ACTIF",
+          updatedAt: nowIso
+        };
+      }
+      return c;
     });
 
-    if (updatedResult) {
-      conn = updatedResult;
+    if (!foundMatch && senderId && receiverId) {
+      updatedConns.push({
+        id: canonicalPairKey,
+        senderId,
+        receiverId,
+        status: "active",
+        senderName,
+        senderRole: senderUser?.role || UserRole.WHOLESALER,
+        receiverName,
+        receiverRole: receiverUser?.role || UserRole.RETAILER,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
     }
 
-    // Step 3: Consistency check of 'active' state in local cache
-    console.log(`[ConnectionService.acceptConnection] 🔍 Step 3: Checking consistency of 'active' status in local cache...`);
-    const freshConns = db.getConnections();
-    const verifiedConn = freshConns.find(c => c.id === connectionId || (targetPairKey && [c.senderId, c.receiverId].sort().join("_") === targetPairKey));
-    
-    if (verifiedConn && (verifiedConn.status === "active" || (verifiedConn as any).statut === "ACTIF")) {
-      console.log(`[ConnectionService.acceptConnection] ✅ [CONSISTENCY CHECK PASSED] Connection #${connectionId} is confirmed ACTIVE in local db & cache.`);
-      console.log(`[ConnectionService.acceptConnection] 📊 Verified details: id="${verifiedConn.id}", sender="${verifiedConn.senderId}" (${verifiedConn.senderName}), receiver="${verifiedConn.receiverId}" (${verifiedConn.receiverName}), status="${verifiedConn.status}"`);
-    } else {
-      console.warn(`[ConnectionService.acceptConnection] ⚠️ [CONSISTENCY WARNING] Connection #${connectionId} was not confirmed active. Enforcing active status directly...`);
-      const forced = freshConns.map(c => (c.id === connectionId || (targetPairKey && [c.senderId, c.receiverId].sort().join("_") === targetPairKey)) ? { ...c, status: "active" as const, updatedAt: nowIso } : c);
-      db.saveConnections(forced);
-      if (typeof localStorage !== "undefined") {
-        localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(forced));
-      }
+    db.saveConnections(updatedConns);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(updatedConns));
     }
+    try {
+      await offlineStorage.setItems("relations", updatedConns);
+    } catch (e) {}
 
     removeDeletedConnectionId(connectionId);
-    if (conn) {
-      removeDeletedPartnerPair(conn.senderId, conn.receiverId);
+    removeDeletedConnectionId(canonicalPairKey);
+    if (senderId && receiverId) {
+      removeDeletedPartnerPair(senderId, receiverId);
+    }
 
-      const senderName = conn.senderName || "Votre partenaire B2B";
-      const receiverName = conn.receiverName || "Votre partenaire B2B";
-
-      // 1. Notification de déclenchement pour le DEMANDEUR (Sender)
+    // 3. Generate Notifications for BOTH sender and receiver
+    if (senderId && receiverId) {
       const senderNotif: Notification = {
         id: `notif-accept-sender-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        userId: conn.senderId,
+        userId: senderId,
         type: "connexion_acceptee" as any,
         title: "Demande de partenariat acceptée",
         message: `Votre demande de partenariat a été acceptée par ${receiverName}. Votre relation d'affaires est désormais active : vous pouvez échanger des propositions commerciales, partager vos stocks et passer des commandes dès maintenant.`,
         read: false,
-        relatedId: connectionId,
-        relationId: connectionId,
+        relatedId: canonicalPairKey,
+        relationId: canonicalPairKey,
         createdAt: nowIso
       };
 
-      // 2. Notification de confirmation pour le DESTINATAIRE (Receiver)
       const receiverNotif: Notification = {
         id: `notif-accept-recv-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        userId: conn.receiverId,
+        userId: receiverId,
         type: "connexion_acceptee" as any,
         title: "Partenariat d'affaires confirmé",
         message: `Votre partenariat d'affaires avec ${senderName} est désormais actif. Vous pouvez échanger des propositions commerciales et collaborer directement.`,
-        read: false,
-        relatedId: connectionId,
-        relationId: connectionId,
+        read: true,
+        relatedId: canonicalPairKey,
+        relationId: canonicalPairKey,
         createdAt: nowIso
       };
 
-      const currentNotifs = db.getNotifications();
-      // Mark any existing pending request notification for current user as read
-      const updatedNotifs = currentNotifs.map(n => {
+      const freshNotifs = db.getNotifications().map(n => {
         const notifRelId = (n as any).relationId || (n as any).relatedId || (n as any).metadata?.related_id || (n as any).metadata?.relation_id;
-        if (notifRelId === connectionId) {
+        if (notifRelId === connectionId || notifRelId === canonicalPairKey) {
           return { ...n, read: true };
         }
         return n;
       });
 
-      db.saveNotifications([senderNotif, receiverNotif, ...updatedNotifs]);
-      console.log(`[ConnectionService.acceptConnection] 📬 Notifications generated and saved locally for sender (${conn.senderId}) & receiver (${conn.receiverId}).`);
+      db.saveNotifications([senderNotif, receiverNotif, ...freshNotifs]);
 
       if (supabase) {
         try {
-          console.log(`[ConnectionService.acceptConnection] 📡 Inserting notifications into Supabase 'notifications' table...`);
-          const { error: notifInsertErr } = await supabase.from("notifications").insert([
+          await supabase.from("notifications").insert([
             {
               id: senderNotif.id,
-              user_id: conn.senderId,
+              user_id: senderId,
               title: senderNotif.title,
               message: senderNotif.message,
               type: "connexion_acceptee",
-              metadata: { related_id: connectionId, relation_id: connectionId },
+              metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: receiverId },
               read: false
             },
             {
               id: receiverNotif.id,
-              user_id: conn.receiverId,
+              user_id: receiverId,
               title: receiverNotif.title,
               message: receiverNotif.message,
               type: "connexion_acceptee",
-              metadata: { related_id: connectionId, relation_id: connectionId },
-              read: false
+              metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: senderId },
+              read: true
             }
           ]);
-          if (notifInsertErr) {
-            console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase notification insert error:", notifInsertErr.message);
-          } else {
-            console.log(`[ConnectionService.acceptConnection] ✅ Supabase notifications inserted successfully.`);
-          }
-        } catch (e) {
-          console.warn("Notice Supabase accept notifications:", e);
-        }
+        } catch (e) {}
       }
     }
 
-    if (supabase) {
+    // 4. Update Supabase relations table
+    if (supabase && senderId && receiverId) {
       try {
-        console.log(`[ConnectionService.acceptConnection] 📡 Upserting Supabase 'relations' table to statut='ACTIF' for id=${connectionId}...`);
-        const upsertPayload: Record<string, any> = {
-          id: connectionId,
+        await supabase.from("relations").upsert({
+          id: canonicalPairKey,
+          grossiste_id: senderId,
+          client_id: receiverId,
           statut: "ACTIF",
           updated_at: nowIso
-        };
-        if (conn?.senderId) upsertPayload.grossiste_id = conn.senderId;
-        if (conn?.receiverId) upsertPayload.client_id = conn.receiverId;
-
-        const { data: updateData, error: updateErr } = await supabase
-          .from("relations")
-          .upsert(upsertPayload)
-          .select();
-
-        if (updateErr) {
-          console.warn("[ConnectionService.acceptConnection] ⚠️ Supabase relation upsert error:", updateErr.message);
-        } else {
-          console.log(`[ConnectionService.acceptConnection] ✅ Supabase 'relations' upserted successfully (statut=ACTIF):`, updateData);
+        });
+        if (connectionId !== canonicalPairKey) {
+          await supabase.from("relations").upsert({
+            id: connectionId,
+            grossiste_id: senderId,
+            client_id: receiverId,
+            statut: "ACTIF",
+            updated_at: nowIso
+          });
         }
-      } catch (e) {
-        console.warn("Notice Supabase accept connection:", e);
-      }
+      } catch (e) {}
     }
 
+    // 5. Dispatch window events
     if (typeof window !== "undefined") {
-      console.log(`[ConnectionService.acceptConnection] 📣 Dispatching window events 'wakat_connections_updated', 'wakat_notifications_updated', 'wakat_partnership_established'...`);
       window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
-        detail: { connectionId, status: "active", action: "accept", timestamp: nowIso }
+        detail: { connectionId, pairKey: canonicalPairKey, status: "active", action: "accept", timestamp: nowIso }
       }));
       window.dispatchEvent(new CustomEvent("wakat_notifications_updated", {
-        detail: { connectionId, status: "active", action: "accept", timestamp: nowIso }
+        detail: { connectionId, pairKey: canonicalPairKey, status: "active", action: "accept", timestamp: nowIso }
       }));
       window.dispatchEvent(new CustomEvent("wakat_users_updated"));
-      if (conn) {
-        window.dispatchEvent(new CustomEvent("wakat_partnership_established", {
-          detail: { connection: conn, senderId: conn.senderId, receiverId: conn.receiverId, timestamp: nowIso }
-        }));
-      }
+      window.dispatchEvent(new CustomEvent("wakat_partnership_established", {
+        detail: { senderId, receiverId, pairKey: canonicalPairKey, timestamp: nowIso }
+      }));
     }
 
-    if (conn) {
+    if (senderId && receiverId) {
       try {
-        await syncService.enqueue("relation", connectionId, "UPDATE", {
-          id: connectionId,
-          grossiste_id: conn.senderId,
-          client_id: conn.receiverId,
+        await syncService.enqueue("relation", canonicalPairKey, "UPDATE", {
+          id: canonicalPairKey,
+          grossiste_id: senderId,
+          client_id: receiverId,
           statut: "ACTIF",
           status: "active"
         });
-      } catch (e) {
-        console.warn("Notice syncQueue enqueue accept:", e);
-      }
+      } catch (e) {}
     }
 
-    console.log(`[ConnectionService.acceptConnection] 🎉 [DONE] Connection #${connectionId} successfully accepted and synchronized.`);
+    console.log(`[ConnectionService.acceptConnection] 🎉 [DONE] Connection #${connectionId} (${canonicalPairKey}) accepted and active.`);
   },
 
   async rejectConnection(connectionId: string, currentUserId?: string): Promise<void> {

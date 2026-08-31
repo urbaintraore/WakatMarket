@@ -3996,6 +3996,7 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
+                  connections={connections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -4020,6 +4021,7 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
+                  connections={connections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -4049,6 +4051,7 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
+                  connections={connections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}
@@ -4079,6 +4082,7 @@ export default function App() {
                   users={countryFilteredUsers}
                   lightClients={countryFilteredLightClients}
                   payments={payments}
+                  connections={connections}
                   syncQueue={syncQueue}
                   isOnline={isOnline}
                   stockMovements={stockMovements}

@@ -10,6 +10,7 @@ import { UserProfile, Order, DebtPayment, LightClient, Product } from "../types"
 import { formatCFA } from "../data";
 import { billingService } from "../services/billingService";
 import { PartialPaymentModal } from "./PartialPaymentModal";
+import { PartnerConnectionBadge } from "./PartnerConnectionBadge";
 
 interface UnifiedBuyer {
   id: string;
@@ -228,6 +229,7 @@ export function BuyerDetailModal({
                 }`}>
                   {buyer.type}
                 </span>
+                <PartnerConnectionBadge partnerId={buyer.id} currentUserId={currentUser.id} showDetails={true} size="sm" />
               </div>
               <p className="text-xs text-emerald-100 font-medium">
                 {buyer.companyName || "Acheteur WakatMarket"} — {buyer.phone}

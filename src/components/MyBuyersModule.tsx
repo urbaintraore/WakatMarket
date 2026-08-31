@@ -10,6 +10,7 @@ import { formatCFA, db } from "../data";
 import { BuyerDetailModal } from "./BuyerDetailModal";
 import { PartialPaymentModal } from "./PartialPaymentModal";
 import { connectionService } from "../services/connectionService";
+import { PartnerConnectionBadge } from "./PartnerConnectionBadge";
 
 function getRemovedBuyerIds(currentUserId: string): Set<string> {
   try {
@@ -313,6 +314,7 @@ export function MyBuyersModule({
     });
 
     // Also include active partner relations from connection service / local DB
+    const activePartnerUserIds = new Set<string>();
     try {
       const activeConns = db.getConnections().filter(c => {
         const isPart = c.senderId === currentUser.id || c.receiverId === currentUser.id;
@@ -322,6 +324,7 @@ export function MyBuyersModule({
         const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
         if (partnerId && partnerId !== currentUser.id) {
           realUserIds.add(partnerId);
+          activePartnerUserIds.add(partnerId);
         }
       });
     } catch (e) {}
@@ -331,14 +334,15 @@ export function MyBuyersModule({
       if (deletedPairs.has(`${currentUser.id}:${uid}`) || deletedPairs.has(`${uid}:${currentUser.id}`)) return;
 
       const u = users.find((profile) => profile.id === uid);
-      if (u && isBuyerForSeller(currentUser.role, u.role)) {
+      const isDirectPartner = activePartnerUserIds.has(uid);
+      if (u && (isDirectPartner || isBuyerForSeller(currentUser.role, u.role))) {
         list.push({
           id: u.id,
           name: u.name,
           phone: u.phone,
           email: u.email,
           companyName: u.companyName,
-          roleOrType: u.role === "SEMI_WHOLESALER" ? "Partenaire Demi-Grossiste" : (u.role === "RETAILER" ? "Partenaire Détaillant" : "Partenaire Client"),
+          roleOrType: u.role === "WHOLESALER" ? "Partenaire Grossiste" : (u.role === "SEMI_WHOLESALER" ? "Partenaire Demi-Grossiste" : (u.role === "RETAILER" ? "Partenaire Détaillant" : "Partenaire Client")),
           type: "PARTENAIRE",
           isRealUser: true
         });
@@ -794,6 +798,7 @@ export function MyBuyersModule({
                             }`}>
                               {buyer.roleOrType}
                             </span>
+                            <PartnerConnectionBadge partnerId={buyer.id} currentUserId={currentUser.id} size="sm" />
                           </div>
                           <div className="flex items-center gap-3 text-[10px] text-zinc-400 font-semibold mt-1">
                             <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {buyer.phone}</span>

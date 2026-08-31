@@ -7,6 +7,7 @@ import { connectionService } from '../services/connectionService';
 import { userService } from '../services/userService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
 import { PartnerStockModal } from './PartnerStockModal';
+import { PartnerConnectionBadge } from './PartnerConnectionBadge';
 
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, AreaChart, Area, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
@@ -1083,7 +1084,10 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                       <div key={`act_${conn.id}_${idx}`} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col justify-between gap-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-700 transition relative group">
                         <div className="flex items-start justify-between">
                           <div className="space-y-1">
-                            <p className="font-bold text-sm text-zinc-900 dark:text-white">{otherPartyName}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-bold text-sm text-zinc-900 dark:text-white">{otherPartyName}</p>
+                              <PartnerConnectionBadge partnerId={otherPartyId} currentUserId={currentUser?.id} showDetails={true} size="sm" />
+                            </div>
                             <span className="inline-block text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
                               {otherPartyRole}
                             </span>

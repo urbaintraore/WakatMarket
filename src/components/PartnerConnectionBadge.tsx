@@ -58,7 +58,7 @@ export const PartnerConnectionBadge: React.FC<PartnerConnectionBadgeProps> = ({
     if (!conn) return null;
 
     const isActive = isConnectionActive(conn) || conn.status === "active" || (conn as any).statut === "ACTIF";
-    const isRejected = conn.status === "refusée" || conn.status === "refusee" || (conn as any).statut === "BLOCKED";
+    const isRejected = conn.status === "refusée" || (conn.status as string) === "refusee" || (conn as any).statut === "BLOCKED";
     const isSender = currentUserId ? conn.senderId === currentUserId : false;
 
     return {
