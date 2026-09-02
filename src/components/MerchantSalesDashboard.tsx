@@ -20,6 +20,7 @@ interface MerchantSalesDashboardProps {
   currentUser: UserProfile;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string) => void;
   onPlaceSale?: (buyerId: string, items: { productId: string; quantity: number }[], amountPaid: number, method: string) => void;
+  onDiagnoseDelivery?: (order: Order) => void;
   isLoading?: boolean;
 }
 
@@ -29,6 +30,7 @@ export default function MerchantSalesDashboard({
   currentUser,
   onUpdateOrderStatus,
   onPlaceSale,
+  onDiagnoseDelivery,
   isLoading = false
 }: MerchantSalesDashboardProps) {
   const [showScanner, setShowScanner] = useState(false);
@@ -365,6 +367,7 @@ export default function MerchantSalesDashboard({
                 products={products}
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onArchiveOrder={toggleArchiveOrder}
+                onDiagnoseDelivery={onDiagnoseDelivery}
                 isArchived={archivedOrderIds.includes(order.id)}
                 isLoading={isLoading}
               />

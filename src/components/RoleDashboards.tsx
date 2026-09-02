@@ -17,6 +17,7 @@ import { venteService } from "../services/venteService";
 import { orderService } from "../services/orderService";
 import { OrderClaimAndConfirm } from "./OrderClaimAndConfirm";
 import { SyncStatusIndicator, LowStockAlerts, ClientManagement, SyncHistory, WeeklySalesChart, DebtVsRevenueChart, SupplierSelector, ThirtyDaySalesAndStockChart, ExpirationAlertsBanner, ClaimsSummaryWidget, StockEvolutionBarChart, handleExportInventoryCSV, handleExportSalesCSV, SalesExportButton } from "./CommonDashboardParts";
+import { PartnerConnectionBadge } from "./PartnerConnectionBadge";
 import { AccountingDashboard } from "./AccountingDashboard";
 import { PredictiveSearchBar } from "./PredictiveSearchBar";
 import { POSComponent } from "./POSComponent";
@@ -1433,16 +1434,19 @@ export function WholesalerDashboard({
   const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
   const handleDiagnoseDelivery = async (order: Order) => {
     import("../services/connectionService").then(async ({ connectionService }) => {
-      const diag = await connectionService.validateRelationshipActive(order.senderId, order.receiverId);
-      if (diag.isActive) {
-        alert("Diagnostic ✅ : Le partenariat B2B est correctement configuré et actif. La livraison peut s'effectuer normalement.");
+      const diag = await connectionService.diagnoseDeliveryAndInventory(order, inventory, products);
+      if (diag.canDeliver) {
+        alert(diag.summaryMessage);
+      } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
+        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
       } else {
-        if (confirm(`Diagnostic ⚠️ : Problème de partenariat détecté (${diag.statut}). Voulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
+        if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
           let connectionId = diag.relationId;
           if (!connectionId) {
-             const senderObj = users.find(u => u.id === order.senderId);
-             if (senderObj) {
-                 const req = await connectionService.envoyerDemandeConnexion(currentUser, senderObj, "Auto-diagnostic");
+             const otherId = order.senderId === currentUser.id ? order.receiverId : order.senderId;
+             const targetObj = users.find(u => u.id === otherId);
+             if (targetObj) {
+                 const req = await connectionService.envoyerDemandeConnexion(currentUser, targetObj, "Auto-diagnostic");
                  connectionId = req.relationId;
              }
           }
@@ -1450,7 +1454,7 @@ export function WholesalerDashboard({
               await connectionService.acceptConnection(connectionId, currentUser.id);
               alert("Réparation effectuée avec succès ! Le partenariat est maintenant actif.");
           } else {
-              alert("Impossible de réparer automatiquement : le compte acheteur est introuvable.");
+              alert("Impossible de réparer automatiquement : le compte partenaire est introuvable.");
           }
         }
       }
@@ -1659,6 +1663,7 @@ export function WholesalerDashboard({
                 currentUser={currentUser}
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onPlaceSale={onPlaceSale}
+                onDiagnoseDelivery={handleDiagnoseDelivery}
               />
             </div>
           )}
@@ -2614,6 +2619,34 @@ export function RetailerDashboard({
   const handleAssignDriver = (orderId: string, driverId: string) => {
     onUpdateOrderStatus(orderId, OrderStatus.DELIVERING, driverId);
   };
+  const handleDiagnoseDelivery = async (order: Order) => {
+    import("../services/connectionService").then(async ({ connectionService }) => {
+      const diag = await connectionService.diagnoseDeliveryAndInventory(order, inventory, products);
+      if (diag.canDeliver) {
+        alert(diag.summaryMessage);
+      } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
+        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
+      } else {
+        if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
+          let connectionId = diag.relationId;
+          if (!connectionId) {
+             const otherId = order.senderId === currentUser.id ? order.receiverId : order.senderId;
+             const targetObj = users.find(u => u.id === otherId);
+             if (targetObj) {
+                 const req = await connectionService.envoyerDemandeConnexion(currentUser, targetObj, "Auto-diagnostic");
+                 connectionId = req.relationId;
+             }
+          }
+          if (connectionId) {
+              await connectionService.acceptConnection(connectionId, currentUser.id);
+              alert("Réparation effectuée avec succès ! Le partenariat est maintenant actif.");
+          } else {
+              alert("Impossible de réparer automatiquement : le compte partenaire est introuvable.");
+          }
+        }
+      }
+    });
+  };
   const r2cDrivers = users.filter((u) => u.role === UserRole.DRIVER_R2C && u.status === "ACTIVE");
   const retailerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
@@ -2658,6 +2691,7 @@ export function RetailerDashboard({
                 currentUser={currentUser}
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onPlaceSale={onPlaceSale}
+                onDiagnoseDelivery={handleDiagnoseDelivery}
               />
             </div>
           )}
@@ -3527,6 +3561,7 @@ export function ClientDashboard({
   const [activeTab, setActiveTab] = useState<"market" | "orders" | "addresses" | "feed">("feed");
   const [orderStatusFilter, setOrderStatusFilter] = useState<"TOUS" | "EN_COURS" | "LIVRE" | "ANNULE">("TOUS");
   const [searchQuery, setSearchQuery] = useState("");
+  const [onlyPartners, setOnlyPartners] = useState(false);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [selectedRetailer, setSelectedRetailer] = useState<string>("");
   const [shippingAddress, setShippingAddress] = useState(currentUser.address || "La Médina, Dakar");
@@ -3555,6 +3590,15 @@ export function ClientDashboard({
         .filter(order => order.senderId === currentUser.id)
         .map(order => order.receiverId)
   ));
+  // Active partner IDs
+  const activePartnerIds = useMemo(() => {
+    return Array.from(new Set(
+      orders
+        .filter(order => order.senderId === currentUser.id || order.receiverId === currentUser.id)
+        .map(order => order.senderId === currentUser.id ? order.receiverId : order.senderId)
+        .concat(connectedSupplierIds)
+    ));
+  }, [orders, currentUser.id, connectedSupplierIds]);
   // Feed data: recent updates from connected suppliers
   const feedItems = inventory
     .filter((inv) => connectedSupplierIds.includes(inv.ownerId) && inv.updatedAt)
@@ -3574,6 +3618,12 @@ export function ClientDashboard({
       return roleOk && activeOk;
     });
   }, [users]);
+  const displayedRetailers = useMemo(() => {
+    return retailers.filter((r) => {
+      if (onlyPartners && !activePartnerIds.includes(r.id)) return false;
+      return true;
+    });
+  }, [retailers, onlyPartners, activePartnerIds]);
   // Client past or present orders
   const myOrders = orders.filter((o) => o.senderId === currentUser.id);
   const selectedShopObj = users.find((u) => u.id === selectedRetailer);
@@ -3715,13 +3765,27 @@ export function ClientDashboard({
                   Commandez en direct auprès de vos commerces de proximité et demi-grossistes partenaires.
                 </p>
               </div>
-              <PredictiveSearchBar
-                value={searchQuery}
-                onChange={setSearchQuery}
-                products={products}
-                placeholder="Rechercher des produits..."
-                className="w-full sm:max-w-xs"
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setOnlyPartners(!onlyPartners)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border ${
+                    onlyPartners
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                      : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-750"
+                  }`}
+                  title="Filtrer uniquement les commerces et demi-grossistes partenaires"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  N'afficher que mes partenaires
+                </button>
+                <PredictiveSearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  products={products}
+                  placeholder="Rechercher des produits..."
+                  className="w-full sm:max-w-xs"
+                />
+              </div>
             </div>
             {/* Select dropdown & Active Shop Header */}
             <div className="flex flex-col sm:flex-row gap-3 items-center">
@@ -3734,9 +3798,9 @@ export function ClientDashboard({
                 className="w-full sm:flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-medium text-zinc-900 dark:text-zinc-100 shadow-xs"
               >
                 <option value="">-- Choisissez une Boutique ou Demi-Gros dans la liste --</option>
-                {retailers.map((r) => (
+                {displayedRetailers.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant Boutique"} • {r.address || r.region || "Local"})
+                    {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant Boutique"} • {r.address || r.region || "Local"}) {activePartnerIds.includes(r.id) ? "🔒 [Partenaire]" : ""}
                   </option>
                 ))}
               </select>
@@ -3759,6 +3823,7 @@ export function ClientDashboard({
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="font-bold text-sm text-zinc-900 dark:text-white">{selectedShopObj.companyName || selectedShopObj.name}</h4>
+                  <PartnerConnectionBadge isPartner={activePartnerIds.includes(selectedShopObj.id)} />
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                     selectedShopObj.role === UserRole.SEMI_WHOLESALER 
                       ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
@@ -3780,9 +3845,9 @@ export function ClientDashboard({
             /* Vendor Selection Cards when no shop is selected */
             <div className="space-y-6">
               <div className="space-y-3">
-                <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Commerces & Demi-Grossistes Disponibles</h5>
+                <h5 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Commerces & Demi-Grossistes Disponibles {onlyPartners && "(Partenaires uniquement)"}</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {retailers.map((r) => {
+                  {displayedRetailers.map((r) => {
                     const itemCount = inventory.filter(i => i.ownerId === r.id).length;
                     return (
                       <div
@@ -3797,13 +3862,16 @@ export function ClientDashboard({
                           <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-base">
                             <Store className="w-5 h-5" />
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            r.role === UserRole.SEMI_WHOLESALER 
-                              ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
-                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
-                          }`}>
-                            {r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <PartnerConnectionBadge isPartner={activePartnerIds.includes(r.id)} />
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              r.role === UserRole.SEMI_WHOLESALER 
+                                ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300"
+                                : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300"
+                            }`}>
+                              {r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant"}
+                            </span>
+                          </div>
                         </div>
                         <div>
                           <h5 className="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-emerald-600 transition">
@@ -4446,16 +4514,19 @@ export function SemiWholesalerDashboard({
   const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
   const handleDiagnoseDelivery = async (order: Order) => {
     import("../services/connectionService").then(async ({ connectionService }) => {
-      const diag = await connectionService.validateRelationshipActive(order.senderId, order.receiverId);
-      if (diag.isActive) {
-        alert("Diagnostic ✅ : Le partenariat B2B est correctement configuré et actif. La livraison peut s'effectuer normalement.");
+      const diag = await connectionService.diagnoseDeliveryAndInventory(order, inventory, products);
+      if (diag.canDeliver) {
+        alert(diag.summaryMessage);
+      } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
+        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
       } else {
-        if (confirm(`Diagnostic ⚠️ : Problème de partenariat détecté (${diag.statut}). Voulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
+        if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
           let connectionId = diag.relationId;
           if (!connectionId) {
-             const senderObj = users.find(u => u.id === order.senderId);
-             if (senderObj) {
-                 const req = await connectionService.envoyerDemandeConnexion(currentUser, senderObj, "Auto-diagnostic");
+             const otherId = order.senderId === currentUser.id ? order.receiverId : order.senderId;
+             const targetObj = users.find(u => u.id === otherId);
+             if (targetObj) {
+                 const req = await connectionService.envoyerDemandeConnexion(currentUser, targetObj, "Auto-diagnostic");
                  connectionId = req.relationId;
              }
           }
@@ -4463,7 +4534,7 @@ export function SemiWholesalerDashboard({
               await connectionService.acceptConnection(connectionId, currentUser.id);
               alert("Réparation effectuée avec succès ! Le partenariat est maintenant actif.");
           } else {
-              alert("Impossible de réparer automatiquement : le compte acheteur est introuvable.");
+              alert("Impossible de réparer automatiquement : le compte partenaire est introuvable.");
           }
         }
       }
@@ -4777,6 +4848,7 @@ export function SemiWholesalerDashboard({
             currentUser={currentUser}
             onUpdateOrderStatus={onUpdateOrderStatus}
             onPlaceSale={onPlaceSale}
+            onDiagnoseDelivery={handleDiagnoseDelivery}
           />
         </div>
       )}

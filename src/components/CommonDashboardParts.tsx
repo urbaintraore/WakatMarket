@@ -2633,20 +2633,18 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                   }`}
                 >
                   <span className="font-semibold">{s.name || s.companyName}</span>
+                  {s.realUserId && (
+                    <PartnerConnectionBadge
+                      partnerId={s.realUserId}
+                      currentUserId={currentUser.id}
+                      size="xs"
+                      className={isSelected ? "bg-white/20 text-white border-white/40" : ""}
+                    />
+                  )}
                   {s.phone && <span className="text-[10px] opacity-80">📞 {s.phone}</span>}
                   {s.isAddressBook && (
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"}`}>
                       Carnet
-                    </span>
-                  )}
-                  {s.isConnected && !s.isAddressBook && (
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300"}`}>
-                      Partenaire
-                    </span>
-                  )}
-                  {s.hasOrderHistory && !s.isConnected && (
-                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300"}`}>
-                      Historique
                     </span>
                   )}
                 </button>
@@ -2726,9 +2724,10 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5">
+                  {s.realUserId && (
+                    <PartnerConnectionBadge partnerId={s.realUserId} currentUserId={currentUser.id} size="xs" />
+                  )}
                   {s.isAddressBook && <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded text-[9px] font-bold">Carnet</span>}
-                  {s.isConnected && <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded text-[9px] font-bold">Partenaire</span>}
-                  {s.hasOrderHistory && !s.isConnected && <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded text-[9px] font-bold">Historique</span>}
                   <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">Choisir →</span>
                 </div>
               </div>
@@ -2832,16 +2831,19 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div>
-              <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                Fournisseur Sélectionné : <span className="text-emerald-600 dark:text-emerald-400">{selectedSupplierObj.name} {selectedSupplierObj.companyName ? `(${selectedSupplierObj.companyName})` : ''}</span>
-              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                  Fournisseur Sélectionné : <span className="text-emerald-600 dark:text-emerald-400">{selectedSupplierObj.name} {selectedSupplierObj.companyName ? `(${selectedSupplierObj.companyName})` : ''}</span>
+                </p>
+                {selectedSupplierObj.realUserId && (
+                  <PartnerConnectionBadge partnerId={selectedSupplierObj.realUserId} currentUserId={currentUser.id} size="sm" showDetails />
+                )}
+              </div>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex flex-wrap gap-2">
                 {selectedSupplierObj.phone && <span>📞 {selectedSupplierObj.phone}</span>}
                 {selectedSupplierObj.email && <span>✉️ {selectedSupplierObj.email}</span>}
                 {selectedSupplierObj.region && <span>📍 {selectedSupplierObj.region}</span>}
                 {selectedSupplierObj.isAddressBook && <span className="font-bold text-indigo-600 dark:text-indigo-400">[Carnet d'adresses]</span>}
-                {selectedSupplierObj.isConnected && <span className="font-bold text-emerald-600 dark:text-emerald-400">[Partenaire Confirmé]</span>}
-                {selectedSupplierObj.hasOrderHistory && !selectedSupplierObj.isConnected && <span className="font-bold text-amber-600 dark:text-amber-400">[Historique Commercial]</span>}
               </p>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { Connection, Notification, UserProfile, UserRole } from "../types";
+import { Connection, Notification, UserProfile, UserRole, InventoryItem, Product, Order } from "../types";
 import { supabase } from "../supabase";
 import { db } from "../data";
 import { syncService } from "./syncService";
@@ -663,6 +663,259 @@ export const connectionService = {
       isActive: true,
       statut: "ACTIF",
       details: "Messagerie autorisée."
+    };
+  },
+
+  /**
+   * Nettoie automatiquement les demandes de partenariat 'pending' / 'en_attente' qui dépassent 30 jours.
+   * Notifie l'expéditeur et supprime l'enregistrement pour éviter l'encombrement des interfaces de gestion.
+   */
+  async cleanupExpiredPendingRequests(userId?: string): Promise<{
+    cleanedCount: number;
+    expiredIds: string[];
+    expiredDetails: Array<{ id: string; senderId: string; receiverId: string; partnerName: string; daysOld: number }>;
+  }> {
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const currentConns = db.getConnections();
+    const currentNotifs = db.getNotifications();
+    const users = db.getUsers();
+
+    const expiredDetails: Array<{ id: string; senderId: string; receiverId: string; partnerName: string; daysOld: number }> = [];
+    const expiredIds: string[] = [];
+
+    const remainingConns = currentConns.filter(conn => {
+      const isPending = conn.status === "en_attente" || (conn.status as string) === "pending" || (conn as any).statut === "PENDING" || (conn as any).statut === "en_attente";
+      if (!isPending) return true;
+
+      // Filter by user if specified
+      if (userId && conn.senderId !== userId && conn.receiverId !== userId) return true;
+
+      const creationDate = conn.createdAt || (conn as any).dateCreation || conn.updatedAt;
+      const createdTime = creationDate ? new Date(creationDate).getTime() : 0;
+      
+      if (!createdTime || isNaN(createdTime)) return true; // keep if invalid date
+
+      const ageMs = now - createdTime;
+      if (ageMs > THIRTY_DAYS_MS) {
+        const daysOld = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        const otherUserId = userId === conn.senderId ? conn.receiverId : conn.senderId;
+        const otherUser = users.find(u => u.id === otherUserId);
+        const partnerName = otherUser?.companyName || otherUser?.name || conn.receiverName || conn.senderName || "Partenaire";
+
+        expiredIds.push(conn.id);
+        const pairKey = [conn.senderId, conn.receiverId].sort().join("_");
+        if (conn.id !== pairKey) expiredIds.push(pairKey);
+
+        expiredDetails.push({
+          id: conn.id,
+          senderId: conn.senderId,
+          receiverId: conn.receiverId,
+          partnerName,
+          daysOld
+        });
+
+        console.log(`[ConnectionService.cleanupExpiredPendingRequests] ⏳ Demande #${conn.id} avec ${partnerName} date de ${daysOld} jours (>30j). Nettoyage automatique...`);
+        return false; // Remove from active connections
+      }
+
+      return true;
+    });
+
+    if (expiredDetails.length > 0) {
+      // 1. Update memory & localStorage & offline storage
+      db.saveConnections(remainingConns);
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(remainingConns));
+      }
+      try {
+        await offlineStorage.setItems("relations", remainingConns);
+      } catch (e) {}
+
+      // 2. Generate expiry notifications for affected users
+      const newNotifs = [...currentNotifs];
+      expiredDetails.forEach(exp => {
+        const notifSender: Notification = {
+          id: `notif_exp_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          userId: exp.senderId,
+          title: "Demande de partenariat expirée",
+          message: `Votre demande de partenariat envoyée à ${exp.partnerName} il y a ${exp.daysOld} jours sans réponse a expiré et a été automatiquement archivée.`,
+          type: "SYSTEM",
+          read: false,
+          createdAt: new Date().toISOString()
+        };
+        newNotifs.push(notifSender);
+      });
+      db.saveNotifications(newNotifs);
+
+      // 3. Supabase cleanup
+      if (supabase && expiredIds.length > 0) {
+        try {
+          await supabase.from("relations").delete().in("id", expiredIds);
+          // Also insert notifications in Supabase
+          for (const exp of expiredDetails) {
+            await supabase.from("notifications").insert({
+              user_id: exp.senderId,
+              title: "Demande de partenariat expirée",
+              message: `Votre demande de partenariat envoyée à ${exp.partnerName} il y a ${exp.daysOld} jours a expiré et a été automatiquement archivée.`,
+              type: "SYSTEM",
+              read: false,
+              created_at: new Date().toISOString()
+            });
+          }
+        } catch (sbErr) {
+          console.warn("[ConnectionService] Supabase delete expired relations error:", sbErr);
+        }
+      }
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
+          detail: { cleanedCount: expiredDetails.length, expiredIds }
+        }));
+        window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
+      }
+
+      console.log(`[ConnectionService] 🧹 ${expiredDetails.length} demande(s) de partenariat expirée(s) nettoyée(s) avec succès.`);
+    }
+
+    return {
+      cleanedCount: expiredDetails.length,
+      expiredIds,
+      expiredDetails
+    };
+  },
+
+  /**
+   * Diagnostic de livraison étendu :
+   * 1. Vérifie que la relation de partenariat B2B est active et confirmée.
+   * 2. Vérifie les stocks réels du fournisseur (inventaire global et/ou articles commandés).
+   * 3. Renvoie un diagnostic complet pour éviter les commandes inutiles vers des partenaires sans inventaire.
+   */
+  async diagnoseDeliveryAndInventory(
+    orderOrUsers: {
+      senderId: string;
+      receiverId: string;
+      items?: Array<{ productId: string; quantity: number; priceAtOrder?: number }>;
+      id?: string;
+    },
+    customInventory?: InventoryItem[],
+    customProducts?: Product[]
+  ): Promise<{
+    isActive: boolean;
+    statut: string;
+    grossisteId?: string;
+    clientId?: string;
+    relationId?: string;
+    details: string;
+    inventoryCheck: {
+      hasStock: boolean;
+      totalStockUnits: number;
+      availableProductCount: number;
+      supplierId: string;
+      supplierName: string;
+      itemsSummary: string;
+      outOfStockItems: Array<{ productId: string; productName: string; requestedQty: number; availableStock: number }>;
+    };
+    canDeliver: boolean;
+    summaryMessage: string;
+  }> {
+    const userA = orderOrUsers.senderId;
+    const userB = orderOrUsers.receiverId;
+
+    // 1. Check partnership status
+    const relCheck = await this.validateRelationshipActive(userA, userB);
+
+    // 2. Identify supplier / seller
+    const allUsers = db.getUsers();
+    const allInventory = customInventory || db.getInventory();
+    const allProducts = customProducts || db.getProducts();
+
+    const senderUser = allUsers.find(u => u.id === userA);
+    const receiverUser = allUsers.find(u => u.id === userB);
+
+    // Wholesaler or Manufacturer is typically the supplier in B2B orders
+    let supplierId = userB;
+    let supplierUser = receiverUser;
+
+    if (senderUser && (senderUser.role === UserRole.MANUFACTURER || senderUser.role === UserRole.WHOLESALER || senderUser.role === UserRole.SEMI_WHOLESALER)) {
+      if (!receiverUser || receiverUser.role === UserRole.CLIENT || receiverUser.role === UserRole.RETAILER) {
+        supplierId = userA;
+        supplierUser = senderUser;
+      }
+    }
+
+    const supplierName = supplierUser?.companyName || supplierUser?.name || `Fournisseur (${supplierId})`;
+
+    // Check supplier's inventory
+    const supplierItems = allInventory.filter(item => item.ownerId === supplierId);
+    const totalStockUnits = supplierItems.reduce((acc, item) => acc + (item.stock || 0), 0);
+    const inStockItems = supplierItems.filter(item => (item.stock || 0) > 0);
+    const availableProductCount = inStockItems.length;
+
+    const outOfStockItems: Array<{ productId: string; productName: string; requestedQty: number; availableStock: number }> = [];
+
+    if (orderOrUsers.items && orderOrUsers.items.length > 0) {
+      for (const orderItem of orderOrUsers.items) {
+        const prod = allProducts.find(p => p.id === orderItem.productId);
+        const prodName = prod?.name || `Article #${orderItem.productId}`;
+        
+        // Find stock in supplier's inventory or general product stock
+        const invItem = supplierItems.find(i => i.productId === orderItem.productId);
+        const availableStock = invItem ? invItem.stock : ((prod as any)?.stockGros ?? (prod as any)?.stock ?? 0);
+
+        if (availableStock < orderItem.quantity) {
+          outOfStockItems.push({
+            productId: orderItem.productId,
+            productName: prodName,
+            requestedQty: orderItem.quantity,
+            availableStock: availableStock
+          });
+        }
+      }
+    }
+
+    const hasStock = supplierItems.length > 0 ? (totalStockUnits > 0 && outOfStockItems.length === 0) : (outOfStockItems.length === 0);
+    const canDeliver = relCheck.isActive && hasStock;
+
+    let itemsSummary = "";
+    if (outOfStockItems.length > 0) {
+      itemsSummary = `${outOfStockItems.length} article(s) commandé(s) en rupture de stock chez ${supplierName} : ` +
+        outOfStockItems.map(o => `${o.productName} (Demandé: ${o.requestedQty}, Dispo: ${o.availableStock})`).join(", ");
+    } else if (totalStockUnits === 0 && supplierItems.length > 0) {
+      itemsSummary = `Rupture totale : ${supplierName} a 0 unité en stock actuellement.`;
+    } else {
+      itemsSummary = `Inventaire conforme : ${availableProductCount} produit(s) disponible(s) (${totalStockUnits} unités au total chez ${supplierName}).`;
+    }
+
+    let summaryMessage = "";
+    if (canDeliver) {
+      summaryMessage = `Diagnostic ✅ : Livraison possible et recommandée.\n• Partenariat B2B : Actif et confirmé\n• Stocks Fournisseur : ${availableProductCount} référence(s) disponible(s) (${totalStockUnits} unités en stock). Tous les articles commandés sont disponibles.`;
+    } else if (!relCheck.isActive && !hasStock) {
+      summaryMessage = `Diagnostic ❌ : Double blocage !\n• Partenariat B2B : ${relCheck.statut} (non confirmé)\n• Stocks Fournisseur : ${itemsSummary}\nVeuillez réparer le partenariat et vérifier l'approvisionnement avec le fournisseur.`;
+    } else if (!relCheck.isActive) {
+      summaryMessage = `Diagnostic ⚠️ : Problème de partenariat (${relCheck.statut}) !\nLe fournisseur a du stock disponible (${totalStockUnits} unités), mais la relation de partenariat B2B n'est pas active. Veuillez activer ou réparer le partenariat.`;
+    } else {
+      summaryMessage = `Diagnostic ⚠️ : Problème de stock fournisseur !\nLe partenariat B2B est actif, mais le fournisseur est en rupture de stock (${itemsSummary}). Évitez de lancer la livraison avant réapprovisionnement.`;
+    }
+
+    return {
+      isActive: relCheck.isActive,
+      statut: relCheck.statut,
+      grossisteId: relCheck.grossisteId || supplierId,
+      clientId: relCheck.clientId,
+      relationId: relCheck.relationId,
+      details: relCheck.details,
+      inventoryCheck: {
+        hasStock,
+        totalStockUnits,
+        availableProductCount,
+        supplierId,
+        supplierName,
+        itemsSummary,
+        outOfStockItems
+      },
+      canDeliver,
+      summaryMessage
     };
   },
 
@@ -1403,6 +1656,13 @@ export const connectionService = {
     console.log(`[ConnectionService.subscribeToUserConnections] 🚀 Subscribing to connections for userId="${userId}"`);
 
     const emitConnections = async () => {
+      // Auto-cleanup any pending partnership requests older than 30 days
+      try {
+        await this.cleanupExpiredPendingRequests(userId);
+      } catch (cleanErr) {
+        console.warn("[ConnectionService] Background cleanup notice:", cleanErr);
+      }
+
       const deletedIds = getDeletedConnectionIds();
       const deletedPairs = getDeletedPartnerPairs();
 

@@ -9,6 +9,7 @@ import {
 import { jsPDF } from "jspdf";
 import { Product, UserProfile, UserRole, Connection, isConnectionActive } from "../types";
 import { formatCFA } from "../data";
+import { PartnerConnectionBadge } from "./PartnerConnectionBadge";
 
 interface B2BProductComparatorProps {
   products: Product[];
@@ -526,15 +527,17 @@ export function B2BProductComparator({
 
               <button
                 type="button"
-                onClick={() => setQuickFilter("connected")}
-                className={`px-3 py-1 rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 ${
+                onClick={() => setQuickFilter(quickFilter === "connected" ? "all" : "connected")}
+                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1.5 ${
                   quickFilter === "connected"
-                    ? "bg-indigo-600 text-white shadow-2xs"
+                    ? "bg-indigo-600 text-white shadow-2xs ring-2 ring-indigo-400/30"
                     : "bg-white dark:bg-zinc-800 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                 }`}
+                title="Isoler rapidement les offres des fournisseurs avec lesquels vous avez une relation de partenariat active"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>Mes Partenaires</span>
+                <span>N'afficher que mes partenaires</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${quickFilter === "connected" ? "bg-white" : "bg-indigo-400"}`} />
               </button>
             </div>
 
@@ -717,9 +720,14 @@ export function B2BProductComparator({
                           <Building2 className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-extrabold text-xs text-zinc-900 dark:text-white truncate">
-                            {item.supplierName}
-                          </h4>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="font-extrabold text-xs text-zinc-900 dark:text-white truncate">
+                              {item.supplierName}
+                            </h4>
+                            {item.supplier && (
+                              <PartnerConnectionBadge partnerId={item.supplier.id} currentUserId={currentUser.id} size="xs" />
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 text-[10px] text-zinc-500 mt-0.5">
                             <span className="font-semibold text-zinc-600 dark:text-zinc-400">
                               {item.supplierRole}
@@ -918,14 +926,14 @@ export function B2BProductComparator({
 
                           {/* Supplier */}
                           <td className="py-3 px-3">
-                            <div className="font-semibold text-zinc-900 dark:text-zinc-200">
-                              {item.supplierName}
+                            <div className="font-semibold text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5 flex-wrap">
+                              <span>{item.supplierName}</span>
+                              {item.supplier && (
+                                <PartnerConnectionBadge partnerId={item.supplier.id} currentUserId={currentUser.id} size="xs" />
+                              )}
                             </div>
                             <div className="text-[10px] text-zinc-500 flex items-center gap-1 mt-0.5">
                               <MapPin className="w-2.5 h-2.5" /> {item.city}
-                              {item.isConnected && (
-                                <span className="text-indigo-600 dark:text-indigo-400 font-bold">• Partenaire</span>
-                              )}
                             </div>
                           </td>
 
