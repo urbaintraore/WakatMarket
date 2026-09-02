@@ -2101,7 +2101,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   }, [lightClients, currentUser.id]);
 
   // Helper to test if a candidate role is forbidden (e.g. Retailer/Customer for Wholesaler or SemiWholesaler)
-  const isForbiddenSupplier = (candidateRole?: UserRole | string, linkedUserRole?: UserRole | string): boolean => {
+  const isForbiddenSupplier = (candidateRole?: UserRole | string, linkedUserRole?: UserRole | string, isPartner?: boolean): boolean => {
     const rolesToTest = [candidateRole, linkedUserRole].filter(Boolean) as (UserRole | string)[];
     
     // 1. Grossiste or Demi-Grossiste cannot procure from Retailer or Client
@@ -2124,7 +2124,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     }
 
     // 2. If targetRoles is specified, candidate must match targetRoles
-    if (targetRoles && targetRoles.length > 0) {
+    if (targetRoles && targetRoles.length > 0 && !isPartner) {
       const hasTargetMatch = rolesToTest.some(r => {
         const rStr = r.toString().toUpperCase();
         return targetRoles.some(tr => tr.toString().toUpperCase() === rStr);
@@ -2157,6 +2157,10 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
     const addedKeys = new Set<string>();
 
+    const cleanPhone = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
+    const myPhone = cleanPhone(currentUser.phone);
+    const myEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : "";
+
     const isDuplicate = (id: string, email?: string, companyName?: string) => {
       const normEmail = email ? email.toLowerCase().trim() : "";
       const normCompany = companyName ? companyName.toLowerCase().trim() : "";
@@ -2176,6 +2180,10 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
     // 1. Address book light clients (filter out retailers/incompatible roles)
     addressBookEntries.forEach(lc => {
+      if (lc.linkedUserId === currentUser.id) return;
+      if (myEmail && lc.email && lc.email.toLowerCase().trim() === myEmail) return;
+      if (myPhone && lc.phone && cleanPhone(lc.phone) === myPhone) return;
+
       const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
       const itemId = lc.linkedUserId || lc.id;
       const compName = lc.companyName || linkedUser?.companyName;
@@ -2183,8 +2191,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
       if (isDuplicate(itemId, emailAddr, compName)) return;
 
+      const isConnected = lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false;
       const effectiveRole = linkedUser?.role || lc.role;
-      if (isForbiddenSupplier(effectiveRole, linkedUser?.role)) {
+      if (isForbiddenSupplier(effectiveRole, linkedUser?.role, isConnected)) {
         return; // Exclude retailers or non-matching roles from supplier list
       }
 
@@ -2200,7 +2209,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         region: linkedUser?.region || "Local",
         country: linkedUser?.country || "",
         isAddressBook: true,
-        isConnected: lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false,
+        isConnected: isConnected,
         isUser: !!linkedUser,
         realUserId: lc.linkedUserId
       });
@@ -2211,11 +2220,12 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       if (u.id === currentUser.id) return;
       if (isDuplicate(u.id, u.email, u.companyName)) return;
 
-      if (isForbiddenSupplier(u.role)) {
+      const isConnected = connectedPartnerUserIds.has(u.id);
+
+      if (isForbiddenSupplier(u.role, undefined, isConnected)) {
         return; // Exclude retailers or forbidden roles
       }
 
-      const isConnected = connectedPartnerUserIds.has(u.id);
       const matchesRole = !targetRoles || targetRoles.length === 0 || targetRoles.includes(u.role);
 
       if (matchesRole || isConnected) {
@@ -2238,7 +2248,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     });
 
     return items;
-  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser.id, currentUser.role]);
+  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser]);
 
   // Filter address book / connected suppliers for quick selector
   const addressBookSuppliers = useMemo(() => {
@@ -2246,12 +2256,12 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   }, [allSuppliers]);
 
   // Filtered suppliers based on search query
-  const cleanPhone = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
+  const cleanPhoneInput = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
 
   const filteredSuppliers = useMemo(() => {
     if (!searchTerm.trim()) return allSuppliers;
     const term = searchTerm.toLowerCase().trim();
-    const termNum = cleanPhone(term);
+    const termNum = cleanPhoneInput(term);
 
     const matchedSupplierIds = new Set<string>();
     const results: typeof allSuppliers = [];

@@ -2869,7 +2869,10 @@ export function RetailerDashboard({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-3">
                 {(() => {
-                  const ws = wholesalers.find(w => w.id === selectedWholesaler);
+                  let ws = wholesalers.find(w => w.id === selectedWholesaler) as any;
+                  if (!ws) {
+                    ws = lightClients.find(lc => lc.id === selectedWholesaler) || users.find(u => u.id === selectedWholesaler);
+                  }
                   if (!ws) return null;
                   return (
                     <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-4 rounded-xl flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
@@ -2877,12 +2880,12 @@ export function RetailerDashboard({
                         <h5 className="font-bold text-emerald-800 dark:text-emerald-400 text-xs uppercase tracking-wider">Informations du Fournisseur</h5>
                         <p className="text-zinc-700 dark:text-zinc-300 text-sm mt-1 font-semibold">{ws.name} {ws.companyName ? `(${ws.companyName})` : ''}</p>
                         <p className="text-zinc-600 dark:text-zinc-400 text-xs mt-0.5">
-                          📍 {ws.region}, {ws.country} {ws.sector ? `- ${ws.sector}` : ''}
+                          📍 {ws.region || "Local"}, {ws.country || ""} {ws.sector ? `- ${ws.sector}` : ''}
                         </p>
                       </div>
                       <div className="text-left md:text-right">
-                        <p className="text-zinc-700 dark:text-zinc-300 text-xs"><strong>Email:</strong> {ws.email}</p>
-                        <p className="text-zinc-700 dark:text-zinc-300 text-xs mt-0.5"><strong>Téléphone:</strong> {ws.phone}</p>
+                        <p className="text-zinc-700 dark:text-zinc-300 text-xs"><strong>Email:</strong> {ws.email || "Non renseigné"}</p>
+                        <p className="text-zinc-700 dark:text-zinc-300 text-xs mt-0.5"><strong>Téléphone:</strong> {ws.phone || "Non renseigné"}</p>
                       </div>
                     </div>
                   );
