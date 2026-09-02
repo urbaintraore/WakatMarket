@@ -2551,12 +2551,16 @@ export default function App() {
           lc.ownerId === currentUser.id && lc.linkedUserId === u.id
         );
 
+        const isConnected = connections.some(c => 
+          isConnectionActive(c) && ((c.senderId === currentUser.id && c.receiverId === u.id) || (c.senderId === u.id && c.receiverId === currentUser.id))
+        );
+
         const isWholesalerSupplier = (currentUser.role === UserRole.RETAILER || currentUser.role === UserRole.SEMI_WHOLESALER || currentUser.role === UserRole.CLIENT) && 
           (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER);
 
-        return hasOrder || isLightClient || isWholesalerSupplier;
+        return hasOrder || isLightClient || isWholesalerSupplier || isConnected;
       })
-    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, lightClients]);
+    : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, lightClients, connections]);
 
   const displayProducts = useMemo(() => deduplicate(isRealUserAuthenticated
     ? products.filter(p => {
@@ -2566,7 +2570,7 @@ export default function App() {
         if (isMine) return true;
         
         // Include products from partners we are linked in lightClients or connections
-        const activeConnections = connections.filter(c => c.status === "active");
+        const activeConnections = connections.filter(isConnectionActive);
         
         const isPartnerInventory = inventory.some(i => i.productId === p.id && (
           lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId) ||
@@ -2591,7 +2595,7 @@ export default function App() {
           if (!currentUser) return false;
           if (i.ownerId === currentUser.id) return true;
           
-          const activeConnections = connections.filter(c => c.status === "active");
+          const activeConnections = connections.filter(isConnectionActive);
 
           // Include inventory from partners linked in lightClients or active connections
           const isLightClientPartner = lightClients.some(lc => 

@@ -1567,8 +1567,8 @@ export function WholesalerDashboard({
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
-  // Incoming B2B orders from Retailers & Semi-Wholesalers
-  const incomingRetailerOrders = orders.filter((o) => o.receiverId === currentUser.id && (o.orderType === "B2B_W2R" || o.orderType === "B2B_W2SG"));
+  // Incoming B2B orders
+  const incomingRetailerOrders = orders.filter((o) => o.receiverId === currentUser.id && o.orderType.startsWith("B2B"));
 
   // Unique Buyers
   const myBuyers = useMemo(() => {
@@ -1590,8 +1590,8 @@ export function WholesalerDashboard({
       .filter((u): u is UserProfile => !!u && [UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(u.role));
   }, [orders, lightClients, users, currentUser.id]);
 
-  // Outgoing B2B orders to Manufacturers
-  const myB2BOrders = orders.filter((o) => o.senderId === currentUser.id && o.orderType === "B2B_M2W");
+  // Outgoing B2B orders
+  const myB2BOrders = orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B"));
 
   // Available drivers level 2 (W2R)
   const w2rDrivers = users.filter((u) => u.role === UserRole.DRIVER_W2R && u.status === "ACTIVE");
@@ -2648,11 +2648,11 @@ export function RetailerDashboard({
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
 
-  // Shop Orders from client
-  const myB2COrders = useMemo(() => orders.filter((o) => o.receiverId === currentUser.id && o.orderType === "B2C_R2C"), [orders, currentUser.id]);
+  // Shop Orders (Incoming B2C and B2B)
+  const myB2COrders = useMemo(() => orders.filter((o) => o.receiverId === currentUser.id), [orders, currentUser.id]);
 
-  // Outgoing B2B orders to Wholesalers or Semi-Wholesalers
-  const myB2BOrders = useMemo(() => orders.filter((o) => o.senderId === currentUser.id && (o.orderType === "B2B_W2R" || o.orderType === "B2B_SG2R")), [orders, currentUser.id]);
+  // Outgoing B2B orders
+  const myB2BOrders = useMemo(() => orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B")), [orders, currentUser.id]);
   
   // Unique Buyers (B2B and B2C)
   const myBuyers = useMemo(() => {
@@ -3127,7 +3127,7 @@ export function RetailerDashboard({
         <div className="space-y-6">
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes Clients (B2C)</h4>
+              <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes Reçues (Clients & Partenaires)</h4>
               <SalesExportButton
                 orders={myB2COrders}
                 products={products}
@@ -4769,7 +4769,7 @@ export function SemiWholesalerDashboard({
   }, [orders, currentUser.id, myLightClientIds, currentUser.email]);
 
   const myPurchases = useMemo(() => {
-    return orders.filter((o) => o.senderId === currentUser.id && (o.orderType === "B2B_W2SG" || o.orderType === "B2B_M2W"));
+    return orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B"));
   }, [orders, currentUser.id]);
 
   const sg2rDrivers = users.filter((u) => u.role === UserRole.DRIVER_SG2R && u.status === "ACTIVE");
