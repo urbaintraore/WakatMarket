@@ -416,6 +416,7 @@ export interface OrderWidgetCardProps {
   onArchiveOrder?: (orderId: string) => void;
   onDownloadPDF?: (order: Order, products: Product[]) => void;
   onDeleteOrder?: (orderId: string) => void;
+  onDiagnoseDelivery?: (order: Order) => void;
   isArchived?: boolean;
   defaultExpanded?: boolean;
   isLoading?: boolean;
@@ -434,6 +435,7 @@ export function OrderWidgetCard({
   onArchiveOrder,
   onDownloadPDF,
   onDeleteOrder,
+  onDiagnoseDelivery,
   isArchived = false,
   defaultExpanded = false,
   isLoading = false
@@ -688,16 +690,28 @@ export function OrderWidgetCard({
                   </button>
                 )}
               </div>
-
-              {order.status === OrderStatus.PENDING && onUpdateOrderStatus && (
-                <button
-                  onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
-                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Valider la commande</span>
-                </button>
-              )}
+              
+              <div className="flex gap-2 items-center flex-wrap">
+                {order.status === OrderStatus.PENDING && onDiagnoseDelivery && (
+                  <button
+                    onClick={() => onDiagnoseDelivery(order)}
+                    className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Diagnostiquer la livraison"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>Diagnostiquer</span>
+                  </button>
+                )}
+                {order.status === OrderStatus.PENDING && onUpdateOrderStatus && (
+                  <button
+                    onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
+                    className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Valider la commande</span>
+                  </button>
+                )}
+              </div>
             </div>
           </motion.div>
         )}

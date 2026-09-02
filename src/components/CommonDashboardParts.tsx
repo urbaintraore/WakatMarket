@@ -8,6 +8,7 @@ import { userService } from '../services/userService';
 import { ClientSendMessageModal } from './ClientSendMessageModal';
 import { PartnerStockModal } from './PartnerStockModal';
 import { PartnerConnectionBadge } from './PartnerConnectionBadge';
+import { getPartnerRatingStats } from '../utils/reviews';
 
 import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, AreaChart, Area, LineChart, Line, ComposedChart, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
@@ -2060,6 +2061,7 @@ export interface SupplierSelectorProps {
   currentUser: UserProfile;
   users: UserProfile[];
   connections?: Connection[];
+  orders?: Order[];
   lightClients?: LightClient[];
   selectedSupplierId: string;
   onSelectSupplier: (supplierId: string) => void;
@@ -2073,6 +2075,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   currentUser,
   users = [],
   connections = [],
+  orders = [],
   lightClients = [],
   selectedSupplierId,
   onSelectSupplier,
@@ -2082,6 +2085,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   onCreateLightClient
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [sendingRequestId, setSendingRequestId] = useState<string | null>(null);
+  const [requestFeedback, setRequestFeedback] = useState<{ id: string; success: boolean; message: string } | null>(null);
 
   // Determine active connection IDs
   const connectedPartnerUserIds = useMemo(() => {
@@ -2094,6 +2099,23 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     });
     return set;
   }, [connections, currentUser.id]);
+
+  // Determine partners with valid order history
+  const orderHistoryPartnerUserIds = useMemo(() => {
+    const set = new Set<string>();
+    orders.forEach(o => {
+      if (o.senderId === currentUser.id && o.receiverId) set.add(o.receiverId);
+      if (o.receiverId === currentUser.id && o.senderId) set.add(o.senderId);
+    });
+    return set;
+  }, [orders, currentUser.id]);
+
+  // Combined set of valid partner user IDs (confirmed partnership OR valid order history)
+  const validPartnerUserIds = useMemo(() => {
+    const set = new Set<string>(connectedPartnerUserIds);
+    orderHistoryPartnerUserIds.forEach(id => set.add(id));
+    return set;
+  }, [connectedPartnerUserIds, orderHistoryPartnerUserIds]);
 
   // Address book entries owned by current user
   const addressBookEntries = useMemo(() => {
@@ -2138,7 +2160,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     return false;
   };
 
-  // Combine users & light clients into unified list
+  // Combine eligible users & light clients into unified list
   const allSuppliers = useMemo(() => {
     const items: Array<{
       id: string;
@@ -2151,14 +2173,17 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       country?: string;
       isAddressBook: boolean;
       isConnected: boolean;
+      hasOrderHistory: boolean;
       isUser: boolean;
       realUserId?: string;
+      rating?: number;
+      ratingCount?: number;
     }> = [];
 
     const addedKeys = new Set<string>();
 
-    const cleanPhone = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
-    const myPhone = cleanPhone(currentUser.phone);
+    const cleanPhoneLocal = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
+    const myPhone = cleanPhoneLocal(currentUser.phone);
     const myEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : "";
 
     const isDuplicate = (id: string, email?: string, companyName?: string) => {
@@ -2178,11 +2203,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       if (normCompany && normCompany !== "entreprise") addedKeys.add(`company:${normCompany}`);
     };
 
-    // 1. Address book light clients (filter out retailers/incompatible roles)
+    // 1. Address book light clients
     addressBookEntries.forEach(lc => {
       if (lc.linkedUserId === currentUser.id) return;
       if (myEmail && lc.email && lc.email.toLowerCase().trim() === myEmail) return;
-      if (myPhone && lc.phone && cleanPhone(lc.phone) === myPhone) return;
+      if (myPhone && lc.phone && cleanPhoneLocal(lc.phone) === myPhone) return;
 
       const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
       const itemId = lc.linkedUserId || lc.id;
@@ -2192,6 +2217,12 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       if (isDuplicate(itemId, emailAddr, compName)) return;
 
       const isConnected = lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false;
+      const hasOrderHistory = lc.linkedUserId ? orderHistoryPartnerUserIds.has(lc.linkedUserId) : false;
+      const isValid = isConnected || hasOrderHistory || !lc.linkedUserId;
+      
+      // If it's linked to a real user but NOT a confirmed partner nor order history, exclude from accessible suppliers
+      if (lc.linkedUserId && !isValid) return;
+      
       const effectiveRole = linkedUser?.role || lc.role;
       if (isForbiddenSupplier(effectiveRole, linkedUser?.role, isConnected)) {
         return; // Exclude retailers or non-matching roles from supplier list
@@ -2210,54 +2241,64 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         country: linkedUser?.country || "",
         isAddressBook: true,
         isConnected: isConnected,
+        hasOrderHistory: hasOrderHistory,
         isUser: !!linkedUser,
         realUserId: lc.linkedUserId
       });
     });
 
-    // 2. Connected partners & target role users
+    // 2. Connected partners & target role users with confirmed partnership or valid commercial history
     users.forEach(u => {
       if (u.id === currentUser.id) return;
+      if (u.status !== "ACTIVE") return; // MUST be ACTIVE
       if (isDuplicate(u.id, u.email, u.companyName)) return;
 
       const isConnected = connectedPartnerUserIds.has(u.id);
+      const hasOrderHistory = orderHistoryPartnerUserIds.has(u.id);
+      const isValidPartner = isConnected || hasOrderHistory;
+
+      // STRICT CHECK: An external user ONLY appears in the accessible suppliers list if there is a confirmed partnership or order history
+      if (!isValidPartner) return;
 
       if (isForbiddenSupplier(u.role, undefined, isConnected)) {
         return; // Exclude retailers or forbidden roles
       }
 
-      const matchesRole = !targetRoles || targetRoles.length === 0 || targetRoles.includes(u.role);
-
-      if (matchesRole || isConnected) {
-        markAdded(u.id, u.email, u.companyName);
-        items.push({
-          id: u.id,
-          name: u.name,
-          companyName: u.companyName,
-          phone: u.phone,
-          email: u.email,
-          role: u.role,
-          region: u.region,
-          country: u.country,
-          isAddressBook: false,
-          isConnected: isConnected,
-          isUser: true,
-          realUserId: u.id
-        });
-      }
+      markAdded(u.id, u.email, u.companyName);
+      
+      const rating = getPartnerRatingStats(u.id);
+      
+      items.push({
+        id: u.id,
+        name: u.name,
+        companyName: u.companyName,
+        phone: u.phone,
+        email: u.email,
+        role: u.role,
+        region: u.region,
+        country: u.country,
+        isAddressBook: false,
+        isConnected: isConnected,
+        hasOrderHistory: hasOrderHistory,
+        isUser: true,
+        realUserId: u.id,
+        rating: rating.avg,
+        ratingCount: rating.count
+      });
     });
 
     return items;
-  }, [addressBookEntries, users, connectedPartnerUserIds, targetRoles, currentUser]);
+  }, [addressBookEntries, users, connectedPartnerUserIds, orderHistoryPartnerUserIds, targetRoles, currentUser]);
 
   // Filter address book / connected suppliers for quick selector
   const addressBookSuppliers = useMemo(() => {
-    return allSuppliers.filter(s => s.isAddressBook || s.isConnected);
+    return allSuppliers.filter(s => s.isAddressBook || s.isConnected || s.hasOrderHistory);
   }, [allSuppliers]);
 
-  // Filtered suppliers based on search query
+  // Clean phone input helper
   const cleanPhoneInput = (str?: string) => str ? str.replace(/[^0-9]/g, '') : '';
 
+  // Filtered accessible suppliers based on search query
   const filteredSuppliers = useMemo(() => {
     if (!searchTerm.trim()) return allSuppliers;
     const term = searchTerm.toLowerCase().trim();
@@ -2266,9 +2307,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     const matchedSupplierIds = new Set<string>();
     const results: typeof allSuppliers = [];
 
-    // 1. Search in allSuppliers
+    // 1. Search in allSuppliers (which only contains valid partners / address book entries)
     allSuppliers.forEach(s => {
-      const sPhoneClean = cleanPhone(s.phone);
+      const sPhoneClean = cleanPhoneInput(s.phone);
       const matchesName = s.name.toLowerCase().includes(term);
       const matchesCompany = s.companyName?.toLowerCase().includes(term);
       const matchesEmail = s.email?.toLowerCase().includes(term);
@@ -2281,94 +2322,91 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       }
     });
 
-    // 2. Search in all users (only if matching targetRoles and not forbidden)
+    return results;
+  }, [allSuppliers, searchTerm]);
+
+  // Detect unavailable network suppliers matching the search query to show explanatory alert & connection button
+  const unavailableSearchedSuppliers = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+    const term = searchTerm.toLowerCase().trim();
+    const termNum = cleanPhoneInput(term);
+    const accessibleIds = new Set(allSuppliers.map(s => s.id));
+
+    const results: Array<{
+      user: UserProfile;
+      reason: string;
+      reasonType: "NO_PARTNERSHIP" | "INACTIVE" | "FORBIDDEN_ROLE";
+    }> = [];
+
     users.forEach(u => {
       if (u.id === currentUser.id) return;
-      if (matchedSupplierIds.has(u.id)) return;
-      if (isForbiddenSupplier(u.role)) return;
+      if (accessibleIds.has(u.id)) return;
 
-      const uPhoneClean = cleanPhone(u.phone);
-      const matchesName = u.name.toLowerCase().includes(term);
+      const uPhoneClean = cleanPhoneInput(u.phone);
+      const matchesName = u.name?.toLowerCase().includes(term);
       const matchesCompany = u.companyName?.toLowerCase().includes(term);
       const matchesEmail = u.email?.toLowerCase().includes(term);
       const matchesPhoneRaw = u.phone?.toLowerCase().includes(term);
       const matchesPhoneClean = termNum.length >= 3 && uPhoneClean.includes(termNum);
 
       if (matchesName || matchesCompany || matchesEmail || matchesPhoneRaw || matchesPhoneClean) {
-        matchedSupplierIds.add(u.id);
-        results.push({
-          id: u.id,
-          name: u.name,
-          companyName: u.companyName,
-          phone: u.phone,
-          email: u.email,
-          role: u.role,
-          region: u.region,
-          country: u.country,
-          isAddressBook: false,
-          isConnected: connectedPartnerUserIds.has(u.id),
-          isUser: true,
-          realUserId: u.id
-        });
-      }
-    });
+        let reason = "Partenariat non établi : pour pouvoir commander auprès de ce fournisseur, vous devez d'abord lui envoyer une demande de partenariat.";
+        let reasonType: "NO_PARTNERSHIP" | "INACTIVE" | "FORBIDDEN_ROLE" = "NO_PARTNERSHIP";
 
-    // 3. Search in light clients
-    lightClients.forEach(lc => {
-      if (lc.ownerId !== currentUser.id) return;
-      const itemId = lc.linkedUserId || lc.id;
-      if (matchedSupplierIds.has(itemId)) return;
+        if (u.status !== "ACTIVE") {
+          reason = "Statut inactif : ce compte fournisseur est actuellement désactivé ou suspendu.";
+          reasonType = "INACTIVE";
+        } else if (isForbiddenSupplier(u.role, undefined, false)) {
+          reason = "Rôle incompatible : les commandes auprès de ce profil ne sont pas autorisées pour votre type de compte.";
+          reasonType = "FORBIDDEN_ROLE";
+        }
 
-      const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
-      const effectiveRole = linkedUser?.role || lc.role;
-
-      if (isForbiddenSupplier(effectiveRole, linkedUser?.role)) return;
-
-      const lcPhoneClean = cleanPhone(lc.phone);
-      const matchesName = lc.name.toLowerCase().includes(term);
-      const matchesCompany = lc.companyName?.toLowerCase().includes(term);
-      const matchesEmail = lc.email?.toLowerCase().includes(term);
-      const matchesPhoneRaw = lc.phone?.toLowerCase().includes(term);
-      const matchesPhoneClean = termNum.length >= 3 && lcPhoneClean.includes(termNum);
-
-      if (matchesName || matchesCompany || matchesEmail || matchesPhoneRaw || matchesPhoneClean) {
-        matchedSupplierIds.add(itemId);
-        results.push({
-          id: itemId,
-          name: lc.name,
-          companyName: lc.companyName,
-          phone: lc.phone,
-          email: lc.email,
-          role: effectiveRole || "Carnet d'adresses",
-          region: "Local",
-          country: "",
-          isAddressBook: true,
-          isConnected: lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false,
-          isUser: !!lc.linkedUserId,
-          realUserId: lc.linkedUserId
-        });
+        results.push({ user: u, reason, reasonType });
       }
     });
 
     return results;
-  }, [allSuppliers, users, lightClients, searchTerm, connectedPartnerUserIds, currentUser.id, currentUser.role]);
+  }, [users, allSuppliers, searchTerm, currentUser]);
+
+  const handleSendConnectionRequest = async (targetUser: UserProfile) => {
+    setSendingRequestId(targetUser.id);
+    setRequestFeedback(null);
+    try {
+      await connectionService.envoyerDemandeConnexion(currentUser, targetUser, "Demande de partenariat pour approvisionnement B2B");
+      setRequestFeedback({
+        id: targetUser.id,
+        success: true,
+        message: `Demande de partenariat envoyée avec succès à ${targetUser.name || targetUser.companyName} ! Dès confirmation, ce fournisseur sera accessible pour vos commandes.`
+      });
+    } catch (err: any) {
+      setRequestFeedback({
+        id: targetUser.id,
+        success: false,
+        message: err?.message || "Erreur lors de l'envoi de la demande de partenariat."
+      });
+    } finally {
+      setSendingRequestId(null);
+    }
+  };
 
   const typedInputTrimmed = searchTerm.trim();
   const isInputEmail = typedInputTrimmed.includes('@') && typedInputTrimmed.includes('.');
   const isInputPhone = /^[+0-9\s-]{6,}$/.test(typedInputTrimmed);
-  const isDirectSearchMode = (isInputEmail || isInputPhone || typedInputTrimmed.length >= 3) && filteredSuppliers.length === 0;
+  const isDirectSearchMode = (isInputEmail || isInputPhone || typedInputTrimmed.length >= 3) && 
+    filteredSuppliers.length === 0 && 
+    unavailableSearchedSuppliers.length === 0;
 
   const handleCreateOrSelectDirectSupplier = () => {
     if (!typedInputTrimmed) return;
 
-    const termNum = cleanPhone(typedInputTrimmed);
+    const termNum = cleanPhoneInput(typedInputTrimmed);
 
     // Search by email or phone in registered users
     const existingUser = users.find(u => 
       (u.email && u.email.toLowerCase() === typedInputTrimmed.toLowerCase()) ||
       (u.phone && (
         u.phone.toLowerCase().replace(/\s+/g, '') === typedInputTrimmed.toLowerCase().replace(/\s+/g, '') ||
-        (termNum.length >= 6 && cleanPhone(u.phone).includes(termNum))
+        (termNum.length >= 6 && cleanPhoneInput(u.phone).includes(termNum))
       ))
     );
 
@@ -2377,6 +2415,14 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         alert("Action impossible : Les grossistes et demi-grossistes ne peuvent pas s'approvisionner auprès des détaillants.");
         return;
       }
+      
+      const isConnected = connectedPartnerUserIds.has(existingUser.id);
+      const hasOrder = orderHistoryPartnerUserIds.has(existingUser.id);
+      if (!isConnected && !hasOrder) {
+        alert(`Partenariat non établi : L'utilisateur ${existingUser.name || existingUser.companyName} est inscrit sur WakatMarket. Veuillez lui envoyer une demande de partenariat pour pouvoir passer commande.`);
+        return;
+      }
+
       onSelectSupplier(existingUser.id);
       setSearchTerm("");
       return;
@@ -2388,7 +2434,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         (lc.email && lc.email.toLowerCase() === typedInputTrimmed.toLowerCase()) ||
         (lc.phone && (
           lc.phone.toLowerCase().replace(/\s+/g, '') === typedInputTrimmed.toLowerCase().replace(/\s+/g, '') ||
-          (termNum.length >= 6 && cleanPhone(lc.phone).includes(termNum))
+          (termNum.length >= 6 && cleanPhoneInput(lc.phone).includes(termNum))
         ))
       )
     );
@@ -2436,17 +2482,19 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
     const lc = lightClients.find(l => l.id === selectedSupplierId || l.linkedUserId === selectedSupplierId);
     if (lc) {
+      const linkedUser = lc.linkedUserId ? users.find(u => u.id === lc.linkedUserId) : null;
       return {
         id: lc.linkedUserId || lc.id,
         name: lc.name,
         companyName: lc.companyName,
-        phone: lc.phone,
-        email: lc.email,
+        phone: lc.phone || linkedUser?.phone,
+        email: lc.email || linkedUser?.email,
         role: "Carnet d'adresses",
         region: "Local",
         country: "",
         isAddressBook: true,
-        isConnected: false,
+        isConnected: lc.linkedUserId ? connectedPartnerUserIds.has(lc.linkedUserId) : false,
+        hasOrderHistory: lc.linkedUserId ? orderHistoryPartnerUserIds.has(lc.linkedUserId) : false,
         isUser: !!lc.linkedUserId,
         realUserId: lc.linkedUserId
       };
@@ -2454,6 +2502,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
     const u = users.find(usr => usr.id === selectedSupplierId);
     if (u) {
+      const isConn = connectedPartnerUserIds.has(u.id);
+      const hasOrd = orderHistoryPartnerUserIds.has(u.id);
       return {
         id: u.id,
         name: u.name,
@@ -2464,9 +2514,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         region: u.region,
         country: u.country,
         isAddressBook: false,
-        isConnected: connectedPartnerUserIds.has(u.id),
+        isConnected: isConn,
+        hasOrderHistory: hasOrd,
         isUser: true,
-        realUserId: u.id
+        realUserId: u.id,
+        status: u.status
       };
     }
 
@@ -2481,12 +2533,37 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         region: "Local",
         isAddressBook: true,
         isConnected: false,
+        hasOrderHistory: false,
         isUser: false
       };
     }
 
     return null;
-  }, [allSuppliers, lightClients, users, selectedSupplierId, connectedPartnerUserIds]);
+  }, [allSuppliers, lightClients, users, selectedSupplierId, connectedPartnerUserIds, orderHistoryPartnerUserIds]);
+
+  // Check if selected supplier is problematic
+  const selectedSupplierWarning = useMemo(() => {
+    if (!selectedSupplierObj) return null;
+    if (selectedSupplierObj.isUser && selectedSupplierObj.realUserId) {
+      const u = users.find(usr => usr.id === selectedSupplierObj.realUserId);
+      if (u && u.status !== "ACTIVE") {
+        return {
+          title: "Statut inactif",
+          desc: "Ce compte fournisseur est actuellement désactivé ou suspendu. Les commandes sont bloquées.",
+          type: "INACTIVE"
+        };
+      }
+      if (!selectedSupplierObj.isConnected && !selectedSupplierObj.hasOrderHistory) {
+        return {
+          title: "Partenariat non établi",
+          desc: "Vous n'avez pas de relation de partenariat confirmée avec ce fournisseur. Veuillez lui envoyer une demande de connexion.",
+          type: "NO_PARTNERSHIP",
+          user: u
+        };
+      }
+    }
+    return null;
+  }, [selectedSupplierObj, users]);
 
   return (
     <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
@@ -2497,6 +2574,15 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
             {title}
           </h4>
           <p className="text-[11px] text-zinc-500 mt-0.5">{description}</p>
+          {allSuppliers.length === 0 && (
+            <div className="mt-2 p-2.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-800 dark:text-amber-300 text-[11px] flex gap-2 items-start">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-bold">Aucun fournisseur confirmé disponible pour le ravitaillement.</p>
+                <p className="text-[10px] opacity-90 mt-0.5">Seuls les partenaires avec une relation confirmée ou un historique de commande valide apparaissent ici. Établissez une connexion via le carnet d'adresses.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Dropdown selector */}
@@ -2505,9 +2591,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           onChange={(e) => onSelectSupplier(e.target.value)}
           className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-semibold text-zinc-900 dark:text-zinc-100 min-w-[220px]"
         >
-          <option value="">-- Choisir un fournisseur --</option>
+          <option value="">-- Choisir un fournisseur confirmé --</option>
           {addressBookSuppliers.length > 0 && (
-            <optgroup label="📍 Carnet d'adresses & Partenaires">
+            <optgroup label="📍 Carnet d'adresses & Partenaires Confirmés">
               {addressBookSuppliers.map((s, idx) => (
                 <option key={`ab_${s.id}_${idx}`} value={s.id}>
                   {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.phone || s.email || s.region}
@@ -2515,7 +2601,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
               ))}
             </optgroup>
           )}
-          <optgroup label="🌐 Tous les Fournisseurs du réseau">
+          <optgroup label="🌐 Tous les Fournisseurs Accessibles">
             {allSuppliers.map((s, idx) => (
               <option key={`all_${s.id}_${idx}`} value={s.id}>
                 [{s.role}] {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.region || 'National'}
@@ -2530,7 +2616,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         <div className="space-y-1.5">
           <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
             <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
-            Sélection rapide (Carnet d'adresses & Partenaires) :
+            Sélection rapide (Partenaires confirmés & Carnet) :
           </label>
           <div className="flex flex-wrap gap-2">
             {addressBookSuppliers.map(s => {
@@ -2558,6 +2644,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                       Partenaire
                     </span>
                   )}
+                  {s.hasOrderHistory && !s.isConnected && (
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300"}`}>
+                      Historique
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -2569,7 +2660,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       <div className="space-y-2 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60">
         <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
           <Search className="w-3.5 h-3.5 text-zinc-400" />
-          Rechercher ou Tapez le Numéro de Téléphone / Email du Fournisseur :
+          Rechercher ou Saisir le Téléphone / Email du Fournisseur :
         </label>
         
         <div className="flex flex-col sm:flex-row gap-2">
@@ -2579,12 +2670,12 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tapez un numéro de téléphone (ex: 70001122), un email ou un nom..."
+              placeholder="Tapez un numéro de téléphone, email ou nom de fournisseur..."
               className="w-full pl-9 pr-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
-          {typedInputTrimmed && (
+          {typedInputTrimmed && isDirectSearchMode && (
             <button
               type="button"
               onClick={handleCreateOrSelectDirectSupplier}
@@ -2596,10 +2687,22 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           )}
         </div>
 
-        {/* Live Filter Results */}
+        {/* Global Request Feedback Toast */}
+        {requestFeedback && (
+          <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+            requestFeedback.success
+              ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
+              : "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300"
+          }`}>
+            {requestFeedback.success ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+            <span>{requestFeedback.message}</span>
+          </div>
+        )}
+
+        {/* Live Filter Results: Accessible Suppliers */}
         {searchTerm.trim() && filteredSuppliers.length > 0 && (
           <div className="p-2 bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 max-h-48 overflow-y-auto space-y-1 shadow-md">
-            <p className="text-[10px] font-bold text-zinc-400 uppercase px-2 py-0.5">Fournisseurs correspondants ({filteredSuppliers.length}) :</p>
+            <p className="text-[10px] font-bold text-zinc-400 uppercase px-2 py-0.5">Fournisseurs autorisés correspondants ({filteredSuppliers.length}) :</p>
             {filteredSuppliers.map(s => (
               <div
                 key={s.id}
@@ -2624,7 +2727,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
                 <div className="flex items-center gap-1.5">
                   {s.isAddressBook && <span className="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded text-[9px] font-bold">Carnet</span>}
-                  {s.isConnected && <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded text-[9px] font-bold">Connecté</span>}
+                  {s.isConnected && <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded text-[9px] font-bold">Partenaire</span>}
+                  {s.hasOrderHistory && !s.isConnected && <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded text-[9px] font-bold">Historique</span>}
                   <span className="text-emerald-600 dark:text-emerald-400 text-xs font-bold">Choisir →</span>
                 </div>
               </div>
@@ -2632,27 +2736,95 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           </div>
         )}
 
+        {/* Live Filter Results: Unavailable Suppliers with Explanatory Alert & Connection Request */}
+        {searchTerm.trim() && unavailableSearchedSuppliers.length > 0 && (
+          <div className="p-3 bg-amber-50/70 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-2">
+            <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              Fournisseurs trouvés mais indisponibles pour le ravitaillement ({unavailableSearchedSuppliers.length}) :
+            </p>
+            <div className="space-y-2">
+              {unavailableSearchedSuppliers.map(({ user: u, reason, reasonType }) => (
+                <div key={u.id} className="p-2.5 bg-white dark:bg-zinc-800 rounded-lg border border-amber-200/80 dark:border-amber-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-900 dark:text-zinc-100">{u.name} {u.companyName ? `(${u.companyName})` : ''}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
+                        {u.role}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1 flex items-center gap-1">
+                      <span>⚠️</span> {reason}
+                    </p>
+                  </div>
+
+                  {reasonType === "NO_PARTNERSHIP" && (
+                    <button
+                      type="button"
+                      disabled={sendingRequestId === u.id}
+                      onClick={() => handleSendConnectionRequest(u)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 shrink-0 self-start sm:self-auto disabled:opacity-50"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {sendingRequestId === u.id ? "Envoi..." : "Demander un partenariat"}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Direct Input Warning when no existing supplier matches */}
         {isDirectSearchMode && (
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl flex items-center justify-between gap-3">
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
-                Aucun fournisseur trouvé avec "{typedInputTrimmed}" dans votre carnet d'adresses.
+              <p className="text-xs font-bold text-blue-800 dark:text-blue-300">
+                Nouveau contact : "{typedInputTrimmed}"
               </p>
-              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                Vous pouvez directement vous approvisionner auprès de ce contact ({isInputPhone ? "Téléphone" : isInputEmail ? "Email" : "Nouveau"}).
+              <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5">
+                Vous pouvez ajouter et sélectionner ce contact externe ({isInputPhone ? "Téléphone" : isInputEmail ? "Email" : "Fournisseur direct"}) dans votre carnet d'adresses.
               </p>
             </div>
             <button
               type="button"
               onClick={handleCreateOrSelectDirectSupplier}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-all whitespace-nowrap"
             >
               Créer & Sélectionner
             </button>
           </div>
         )}
       </div>
+
+      {/* Warning Card if currently selected supplier has an issue (Partenariat non établi ou Statut inactif) */}
+      {selectedSupplierWarning && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
+                Alerte de Disponibilité : {selectedSupplierWarning.title}
+              </p>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+                {selectedSupplierWarning.desc}
+              </p>
+            </div>
+          </div>
+
+          {selectedSupplierWarning.type === "NO_PARTNERSHIP" && selectedSupplierWarning.user && (
+            <button
+              type="button"
+              disabled={sendingRequestId === selectedSupplierWarning.user.id}
+              onClick={() => handleSendConnectionRequest(selectedSupplierWarning.user!)}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {sendingRequestId === selectedSupplierWarning.user.id ? "Envoi..." : "Envoyer demande"}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Currently Selected Supplier Card */}
       {selectedSupplierObj && (
@@ -2668,6 +2840,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                 {selectedSupplierObj.email && <span>✉️ {selectedSupplierObj.email}</span>}
                 {selectedSupplierObj.region && <span>📍 {selectedSupplierObj.region}</span>}
                 {selectedSupplierObj.isAddressBook && <span className="font-bold text-indigo-600 dark:text-indigo-400">[Carnet d'adresses]</span>}
+                {selectedSupplierObj.isConnected && <span className="font-bold text-emerald-600 dark:text-emerald-400">[Partenaire Confirmé]</span>}
+                {selectedSupplierObj.hasOrderHistory && !selectedSupplierObj.isConnected && <span className="font-bold text-amber-600 dark:text-amber-400">[Historique Commercial]</span>}
               </p>
             </div>
           </div>

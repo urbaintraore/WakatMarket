@@ -32,6 +32,7 @@ interface BuyerDetailModalProps {
   payments: DebtPayment[];
   lightClients: LightClient[];
   products?: Product[];
+  connections?: any[];
   isOpen: boolean;
   onClose: () => void;
   onSubmitPayment: (clientId: string, amount: number, orderId?: string, method?: string) => void;
@@ -46,12 +47,13 @@ export function BuyerDetailModal({
   payments,
   lightClients,
   products = [],
+  connections = [],
   isOpen,
   onClose,
   onSubmitPayment,
   onUpdateCreditLimit
 }: BuyerDetailModalProps) {
-  const [activeTab, setActiveTab] = useState<"fiche" | "credit" | "factures" | "impayes" | "paiements">("fiche");
+  const [activeTab, setActiveTab] = useState<"fiche" | "credit" | "factures" | "impayes" | "paiements" | "partenariat">("fiche");
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Order | null>(null);
   const [invoiceFilter, setInvoiceFilter] = useState<"ALL" | "UNPAID" | "PAID">("ALL");
   const [isEditingLimit, setIsEditingLimit] = useState(false);
@@ -267,6 +269,18 @@ export function BuyerDetailModal({
           >
             Fiche Signalétique
           </button>
+          {buyer.isRealUser && (
+            <button
+              onClick={() => setActiveTab("partenariat")}
+              className={`px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === "partenariat"
+                  ? "bg-white dark:bg-zinc-900 text-emerald-600 border-t-2 border-emerald-500 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+              }`}
+            >
+              Détails Partenariat
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("credit")}
             className={`px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
@@ -395,6 +409,49 @@ export function BuyerDetailModal({
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* TAB 1.5: PARTENARIAT */}
+          {activeTab === "partenariat" && buyer.isRealUser && (
+            <div className="space-y-6">
+              {/* Partner Connection Badge inside */}
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                 <div>
+                   <h4 className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Statut de la connexion B2B</h4>
+                   <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100 mt-1">
+                     Relation officielle sur la plateforme
+                   </p>
+                 </div>
+                 <PartnerConnectionBadge 
+                    currentUserId={currentUser.id} 
+                    partnerUserId={buyer.id} 
+                    connections={connections || []} 
+                  />
+              </div>
+
+              {/* Cross-Orders Volume */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Ce que je lui ai vendu</h4>
+                  <div className="mt-2 text-2xl font-black font-mono text-emerald-900 dark:text-emerald-100">
+                    {formatCFA(orders.filter(o => o.receiverId === buyer.id && o.senderId === currentUser.id).reduce((sum, o) => sum + o.totalAmount, 0))}
+                  </div>
+                  <p className="text-[10px] font-bold text-emerald-600/70 dark:text-emerald-400/60 mt-1">
+                    {orders.filter(o => o.receiverId === buyer.id && o.senderId === currentUser.id).length} commande(s)
+                  </p>
+                </div>
+                
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/40 rounded-2xl">
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Ce que je lui ai acheté</h4>
+                  <div className="mt-2 text-2xl font-black font-mono text-indigo-900 dark:text-indigo-100">
+                    {formatCFA(orders.filter(o => o.senderId === buyer.id && o.receiverId === currentUser.id).reduce((sum, o) => sum + o.totalAmount, 0))}
+                  </div>
+                  <p className="text-[10px] font-bold text-indigo-600/70 dark:text-indigo-400/60 mt-1">
+                    {orders.filter(o => o.senderId === buyer.id && o.receiverId === currentUser.id).length} commande(s)
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 

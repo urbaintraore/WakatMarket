@@ -2541,7 +2541,7 @@ export default function App() {
         if (u.id === currentUser.id) return true;
         if (currentUser.role === UserRole.ADMIN) return true;
 
-        // Check if there is an order relationship
+        // Check if there is an order relationship (historique commercial valide)
         const hasOrder = orders.some(o => 
           (o.senderId === currentUser.id && o.receiverId === u.id) ||
           (o.senderId === u.id && o.receiverId === currentUser.id)
@@ -2555,39 +2555,56 @@ export default function App() {
           isConnectionActive(c) && ((c.senderId === currentUser.id && c.receiverId === u.id) || (c.senderId === u.id && c.receiverId === currentUser.id))
         );
 
-        const isWholesalerSupplier = (currentUser.role === UserRole.RETAILER || currentUser.role === UserRole.SEMI_WHOLESALER || currentUser.role === UserRole.CLIENT) && 
-          (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER);
-
-        return hasOrder || isLightClient || isWholesalerSupplier || isConnected;
+        // Only display if active partnership, valid order history, or linked in address book
+        return hasOrder || isConnected || isLightClient;
       })
     : users) as UserProfile[], [isRealUserAuthenticated, users, currentUser, orders, lightClients, connections]);
 
-  const displayProducts = useMemo(() => deduplicate(isRealUserAuthenticated
-    ? products.filter(p => {
-        if (!currentUser) return false;
-        if (currentUser.role === UserRole.ADMIN) return true;
-        const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
-        if (isMine) return true;
-        
-        // Include products from partners we are linked in lightClients or connections
-        const activeConnections = connections.filter(isConnectionActive);
-        
-        const isPartnerInventory = inventory.some(i => i.productId === p.id && (
-          lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId) ||
-          activeConnections.some(c => (c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.receiverId === currentUser.id && c.senderId === i.ownerId))
-        ));
-
-        // Also allow products from Wholesalers/Semi-Wholesalers so Retailers can browse and order
-        const isWholesalerProd = inventory.some(i => i.productId === p.id && users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER))) ||
-          users.some(u => u.id === p.creatorId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
+  const displayProducts = useMemo(() => {
+    let prods = deduplicate(isRealUserAuthenticated
+      ? products.filter(p => {
+          if (!currentUser) return false;
+          if (currentUser.role === UserRole.ADMIN) return true;
+          const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
+          if (isMine) return true;
           
-        const isVisible = isPartnerInventory || isWholesalerProd;
-        if (isVisible) {
-           console.log(`[displayProducts Debug] Product ${p.name} is visible. isPartnerInventory: ${isPartnerInventory}, activeConnectionsCount: ${activeConnections.length}`);
-        }
-        return isVisible;
-      })
-    : products) as Product[], [isRealUserAuthenticated, products, currentUser, inventory, lightClients, users, connections]);
+          const activeConnections = connections.filter(isConnectionActive);
+          
+          const isPartnerInventory = inventory.some(i => i.productId === p.id && (
+            lightClients.some(lc => lc.ownerId === currentUser.id && lc.linkedUserId === i.ownerId) ||
+            activeConnections.some(c => (c.senderId === currentUser.id && c.receiverId === i.ownerId) || (c.receiverId === currentUser.id && c.senderId === i.ownerId))
+          ));
+
+          const isWholesalerProd = inventory.some(i => i.productId === p.id && users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER))) ||
+            users.some(u => u.id === p.creatorId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER));
+            
+          return isPartnerInventory || isWholesalerProd;
+        })
+      : products) as (Product & { priorityScore?: number })[];
+
+    if (!currentUser) return prods as Product[];
+
+    const activeConnections = connections.filter(isConnectionActive);
+
+    const scoredProds = prods.map(p => {
+      let score = 0;
+      const isMine = p.creatorId === currentUser.id || inventory.some(i => i.productId === p.id && i.ownerId === currentUser.id);
+      if (isMine) score += 300;
+
+      const isFromPartner = inventory.some(i => i.productId === p.id && activeConnections.some(c => 
+        (c.senderId === currentUser.id && c.receiverId === i.ownerId) || 
+        (c.receiverId === currentUser.id && c.senderId === i.ownerId)
+      ));
+      if (isFromPartner) score += 200;
+
+      const hasWholesaleStock = inventory.some(i => i.productId === p.id && i.stock > 0 && users.some(u => u.id === i.ownerId && (u.role === UserRole.WHOLESALER || u.role === UserRole.SEMI_WHOLESALER)));
+      if (hasWholesaleStock) score += 100;
+
+      return { ...p, priorityScore: score };
+    });
+
+    return scoredProds.sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+  }, [isRealUserAuthenticated, products, currentUser, inventory, lightClients, users, connections]);
 
   const displayInventory = useMemo(() => {
     return deduplicate(isRealUserAuthenticated

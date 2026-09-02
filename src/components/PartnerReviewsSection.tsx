@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Star, MessageSquare, Plus, PenTool, CheckCircle, Search, Filter, AlertCircle, Building, Award, Calendar } from "lucide-react";
-import { UserProfile, Connection, isConnectionActive } from "../types";
+import { UserProfile, Connection, Order, isConnectionActive } from "../types";
 import { formatCFA } from "../data";
 
 export interface PartnerReview {
@@ -20,6 +20,7 @@ interface PartnerReviewsSectionProps {
   currentUser: UserProfile;
   users: UserProfile[];
   connections?: Connection[];
+  orders?: Order[];
 }
 
 const DEFAULT_PARTNER_REVIEWS: PartnerReview[] = [
@@ -61,7 +62,7 @@ const DEFAULT_PARTNER_REVIEWS: PartnerReview[] = [
   }
 ];
 
-export function PartnerReviewsSection({ currentUser, users, connections = [] }: PartnerReviewsSectionProps) {
+export function PartnerReviewsSection({ currentUser, users, connections = [], orders = [] }: PartnerReviewsSectionProps) {
   const [reviews, setReviews] = useState<PartnerReview[]>([]);
   const [activeTab, setActiveTab] = useState<"received" | "given" | "write">("received");
   const [searchQuery, setSearchQuery] = useState("");
@@ -95,10 +96,30 @@ export function PartnerReviewsSection({ currentUser, users, connections = [] }: 
     localStorage.setItem("wakat_partner_reviews", JSON.stringify(updated));
   };
 
-  // List all platform partners
+  // Helper to check if a user is an eligible partner (active connection OR valid order history)
+  const isEligiblePartner = (targetUserId: string): boolean => {
+    if (!targetUserId || targetUserId === currentUser.id) return false;
+    
+    // 1. Check active partnership connection
+    const hasActiveConnection = connections.some(c => 
+      isConnectionActive(c) && 
+      ((c.senderId === currentUser.id && c.receiverId === targetUserId) || 
+       (c.receiverId === currentUser.id && c.senderId === targetUserId))
+    );
+    if (hasActiveConnection) return true;
+
+    // 2. Check valid order history
+    const hasOrderHistory = orders.some(o => 
+      (o.senderId === currentUser.id && o.receiverId === targetUserId) ||
+      (o.senderId === targetUserId && o.receiverId === currentUser.id)
+    );
+    return hasOrderHistory;
+  };
+
+  // List all platform partners that have an active connection or valid order history with the user
   const connectedPartners = useMemo(() => {
-    return users.filter(u => u.id !== currentUser.id);
-  }, [users, currentUser.id]);
+    return users.filter(u => isEligiblePartner(u.id));
+  }, [users, currentUser.id, connections, orders]);
 
   // Reviews received by the current user
   const reviewsReceived = useMemo(() => {
@@ -135,17 +156,24 @@ export function PartnerReviewsSection({ currentUser, users, connections = [] }: 
     setFormSuccess(false);
 
     if (!selectedPartnerId) {
-      setFormError("Veuillez sélectionner un partenaire dans votre carnet d'adresses.");
-      return;
-    }
-    if (!newComment.trim()) {
-      setFormError("Veuillez rédiger un commentaire décrivant votre expérience de partenariat.");
+      setFormError("Veuillez sélectionner un partenaire commercial dans la liste.");
       return;
     }
 
     const targetUser = users.find(u => u.id === selectedPartnerId);
     if (!targetUser) {
       setFormError("Le partenaire sélectionné n'existe pas.");
+      return;
+    }
+
+    // Strict validation: check for active connection or order history
+    if (!isEligiblePartner(selectedPartnerId)) {
+      setFormError("Publication bloquée : vous devez avoir une relation de partenariat active ou un historique de commande avec ce vendeur pour pouvoir publier un avis.");
+      return;
+    }
+
+    if (!newComment.trim()) {
+      setFormError("Veuillez rédiger un commentaire décrivant votre expérience de partenariat.");
       return;
     }
 
@@ -439,8 +467,14 @@ export function PartnerReviewsSection({ currentUser, users, connections = [] }: 
                     Sélectionnez un Partenaire Commercial *
                   </label>
                   {connectedPartners.length === 0 ? (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-950/10 border border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-400 rounded-xl font-medium">
-                      Vous n'avez pas de relation commerciale active ou de partenaire dans votre réseau pour le moment. Allez sur le carnet d'adresses pour en ajouter.
+                    <div className="p-3.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-xl text-xs space-y-1">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                        Aucun partenaire commercial éligible pour avis
+                      </p>
+                      <p className="text-[11px] opacity-90">
+                        Pour publier un avis, vous devez avoir une relation de partenariat active confirmée ou un historique de commandes passées avec ce commerçant.
+                      </p>
                     </div>
                   ) : (
                     <div className="relative">

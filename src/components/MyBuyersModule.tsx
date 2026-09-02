@@ -47,6 +47,7 @@ interface MyBuyersModuleProps {
   payments: DebtPayment[];
   lightClients: LightClient[];
   products?: Product[];
+  connections?: any[];
   onAddPayment: (clientId: string, amount: number, orderId?: string, method?: string) => void;
   onUpdateCreditLimit?: (id: string, isRealUser: boolean, limit: number) => void;
   onCreateLightClient?: (identifier: string, notes?: string, role?: any, isPartnerRegistration?: boolean) => void;
@@ -60,6 +61,7 @@ export function MyBuyersModule({
   payments,
   lightClients,
   products = [],
+  connections = [],
   onAddPayment,
   onUpdateCreditLimit,
   onCreateLightClient,
@@ -1078,6 +1080,12 @@ export function MyBuyersModule({
                             >
                               Historique Règlements ({stats.payments.length})
                             </button>
+                            <button
+                              onClick={() => setSelectedBuyerForDetail(buyer)}
+                              className="text-xs font-bold pb-1 text-indigo-500 hover:text-indigo-600 transition-all cursor-pointer flex items-center gap-1"
+                            >
+                              Détails Avancés & Partenariat <ArrowUpRight className="w-3 h-3" />
+                            </button>
                           </div>
 
                           {/* Debt repayment action widget */}
@@ -1440,6 +1448,7 @@ export function MyBuyersModule({
           payments={payments}
           lightClients={lightClients}
           products={products}
+          connections={connections}
           isOpen={true}
           onClose={() => setSelectedBuyerForDetail(null)}
           onSubmitPayment={(clientId, amount, orderId, method) => {

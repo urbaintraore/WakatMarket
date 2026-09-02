@@ -2,7 +2,6 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Users, Shield, Landmark, MapPin, Truck, ShoppingCart, ShoppingBag, 
@@ -39,7 +38,6 @@ import MerchantSalesDashboard from "./MerchantSalesDashboard";
 import { WidgetGrid, WidgetCard, OrderWidgetCard, SortOrder } from "./WidgetGrid";
 import { motion, AnimatePresence } from "motion/react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-
 // ----------------------------------------------------------------------
 // Re-usable Responsive Tab Bar Component (All tabs fully visible)
 // ----------------------------------------------------------------------
@@ -51,7 +49,6 @@ export interface DashboardTabItem {
   badgeColor?: string;
   highlight?: boolean;
 }
-
 export interface DashboardTabBarProps {
   title?: string;
   tabs: DashboardTabItem[];
@@ -60,7 +57,6 @@ export interface DashboardTabBarProps {
   syncStatus?: { isOnline: boolean; pendingCount: number };
   accentColor?: "emerald" | "orange" | "amber" | "indigo" | "blue";
 }
-
 export function DashboardTabBar({
   title = "Navigation Tableau de Bord",
   tabs,
@@ -70,7 +66,6 @@ export function DashboardTabBar({
   accentColor = "emerald"
 }: DashboardTabBarProps) {
   const [navLayoutMode, setNavLayoutMode] = useState<"tabbed" | "sidebar">("tabbed");
-
   const getActiveStyles = () => {
     switch (accentColor) {
       case "orange":
@@ -85,7 +80,6 @@ export function DashboardTabBar({
         return "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-bold scale-[1.01] border-emerald-600";
     }
   };
-
   const getIconInactiveColor = () => {
     switch (accentColor) {
       case "orange": return "text-orange-600 dark:text-orange-400";
@@ -95,9 +89,7 @@ export function DashboardTabBar({
       default: return "text-emerald-600 dark:text-emerald-400";
     }
   };
-
   const activeTabItem = tabs.find(t => t.id === activeTab) || tabs[0];
-
   return (
     <div className="sticky top-2 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-3 transition-all duration-200">
       {/* Header with Title, Active Tab Badge, Layout Switcher and Sync Status */}
@@ -116,7 +108,6 @@ export function DashboardTabBar({
             </span>
           )}
         </div>
-
         <div className="flex items-center gap-2">
           {/* Layout Mode Toggle: Tabbed Horizontal vs Sidebar Panel */}
           <div className="flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-xl text-[11px] font-semibold border border-zinc-200 dark:border-zinc-750">
@@ -145,13 +136,11 @@ export function DashboardTabBar({
               <span className="hidden sm:inline">Grille Sidebar</span>
             </button>
           </div>
-
           {syncStatus && (
             <SyncStatusIndicator isOnline={syncStatus.isOnline} pendingCount={syncStatus.pendingCount} />
           )}
         </div>
       </div>
-
       {/* Tabs rendering - NO text truncation, full length visibility */}
       {navLayoutMode === "tabbed" ? (
         <div className="flex flex-wrap gap-2">
@@ -223,7 +212,6 @@ export function DashboardTabBar({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // PDF Invoice Export Helper
 // ----------------------------------------------------------------------
@@ -307,7 +295,6 @@ export function handleDownloadOrderPDF(order: Order, productsList: Product[]) {
     }, 400);
   }
 }
-
 const PREDEFINED_CATEGORIES = [
   "Alimentation",
   "Boissons",
@@ -321,12 +308,10 @@ const PREDEFINED_CATEGORIES = [
   "Pièces de rechange",
   "Divers"
 ];
-
 // ----------------------------------------------------------------------
 // Shared Price History Chart (30 Days - Purchase & Selling Prices)
 // ----------------------------------------------------------------------
 export { PriceHistoryChart } from "./PriceHistoryChart";
-
 // ----------------------------------------------------------------------
 // 1. ADMIN DASHBOARD
 // ----------------------------------------------------------------------
@@ -345,7 +330,6 @@ interface AdminDashboardProps {
   onUpdateUser?: (userId: string, fields: Partial<UserProfile>) => void;
   onUpdateOrderStatus?: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
 }
-
 export function AdminDashboard({
   currentUser,
   users,
@@ -367,7 +351,6 @@ export function AdminDashboard({
   const [userPage, setUserPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const usersPerPage = 10;
-  
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
@@ -375,7 +358,6 @@ export function AdminDashboard({
     (u.companyName && u.companyName.toLowerCase().includes(searchQuery.toLowerCase()))
   );
   const paginatedUsers = filteredUsers.slice((userPage - 1) * usersPerPage, userPage * usersPerPage);
-
   const stats = {
     m: users.filter((u) => u.role === UserRole.MANUFACTURER).length,
     w: users.filter((u) => u.role === UserRole.WHOLESALER).length,
@@ -387,13 +369,12 @@ export function AdminDashboard({
     c: users.filter((u) => u.role === UserRole.CLIENT).length,
     revenue: orders.reduce((sum, o) => sum + o.totalAmount, 0),
   };
-
   const pendingApprovals = users.filter((u) => u.status === "PENDING");
-
   return (
     <div className="space-y-6" id="admin-dashboard">
       {/* Claims Summary Widget for Admin oversight */}
-      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+      <ClaimsSummaryWidget orders={orders} users={users}
+             currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       {/* Real-time stats row */}
       <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
         {[
@@ -411,7 +392,6 @@ export function AdminDashboard({
           </div>
         ))}
       </div>
-
       {/* Admin Tabs */}
       <DashboardTabBar
         title="Administration Système - Module de Contrôle"
@@ -425,7 +405,6 @@ export function AdminDashboard({
           { id: "config", label: "Commissions & Frais", icon: Settings },
         ]}
       />
-
       {editingUser && (
         <AdminUserEditModal
           user={editingUser}
@@ -591,7 +570,6 @@ export function AdminDashboard({
           </div>
         </div>
       )}
-
       {activeTab === "approvals" && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mb-4">
@@ -624,7 +602,6 @@ export function AdminDashboard({
           )}
         </div>
       )}
-
       {activeTab === "stats" && (
         <div className="space-y-6">
           <ExpirationAlertsBanner alerts={inventoryService.checkExpirationAlerts(inventory, products, 15)} />
@@ -637,7 +614,6 @@ export function AdminDashboard({
           />
         </div>
       )}
-
       {activeTab === "config" && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 max-w-md">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mb-4">
@@ -681,7 +657,6 @@ export function AdminDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 2. MANUFACTURER DASHBOARD
 // ----------------------------------------------------------------------
@@ -707,7 +682,6 @@ interface ManufacturerDashboardProps {
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
   onUpdateProductFull?: (productId: string, productData: Partial<Product>, inventoryItemId?: string, inventoryData?: Partial<InventoryItem>) => void;
 }
-
 export function ManufacturerDashboard({
   currentUser,
   products,
@@ -745,23 +719,19 @@ export function ManufacturerDashboard({
   const [selectedProductForChart, setSelectedProductForChart] = useState<string | null>(null);
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
   const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
-
   useEffect(() => {
     if (!isAdding) {
       setUploadedImage("");
       setUploadMode("file");
     }
   }, [isAdding]);
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -769,13 +739,11 @@ export function ManufacturerDashboard({
       handleFileProcess(e.dataTransfer.files[0]);
     }
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFileProcess(e.target.files[0]);
     }
   };
-
   const handleFileProcess = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -785,16 +753,13 @@ export function ManufacturerDashboard({
     };
     reader.readAsDataURL(file);
   };
-
   // Filter products created by this manufacturer
   const myProducts = products.filter((p) => p.creatorId === currentUser.id);
   const myInventory = useMemo(() => {
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
-
   // Incoming Wholesaler Orders
   const myOrders = orders.filter((o) => o.receiverId === currentUser.id);
-
   // Unique Buyers
   const myBuyers = useMemo(() => {
     const buyerIds = new Set<string>();
@@ -814,19 +779,16 @@ export function ManufacturerDashboard({
       .map(id => users.find(u => u.id === id))
       .filter((u): u is UserProfile => !!u && u.role === UserRole.WHOLESALER);
   }, [orders, lightClients, users, currentUser.id]);
-
   const handlePOSAddToCart = (prodId: string, qty: number) => {
     setPosCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutPOS = async (saleData: any) => {
     try {
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
-      
       setPosCart({});
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
@@ -834,16 +796,12 @@ export function ManufacturerDashboard({
       throw new Error("Erreur de transaction : " + e.message);
     }
   };
-
   // Available M2W drivers
   const m2wDrivers = users.filter((u) => u.role === UserRole.DRIVER_M2W && u.status === "ACTIVE");
-
   const [selectedDriver, setSelectedDriver] = useState<string>("");
-
   const manufacturerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
   }, [inventory, products, currentUser]);
-
   return (
     <div className="space-y-6" id="manufacturer-dashboard">
       <DashboardTabBar
@@ -862,7 +820,6 @@ export function ManufacturerDashboard({
           { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
         ]}
       />
-
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -891,7 +848,6 @@ export function ManufacturerDashboard({
               ))}
             </div>
           )}
-          
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mt-8">Stocks de mes Acheteurs</h4>
           {myBuyers.length === 0 ? (
             <div className="text-center py-8 text-zinc-400">Aucun acheteur enregistré pour le moment.</div>
@@ -924,11 +880,9 @@ export function ManufacturerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "catalog" && (
         <div className="space-y-4">
           <ExpirationAlertsBanner alerts={manufacturerExpirationAlerts} />
-
           <ThirtyDaySalesAndStockChart
             orders={orders}
             inventory={inventory}
@@ -936,8 +890,8 @@ export function ManufacturerDashboard({
             stockMovements={stockMovements}
             currentUserId={currentUser.id}
           />
-
-          <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+          <LowStockAlerts inventory={inventory} products={products}
+             currentUserId={currentUser.id} />
           <div className="flex justify-between items-center">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mon Catalogue d'Usine</h4>
             <button
@@ -947,13 +901,11 @@ export function ManufacturerDashboard({
               <Plus className="w-4 h-4" /> {isAdding ? "Fermer" : "Nouveau Produit"}
             </button>
           </div>
-
           {isAdding && (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
-                
                 // Determine the image link/base64 to use
                 let finalImage = "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=300";
                 if (uploadMode === "file") {
@@ -968,7 +920,6 @@ export function ManufacturerDashboard({
                     finalImage = uploadedImage;
                   }
                 }
-
                 const p = {
                   name: fd.get("name") as string,
                   description: fd.get("description") as string,
@@ -1082,7 +1033,6 @@ export function ManufacturerDashboard({
                     <input required type="number" step="0.01" name="volume" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                 </div>
-                
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
                   <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
@@ -1101,7 +1051,6 @@ export function ManufacturerDashboard({
                       <LinkIcon className="w-3.5 h-3.5" /> Lien URL
                     </button>
                   </div>
-
                   {uploadMode === "file" ? (
                     <div
                       onDragOver={handleDragOver}
@@ -1155,7 +1104,6 @@ export function ManufacturerDashboard({
                     </div>
                   )}
                 </div>
-
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Stock Initial</label>
@@ -1182,7 +1130,6 @@ export function ManufacturerDashboard({
               </div>
             </form>
           )}
-
           <StockCategoryOrganizer
             inventory={inventory}
             products={products}
@@ -1197,10 +1144,10 @@ export function ManufacturerDashboard({
           />
         </div>
       )}
-
       {activeTab === "orders" && (
         <div className="space-y-4">
-          <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+          <ClaimsSummaryWidget orders={orders} users={users}
+             currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Commandes des Grossistes B2B</h4>
             <SalesExportButton
@@ -1249,7 +1196,6 @@ export function ManufacturerDashboard({
                         </p>
                       </div>
                     </div>
-
                     {/* Order items summary */}
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
                       {order.items.map((item, idx) => {
@@ -1262,7 +1208,6 @@ export function ManufacturerDashboard({
                         );
                       })}
                     </div>
-
                     {/* Order actions workflow */}
                     <div className="flex gap-2 justify-end">
                       {order.status === OrderStatus.PENDING && (
@@ -1330,7 +1275,6 @@ export function ManufacturerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "sales" && (
         <div className="space-y-6">
           <POSComponent
@@ -1349,7 +1293,6 @@ export function ManufacturerDashboard({
           />
         </div>
       )}
-
       {activeTab === "clients" && (
         <div className="animate-fade-in">
           <ClientManagement 
@@ -1367,23 +1310,20 @@ export function ManufacturerDashboard({
           />
         </div>
       )}
-
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
         </div>
       )}
-
       {activeTab === "reviews" && (
         <div className="animate-fade-in">
           <PartnerReviewsSection
+            connections={connections}
             currentUser={currentUser}
             users={users}
-            connections={connections}
           />
         </div>
       )}
-
       {activeTab === "ai" && (
         <div className="animate-fade-in">
           <StockForecastModule
@@ -1395,7 +1335,6 @@ export function ManufacturerDashboard({
       )}
         </motion.div>
       </AnimatePresence>
-
       <CreateProductModal
         isOpen={isAdding}
         onClose={() => setIsAdding(false)}
@@ -1405,7 +1344,6 @@ export function ManufacturerDashboard({
           setIsAdding(false);
         }}
       />
-
       <EditProductStockModal
         isOpen={!!editingModalItem}
         onClose={() => setEditingModalItem(null)}
@@ -1435,7 +1373,6 @@ export function ManufacturerDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 3. WHOLESALER DASHBOARD
 // ----------------------------------------------------------------------
@@ -1466,7 +1403,6 @@ interface WholesalerDashboardProps {
   favoriteProductIds?: string[];
   onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
-
 export function WholesalerDashboard({
   currentUser,
   products,
@@ -1495,6 +1431,31 @@ export function WholesalerDashboard({
   onSelectProduct,
 }: WholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "forecast" | "procure" | "purchases" | "sales" | "inventory" | "alerts" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
+  const handleDiagnoseDelivery = async (order: Order) => {
+    import("../services/connectionService").then(async ({ connectionService }) => {
+      const diag = await connectionService.validateRelationshipActive(order.senderId, order.receiverId);
+      if (diag.isActive) {
+        alert("Diagnostic ✅ : Le partenariat B2B est correctement configuré et actif. La livraison peut s'effectuer normalement.");
+      } else {
+        if (confirm(`Diagnostic ⚠️ : Problème de partenariat détecté (${diag.statut}). Voulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
+          let connectionId = diag.relationId;
+          if (!connectionId) {
+             const senderObj = users.find(u => u.id === order.senderId);
+             if (senderObj) {
+                 const req = await connectionService.envoyerDemandeConnexion(currentUser, senderObj, "Auto-diagnostic");
+                 connectionId = req.relationId;
+             }
+          }
+          if (connectionId) {
+              await connectionService.acceptConnection(connectionId, currentUser.id);
+              alert("Réparation effectuée avec succès ! Le partenariat est maintenant actif.");
+          } else {
+              alert("Impossible de réparer automatiquement : le compte acheteur est introuvable.");
+          }
+        }
+      }
+    });
+  };
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>("");
   const [selectedDriver, setSelectedDriver] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
@@ -1517,16 +1478,13 @@ export function WholesalerDashboard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -1534,13 +1492,11 @@ export function WholesalerDashboard({
       handleFileProcess(e.dataTransfer.files[0]);
     }
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFileProcess(e.target.files[0]);
     }
   };
-
   const handleFileProcess = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -1550,7 +1506,6 @@ export function WholesalerDashboard({
     };
     reader.readAsDataURL(file);
   };
-
   // Filter manufacturers (all active manufacturers on the platform)
   const manufacturers = useMemo(() => {
     return users.filter(u => {
@@ -1561,15 +1516,12 @@ export function WholesalerDashboard({
       );
     });
   }, [users]);
-
   // Wholesaler inventories
   const myInventory = useMemo(() => {
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
-
   // Incoming B2B orders
   const incomingRetailerOrders = orders.filter((o) => o.receiverId === currentUser.id && o.orderType.startsWith("B2B"));
-
   // Unique Buyers
   const myBuyers = useMemo(() => {
     const buyerIds = new Set<string>();
@@ -1589,41 +1541,31 @@ export function WholesalerDashboard({
       .map(id => users.find(u => u.id === id))
       .filter((u): u is UserProfile => !!u && [UserRole.SEMI_WHOLESALER, UserRole.RETAILER].includes(u.role));
   }, [orders, lightClients, users, currentUser.id]);
-
   // Outgoing B2B orders
   const myB2BOrders = orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B"));
-
   // Available drivers level 2 (W2R)
   const w2rDrivers = users.filter((u) => u.role === UserRole.DRIVER_W2R && u.status === "ACTIVE");
-  
   // Available drivers from Wholesaler to Semi-Wholesaler (W2SG)
   const w2sgDrivers = users.filter((u) => u.role === UserRole.DRIVER_W2SG && u.status === "ACTIVE");
-
   // Statistics for Wholesaler
   const totalPurchasesVal = myB2BOrders
     .filter(o => o.status === OrderStatus.DELIVERED)
     .reduce((sum, o) => sum + o.totalAmount, 0);
-
   const completedSales = incomingRetailerOrders.filter(o => o.status === OrderStatus.DELIVERED);
-  
   const salesToRetailersVal = completedSales
     .filter(o => o.orderType === "B2B_W2R")
     .reduce((sum, o) => sum + o.totalAmount, 0);
-
   const salesToSemiWholesalersVal = completedSales
     .filter(o => o.orderType === "B2B_W2SG")
     .reduce((sum, o) => sum + o.totalAmount, 0);
-
   const totalRevenue = salesToRetailersVal + salesToSemiWholesalersVal;
   const activeAlerts = myInventory.filter(i => i.stock <= (i.threshold || 10));
-
   const handleAddToCart = (prodId: string, qty: number) => {
     setProcureCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutProcure = () => {
     if (!selectedManufacturer) {
       alert("Veuillez sélectionner un fabricant avant de passer commande.");
@@ -1632,24 +1574,20 @@ export function WholesalerDashboard({
     const items = Object.keys(procureCart)
       .filter((prodId) => procureCart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: procureCart[prodId] }));
-
     if (items.length === 0) {
       alert("Votre panier d'approvisionnement est vide.");
       return;
     }
-
     onPlaceB2BOrder(selectedManufacturer, items);
     setProcureCart({});
     alert("Votre commande de gros a été passée avec succès auprès du fabricant !");
   };
-
   const handlePOSAddToCart = (prodId: string, qty: number) => {
     setPosCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutPOS = async (saleData: any) => {
     try {
       await venteService.enregistrerVenteHorsLigneDirecte({
@@ -1664,10 +1602,8 @@ export function WholesalerDashboard({
         paymentMethod: "CASH",
         amountPaid: posAmountPaid
       });
-
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
-      
       setPosCart({});
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
@@ -1679,14 +1615,13 @@ export function WholesalerDashboard({
       setPosAmountPaid(0);
     }
   };
-
   const wholesalerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
   }, [inventory, products, currentUser]);
-
   return (
     <div className="space-y-6" id="wholesaler-dashboard">
-      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+      <ClaimsSummaryWidget orders={orders} users={users}
+             currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       <DashboardTabBar
         title="Menu Grossiste - Opérations & Dashboard de Vente"
         activeTab={activeTab}
@@ -1708,7 +1643,6 @@ export function WholesalerDashboard({
           { id: "buyers", label: "Mes Acheteurs", icon: Users },
         ]}
       />
-
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -1728,7 +1662,6 @@ export function WholesalerDashboard({
               />
             </div>
           )}
-
           {activeTab === "dashboard" && (
             <div className="space-y-6 animate-fade-in">
               <ExpirationAlertsBanner alerts={wholesalerExpirationAlerts} />
@@ -1739,7 +1672,7 @@ export function WholesalerDashboard({
                 inventory={inventory}
                 users={users}
                 payments={payments}
-                lightClients={lightClients}
+            lightClients={lightClients}
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
@@ -1759,7 +1692,6 @@ export function WholesalerDashboard({
               )}
             </div>
           )}
-
           {activeTab === "forecast" && (
             <div className="animate-fade-in">
               <StockForecastModule
@@ -1776,7 +1708,6 @@ export function WholesalerDashboard({
               />
             </div>
           )}
-
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
@@ -1784,6 +1715,7 @@ export function WholesalerDashboard({
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
           <MyBuyersModule
+            connections={connections}
             currentUser={currentUser}
             users={users}
             orders={orders}
@@ -1796,13 +1728,13 @@ export function WholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "procure" && (
         <div className="space-y-4">
           <SupplierSelector
+            connections={connections}
+            orders={orders}
             currentUser={currentUser}
             users={users}
-            connections={connections}
             lightClients={lightClients}
             selectedSupplierId={selectedManufacturer}
             onSelectSupplier={(id) => {
@@ -1814,7 +1746,6 @@ export function WholesalerDashboard({
             title="S'approvisionner : Achat Direct auprès des Usines & Grossistes"
             description="Choisissez un fournisseur dans votre carnet d'adresses, vos partenaires, ou tapez son numéro de téléphone / email."
           />
-
           {selectedManufacturer && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2 space-y-3">
@@ -1825,7 +1756,6 @@ export function WholesalerDashboard({
                       const invItem = inventory.find((i) => i.productId === prod.id && i.ownerId === selectedManufacturer);
                       const stock = invItem ? invItem.stock : 999;
                       const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
-                      
                       return (
                         <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
                           <div className="flex gap-2 items-center min-w-0">
@@ -1857,7 +1787,6 @@ export function WholesalerDashboard({
                     })}
                 </div>
               </div>
-
               {/* Shopping summary */}
               <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Synthèse du Panier B2B</h5>
@@ -1869,7 +1798,6 @@ export function WholesalerDashboard({
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedManufacturer);
                       const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
-
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
@@ -1878,7 +1806,6 @@ export function WholesalerDashboard({
                       );
                     })}
                 </div>
-
                 <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center font-bold">
                   <span>TOTAL ESTIMÉ</span>
                   <span className="font-mono text-emerald-600">
@@ -1905,7 +1832,6 @@ export function WholesalerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "purchases" && (
         <div className="space-y-4">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Suivi de mes Achats Usine</h4>
@@ -1950,7 +1876,6 @@ export function WholesalerDashboard({
                         </p>
                       </div>
                     </div>
-
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
                       {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
@@ -1962,7 +1887,6 @@ export function WholesalerDashboard({
                         );
                       })}
                     </div>
-
                     <div className="flex gap-2 justify-end items-center">
                       {order.paymentStatus !== "PAID" && (
                         <button
@@ -1978,7 +1902,6 @@ export function WholesalerDashboard({
                         </span>
                       )}
                     </div>
-                    
                     <OrderClaimAndConfirm
                       orderId={order.id}
                       status={order.status}
@@ -1994,7 +1917,6 @@ export function WholesalerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "sales" && (
         <div className="space-y-8 animate-fade-in">
           <div className="space-y-4">
@@ -2036,7 +1958,6 @@ export function WholesalerDashboard({
                           </p>
                         </div>
                       </div>
-
                       <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] mb-3">
                         {order.items.map((item, idx) => {
                           const prod = products.find((p) => p.id === item.productId);
@@ -2048,15 +1969,23 @@ export function WholesalerDashboard({
                           );
                         })}
                       </div>
-
-                      <div className="flex gap-2 justify-end">
+                      <div className="flex gap-2 justify-end items-center flex-wrap">
                         {order.status === OrderStatus.PENDING && (
-                          <button
-                            onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold"
-                          >
-                            Confirmer
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleDiagnoseDelivery(order)}
+                              className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1"
+                              title="Diagnostiquer la livraison"
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5" /> Diagnostiquer
+                            </button>
+                            <button
+                              onClick={() => onUpdateOrderStatus(order.id, OrderStatus.CONFIRMED)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold"
+                            >
+                              Confirmer
+                            </button>
+                          </>
                         )}
                         {/* ... other status logic can be added here ... */}
                       </div>
@@ -2066,14 +1995,13 @@ export function WholesalerDashboard({
               </div>
             )}
           </div>
-
           <div className="pt-8 border-t border-zinc-200 dark:border-zinc-800">
             <h4 className="text-xs font-bold uppercase text-zinc-500 tracking-wider mb-4">Caisse Minute - Vente Directe</h4>
             <CaisseModule
               currentUser={currentUser}
               inventory={myInventory}
               products={products}
-              lightClients={lightClients}
+            lightClients={lightClients}
               users={users}
               orders={orders}
               payments={payments}
@@ -2082,12 +2010,13 @@ export function WholesalerDashboard({
           </div>
         </div>
       )}
-
       {activeTab === "inventory" && (
         <div className="space-y-4">
-          <StockEvolutionBarChart inventory={inventory} products={products} currentUserId={currentUser.id} />
+          <StockEvolutionBarChart inventory={inventory} products={products}
+             currentUserId={currentUser.id} />
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+            <LowStockAlerts inventory={inventory} products={products}
+             currentUserId={currentUser.id} />
             <div className="flex gap-2">
               <button
                 onClick={() => handleExportInventoryCSV(inventory, products, currentUser.id)}
@@ -2103,7 +2032,6 @@ export function WholesalerDashboard({
               </button>
             </div>
           </div>
-          
           <StockCategoryOrganizer
             inventory={inventory}
             products={products}
@@ -2116,7 +2044,6 @@ export function WholesalerDashboard({
             title="Mon Stock de Gros par Catégorie"
             role={currentUser.role}
           />
-
           {/* Modal Ajout / Mise à jour de stock produit */}
           {isAddingStockModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
@@ -2127,7 +2054,6 @@ export function WholesalerDashboard({
                 <p className="text-xs text-zinc-500">
                   Sélectionnez un produit. S'il existe déjà dans votre stock, la quantité sera automatiquement mise à jour (ajoutée) sans créer de doublon.
                 </p>
-
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-zinc-500">Produit</label>
@@ -2154,7 +2080,6 @@ export function WholesalerDashboard({
                       ))}
                     </select>
                   </div>
-
                   {selectedProdToAdd === "__NEW__" && (
                     <div className="space-y-3 p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-700">
                       <div>
@@ -2230,7 +2155,6 @@ export function WholesalerDashboard({
                           />
                         </div>
                       </div>
-
                       <div>
                         <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">Illustration du Produit</label>
                         <div className="flex gap-2 p-1 bg-zinc-200 dark:bg-zinc-700 rounded-lg text-[10px] font-bold mb-2">
@@ -2249,7 +2173,6 @@ export function WholesalerDashboard({
                             <LinkIcon className="w-3.5 h-3.5" /> Lien URL
                           </button>
                         </div>
-
                         {uploadMode === "file" ? (
                           <div
                             onDragOver={handleDragOver}
@@ -2291,7 +2214,6 @@ export function WholesalerDashboard({
                       </div>
                     </div>
                   )}
-
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-zinc-500">Quantité à ajouter / définir</label>
                     <input
@@ -2301,7 +2223,6 @@ export function WholesalerDashboard({
                       className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs font-semibold"
                     />
                   </div>
-
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase text-zinc-500">Prix de gros unitaire (FCFA)</label>
                     <input
@@ -2312,7 +2233,6 @@ export function WholesalerDashboard({
                     />
                   </div>
                 </div>
-
                 <div className="flex gap-2 justify-end pt-2">
                   <button
                     onClick={() => setIsAddingStockModalOpen(false)}
@@ -2328,7 +2248,6 @@ export function WholesalerDashboard({
                         alert("Veuillez entrer une quantité valide.");
                         return;
                       }
-
                       if (selectedProdToAdd === "__NEW__") {
                         if (!newProdName.trim()) {
                           alert("Veuillez saisir le nom du nouveau produit.");
@@ -2351,7 +2270,6 @@ export function WholesalerDashboard({
                           barcode: Math.floor(1000000000000 + Math.random() * 9000000000000).toString(),
                           qrCode: `QR_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
                         }, qty, !isNaN(pr) ? pr : 15000);
-
                         setNewProdName("");
                         setUploadedImage("");
                         setImageLinkInput("");
@@ -2367,7 +2285,6 @@ export function WholesalerDashboard({
                         alert("Veuillez sélectionner ou créer un produit.");
                         return;
                       }
-
                       setIsAddingStockModalOpen(false);
                       setSelectedProdToAdd("");
                     }}
@@ -2381,7 +2298,6 @@ export function WholesalerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "alerts" && (
         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-5 rounded-2xl text-amber-900 dark:text-amber-200 space-y-3">
           <div className="flex items-center gap-2 pb-2 border-b border-amber-200/50">
@@ -2410,7 +2326,6 @@ export function WholesalerDashboard({
           </div>
         </div>
       )}
-
       {activeTab === "clients" && (
         <div className="animate-fade-in">
           <ClientManagement 
@@ -2428,31 +2343,27 @@ export function WholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
         </div>
       )}
-
       {activeTab === "accounting" && (
         <div className="animate-fade-in">
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
-
       {activeTab === "reviews" && (
         <div className="animate-fade-in">
           <PartnerReviewsSection
+            connections={connections}
             currentUser={currentUser}
             users={users}
-            connections={connections}
           />
         </div>
       )}
         </motion.div>
       </AnimatePresence>
-
       <CreateProductModal
         isOpen={isAddingStockModalOpen}
         onClose={() => setIsAddingStockModalOpen(false)}
@@ -2464,7 +2375,6 @@ export function WholesalerDashboard({
           setIsAddingStockModalOpen(false);
         }}
       />
-
       <EditProductStockModal
         isOpen={!!editingModalItem}
         onClose={() => setEditingModalItem(null)}
@@ -2494,7 +2404,6 @@ export function WholesalerDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 4. RETAILER DASHBOARD
 // ----------------------------------------------------------------------
@@ -2526,7 +2435,6 @@ interface RetailerDashboardProps {
   favoriteProductIds?: string[];
   onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
-
 export function RetailerDashboard({
   currentUser,
   products,
@@ -2574,23 +2482,19 @@ export function RetailerDashboard({
   const [adjustingStockItem, setAdjustingStockItem] = useState<InventoryItem | null>(null);
   const [adjustingStockValue, setAdjustingStockValue] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (!isAdding) {
       setUploadedImage("");
       setUploadMode("file");
     }
   }, [isAdding]);
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -2598,13 +2502,11 @@ export function RetailerDashboard({
       handleFileProcess(e.dataTransfer.files[0]);
     }
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFileProcess(e.target.files[0]);
     }
   };
-
   const handleFileProcess = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -2614,18 +2516,15 @@ export function RetailerDashboard({
     };
     reader.readAsDataURL(file);
   };
-
   // Filter all Wholesalers and Semi-Wholesalers (prioritizing registered partners in CLIENTS & Adresses)
   const wholesalers = useMemo(() => {
     const partnerIds = new Set<string>();
     connections
       .filter(c => isConnectionActive(c) && (c.senderId === currentUser.id || c.receiverId === currentUser.id))
       .forEach(c => partnerIds.add(c.senderId === currentUser.id ? c.receiverId : c.senderId));
-    
     lightClients
       .filter(lc => lc.ownerId === currentUser.id && lc.linkedUserId)
       .forEach(lc => partnerIds.add(lc.linkedUserId!));
-
     return users
       .filter((u) => {
         const uRole = u.role;
@@ -2642,18 +2541,14 @@ export function RetailerDashboard({
         return bIsPartner - aIsPartner;
       });
   }, [users, connections, lightClients, currentUser.id]);
-
   // Shop Inventory
   const myInventory = useMemo(() => {
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
-
   // Shop Orders (Incoming B2C and B2B)
   const myB2COrders = useMemo(() => orders.filter((o) => o.receiverId === currentUser.id), [orders, currentUser.id]);
-
   // Outgoing B2B orders
   const myB2BOrders = useMemo(() => orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B")), [orders, currentUser.id]);
-  
   // Unique Buyers (B2B and B2C)
   const myBuyers = useMemo(() => {
     const buyerIds = new Set<string>();
@@ -2674,14 +2569,12 @@ export function RetailerDashboard({
       .map(id => users.find(u => u.id === id))
       .filter((u): u is UserProfile => !!u && u.role === UserRole.CLIENT);
   }, [orders, lightClients, users, currentUser.id]);
-
   const handleAddToCartProcure = (prodId: string, qty: number) => {
     setProcureCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutProcure = () => {
     if (!selectedWholesaler) {
       alert("Veuillez sélectionner un fournisseur (grossiste ou demi-grossiste) avant de passer commande.");
@@ -2690,29 +2583,24 @@ export function RetailerDashboard({
     const items = Object.keys(procureCart)
       .filter((prodId) => procureCart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: procureCart[prodId] }));
-
     if (items.length === 0) {
       alert("Votre panier d'approvisionnement est vide.");
       return;
     }
-
     onPlaceB2BOrder(selectedWholesaler, items);
     setProcureCart({});
     alert("Votre commande de réapprovisionnement a été transmise au fournisseur (Grossiste/Demi-Grossiste) !");
   };
-
   const handlePOSAddToCart = (prodId: string, qty: number) => {
     setPosCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handlePOSCheckout = async (saleData: any) => {
     try {
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
-      
       setPosCart({});
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
@@ -2720,24 +2608,20 @@ export function RetailerDashboard({
       throw new Error("Erreur : " + e.message);
     }
   };
-
   const handleConfirmOrder = (orderId: string) => {
     onUpdateOrderStatus(orderId, OrderStatus.CONFIRMED);
   };
-
   const handleAssignDriver = (orderId: string, driverId: string) => {
     onUpdateOrderStatus(orderId, OrderStatus.DELIVERING, driverId);
   };
-  
   const r2cDrivers = users.filter((u) => u.role === UserRole.DRIVER_R2C && u.status === "ACTIVE");
-
   const retailerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
   }, [inventory, products, currentUser]);
-
   return (
     <div className="space-y-6" id="retailer-dashboard">
-      <ClaimsSummaryWidget orders={orders} users={users} currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+      <ClaimsSummaryWidget orders={orders} users={users}
+             currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
       <DashboardTabBar
         title="Menu Détaillant - Opérations & Dashboard de Vente"
         activeTab={activeTab}
@@ -2758,7 +2642,6 @@ export function RetailerDashboard({
           { id: "sync", label: "Sync", icon: Cloud, badge: syncQueue.length > 0 ? syncQueue.length : undefined },
         ]}
       />
-
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -2778,7 +2661,6 @@ export function RetailerDashboard({
               />
             </div>
           )}
-
           {activeTab === "dashboard" && (
             <div className="space-y-6 animate-fade-in">
               <ExpirationAlertsBanner alerts={retailerExpirationAlerts} />
@@ -2789,7 +2671,7 @@ export function RetailerDashboard({
                 inventory={inventory}
                 users={users}
                 payments={payments}
-                lightClients={lightClients}
+            lightClients={lightClients}
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
@@ -2809,7 +2691,6 @@ export function RetailerDashboard({
               )}
             </div>
           )}
-
           {activeTab === "forecast" && (
             <div className="animate-fade-in">
               <StockForecastModule
@@ -2826,7 +2707,6 @@ export function RetailerDashboard({
               />
             </div>
           )}
-
           {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
@@ -2834,6 +2714,7 @@ export function RetailerDashboard({
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
           <MyBuyersModule
+            connections={connections}
             currentUser={currentUser}
             users={users}
             orders={orders}
@@ -2846,13 +2727,13 @@ export function RetailerDashboard({
           />
         </div>
       )}
-
       {activeTab === "procure" && (
         <div className="space-y-4">
           <SupplierSelector
+            connections={connections}
+            orders={orders}
             currentUser={currentUser}
             users={users}
-            connections={connections}
             lightClients={lightClients}
             selectedSupplierId={selectedWholesaler}
             onSelectSupplier={(id) => {
@@ -2864,7 +2745,6 @@ export function RetailerDashboard({
             title="S'approvisionner : Achat auprès des Usines & Grossistes"
             description="Sélectionnez une usine ou un grossiste dans votre carnet d'adresses ou tapez son numéro ou email."
           />
-
           {selectedWholesaler && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-3">
@@ -2891,7 +2771,6 @@ export function RetailerDashboard({
                   );
                 })()}
               </div>
-
               <div className="md:col-span-3 flex flex-col sm:flex-row gap-3 items-center justify-between">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-200 uppercase tracking-wider">Catalogue du Fournisseur</h5>
                 <PredictiveSearchBar
@@ -2902,7 +2781,6 @@ export function RetailerDashboard({
                   className="w-full sm:max-w-xs"
                 />
               </div>
-
               <div className="md:col-span-2 space-y-3">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-200 uppercase tracking-wider">Articles de Gros Disponibles</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2928,11 +2806,9 @@ export function RetailerDashboard({
                       prixGros: p.prixGros,
                       prixDetail: p.prixDetail
                     }));
-
                     const stockItems = directItems.length > 0 
                       ? directItems 
                       : (creatorItems.length > 0 ? creatorItems : catalogItems);
-
                     return stockItems.map((invItem) => {
                       const prod = products.find((p) => p.id === invItem.productId);
                       const matchesSearch = !searchQuery || 
@@ -2941,10 +2817,8 @@ export function RetailerDashboard({
                           (prod.category && prod.category.toLowerCase().includes(searchQuery.toLowerCase()))
                         ));
                       if (!prod || !matchesSearch) return null;
-                      
                       const stock = invItem.stock > 0 ? invItem.stock : 999;
                       const price = invItem.price || invItem.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
-                      
                       return (
                         <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
                           <div className="flex gap-2 items-center min-w-0">
@@ -2977,7 +2851,6 @@ export function RetailerDashboard({
                   })()}
                 </div>
               </div>
-
               {/* Procure Basket */}
               <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Panier Réappro B2B</h5>
@@ -2989,7 +2862,6 @@ export function RetailerDashboard({
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedWholesaler);
                       const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
-
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
@@ -2998,7 +2870,6 @@ export function RetailerDashboard({
                       );
                     })}
                 </div>
-
                 <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center font-bold">
                   <span>TOTAL ESTIMÉ</span>
                   <span className="font-mono text-emerald-600">
@@ -3026,7 +2897,6 @@ export function RetailerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "purchases" && (
         <div className="space-y-4">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Suivi de mes Achats Grossiste</h4>
@@ -3078,7 +2948,6 @@ export function RetailerDashboard({
                         </p>
                       </div>
                     </div>
-
                     <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800 text-[11px] space-y-1">
                       {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
@@ -3090,7 +2959,6 @@ export function RetailerDashboard({
                         );
                       })}
                     </div>
-
                     <div className="flex gap-2 justify-end items-center">
                       {order.paymentStatus !== "PAID" && (
                         <button
@@ -3106,7 +2974,6 @@ export function RetailerDashboard({
                         </span>
                       )}
                     </div>
-                    
                     <OrderClaimAndConfirm
                       orderId={order.id}
                       status={order.status}
@@ -3122,7 +2989,6 @@ export function RetailerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "sales" && (
         <div className="space-y-6">
           <div className="space-y-4">
@@ -3180,7 +3046,7 @@ export function RetailerDashboard({
               currentUser={currentUser}
               inventory={myInventory}
               products={products}
-              lightClients={lightClients}
+            lightClients={lightClients}
               users={users}
               orders={orders}
               payments={payments}
@@ -3189,11 +3055,9 @@ export function RetailerDashboard({
           </div>
         </div>
       )}
-
       {activeTab === "inventory" && (
         <div className="space-y-4">
           <ExpirationAlertsBanner alerts={retailerExpirationAlerts} />
-
           <ThirtyDaySalesAndStockChart
             orders={orders}
             inventory={inventory}
@@ -3201,8 +3065,8 @@ export function RetailerDashboard({
             stockMovements={stockMovements}
             currentUserId={currentUser.id}
           />
-
-          <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+          <LowStockAlerts inventory={inventory} products={products}
+             currentUserId={currentUser.id} />
           <div className="flex justify-between items-center">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">État des Stocks Boutique</h4>
             <button
@@ -3215,7 +3079,6 @@ export function RetailerDashboard({
               <Plus className="w-4 h-4" /> {isAdding ? "Fermer" : "Gérer mon Catalogue"}
             </button>
           </div>
-
           {isAdding && (
             <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
               <div className="flex flex-col sm:flex-row gap-4 items-end">
@@ -3242,13 +3105,11 @@ export function RetailerDashboard({
                   </div>
                 )}
               </div>
-
               {(selectedProdId === "__NEW__" || (selectedProdId && selectedProdId !== "__NEW__")) && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     const fd = new FormData(e.currentTarget);
-                    
                     if (selectedProdId === "__NEW__") {
                       // Determine the image link/base64 to use
                       let finalImage = "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=300";
@@ -3264,7 +3125,6 @@ export function RetailerDashboard({
                           finalImage = uploadedImage;
                         }
                       }
-
                       const p = {
                         name: fd.get("name") as string,
                         description: fd.get("description") as string,
@@ -3292,7 +3152,6 @@ export function RetailerDashboard({
                         }
                       }
                     }
-                    
                     setIsAdding(false);
                     setSelectedProdId("");
                     alert("Stock mis à jour avec succès !");
@@ -3386,7 +3245,6 @@ export function RetailerDashboard({
                             <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
-
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
                           <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
@@ -3405,7 +3263,6 @@ export function RetailerDashboard({
                               <LinkIcon className="w-3.5 h-3.5" /> Lien URL
                             </button>
                           </div>
-
                           {uploadMode === "file" ? (
                             <div
                               onDragOver={handleDragOver}
@@ -3465,7 +3322,6 @@ export function RetailerDashboard({
                       </div>
                     </div>
                   )}
-
                   <div className="grid grid-cols-2 gap-2 md:col-span-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 mt-2">
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold">Quantité en Stock</label>
@@ -3476,7 +3332,6 @@ export function RetailerDashboard({
                       <input required name="price" type="number" step="1" placeholder="Ex: 500" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                   </div>
-
                   <div className="md:col-span-2 pt-2">
                     <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2">
                       <Save className="w-4 h-4" /> {selectedProdId === "__NEW__" ? "Créer et Ajouter au Stock" : "Ajouter à mon Inventaire"}
@@ -3486,7 +3341,6 @@ export function RetailerDashboard({
               )}
             </div>
           )}
-
           <StockCategoryOrganizer
             inventory={inventory}
             products={products}
@@ -3499,7 +3353,6 @@ export function RetailerDashboard({
             title="Stock & Rayons de la Boutique par Catégorie"
             role={currentUser.role}
           />
-
           {/* Stock Adjustment Modal */}
           {adjustingStockItem && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
@@ -3548,12 +3401,12 @@ export function RetailerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "suppliers" && (
         <SupplierSelector
+          connections={connections}
+          orders={orders}
           currentUser={currentUser}
           users={users}
-          connections={connections}
           lightClients={lightClients}
           selectedSupplierId={selectedWholesaler}
           onSelectSupplier={(id) => {
@@ -3566,7 +3419,6 @@ export function RetailerDashboard({
           description="Choisissez votre fournisseur (Grossiste, Demi-Grossiste ou Usine) dans votre carnet d'adresses."
         />
       )}
-
       {activeTab === "clients" && (
         <div className="animate-fade-in">
           <ClientManagement 
@@ -3584,31 +3436,27 @@ export function RetailerDashboard({
           />
         </div>
       )}
-
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
         </div>
       )}
-
       {activeTab === "accounting" && (
         <div className="animate-fade-in">
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
-
       {activeTab === "reviews" && (
         <div className="animate-fade-in">
           <PartnerReviewsSection
+            connections={connections}
             currentUser={currentUser}
             users={users}
-            connections={connections}
           />
         </div>
       )}
         </motion.div>
       </AnimatePresence>
-
       <CreateProductModal
         isOpen={isAdding}
         onClose={() => setIsAdding(false)}
@@ -3620,7 +3468,6 @@ export function RetailerDashboard({
           setIsAdding(false);
         }}
       />
-
       <EditProductStockModal
         isOpen={!!editingModalItem}
         onClose={() => setEditingModalItem(null)}
@@ -3650,7 +3497,6 @@ export function RetailerDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 5. CLIENT DASHBOARD (B2C MARKETPLACE)
 // ----------------------------------------------------------------------
@@ -3666,7 +3512,6 @@ interface ClientDashboardProps {
   favoriteProductIds?: string[];
   onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
-
 export function ClientDashboard({
   currentUser,
   products,
@@ -3689,7 +3534,6 @@ export function ClientDashboard({
   const [shippingFee, setShippingFee] = useState<number>(1000);
   const [shippingDistance, setShippingDistance] = useState<number>(1.5);
   const [shippingTime, setShippingTime] = useState<number>(5);
-
   const resolveRegionLabel = (addressOrRegion: string): string => {
     if (!addressOrRegion) return "Abidjan";
     const clean = addressOrRegion.toLowerCase();
@@ -3705,14 +3549,12 @@ export function ClientDashboard({
     if (clean.includes("koulouba")) return "Koulouba";
     return "Abidjan"; // Default fallback
   };
-
   // Identify connected suppliers (from previous orders)
   const connectedSupplierIds = Array.from(new Set(
       orders
         .filter(order => order.senderId === currentUser.id)
         .map(order => order.receiverId)
   ));
-
   // Feed data: recent updates from connected suppliers
   const feedItems = inventory
     .filter((inv) => connectedSupplierIds.includes(inv.ownerId) && inv.updatedAt)
@@ -3723,7 +3565,6 @@ export function ClientDashboard({
         return { ...inv, prod, supplier };
     })
     .slice(0, 10);
-
   // Filter retailers and semi-wholesalers supplying client products
   const retailers = useMemo(() => {
     return users.filter((u) => {
@@ -3733,19 +3574,15 @@ export function ClientDashboard({
       return roleOk && activeOk;
     });
   }, [users]);
-
   // Client past or present orders
   const myOrders = orders.filter((o) => o.senderId === currentUser.id);
-
   const selectedShopObj = users.find((u) => u.id === selectedRetailer);
-
   const getProductPrice = (invItem: InventoryItem | undefined, prod?: Product) => {
     if (selectedShopObj?.role === UserRole.SEMI_WHOLESALER) {
       return invItem?.prixDetail ?? invItem?.price ?? prod?.prixDetail ?? prod?.prixGros ?? (prod as any)?.price ?? 1000;
     }
     return invItem?.price ?? invItem?.prixDetail ?? prod?.prixDetail ?? (prod as any)?.price ?? 1000;
   };
-
   const shopStockItems = useMemo(() => {
     if (!selectedRetailer) return [];
     const directItems = inventory.filter((item) => item.ownerId === selectedRetailer);
@@ -3769,17 +3606,14 @@ export function ClientDashboard({
       prixDetail: p.prixDetail,
       prixGros: p.prixGros
     }));
-
     return directItems.length > 0 ? directItems : (creatorItems.length > 0 ? creatorItems : catalogItems);
   }, [inventory, products, selectedRetailer]);
-
   const handleAddToCart = (prodId: string, qty: number) => {
     setCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckout = () => {
     if (!selectedRetailer) {
       alert("Veuillez sélectionner un commerce (boutique ou demi-gros) avant de passer commande.");
@@ -3788,17 +3622,14 @@ export function ClientDashboard({
     const items = Object.keys(cart)
       .filter((prodId) => cart[prodId] > 0)
       .map((prodId) => ({ productId: prodId, quantity: cart[prodId] }));
-
     if (items.length === 0) {
       alert("Votre panier est vide.");
       return;
     }
-
     onPlaceB2COrder(selectedRetailer, items, shippingAddress, paymentMethod);
     setCart({});
     alert("Commande passée avec succès ! Vous pouvez suivre le livreur sur la carte en temps réel.");
   };
-
   return (
     <div className="space-y-6" id="client-dashboard">
       {/* Banner Publicitaire Dynamique - Offres Spéciales */}
@@ -3831,7 +3662,6 @@ export function ClientDashboard({
           </div>
         </div>
       </div>
-
       {/* Search and Navigation */}
       <DashboardTabBar
         title="Espace Client - Navigation"
@@ -3845,7 +3675,6 @@ export function ClientDashboard({
           { id: "addresses", label: "Carnet d'Adresses", icon: MapPin },
         ]}
       />
-
       {activeTab === "feed" && (
         <div className="space-y-4">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider mb-4">Dernières alertes de vos fournisseurs</h4>
@@ -3873,7 +3702,6 @@ export function ClientDashboard({
           )}
         </div>
       )}
-
       {activeTab === "market" && (
         <div className="space-y-4">
           {/* Shop Selector Header */}
@@ -3895,7 +3723,6 @@ export function ClientDashboard({
                 className="w-full sm:max-w-xs"
               />
             </div>
-
             {/* Select dropdown & Active Shop Header */}
             <div className="flex flex-col sm:flex-row gap-3 items-center">
               <select
@@ -3913,7 +3740,6 @@ export function ClientDashboard({
                   </option>
                 ))}
               </select>
-
               {selectedRetailer && (
                 <button
                   onClick={() => {
@@ -3927,7 +3753,6 @@ export function ClientDashboard({
               )}
             </div>
           </div>
-
           {/* Active Merchant Info Card */}
           {selectedShopObj && (
             <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -3951,7 +3776,6 @@ export function ClientDashboard({
               </span>
             </div>
           )}
-
           {!selectedRetailer ? (
             /* Vendor Selection Cards when no shop is selected */
             <div className="space-y-6">
@@ -4024,10 +3848,8 @@ export function ClientDashboard({
                         (prod.category && prod.category.toLowerCase().includes(searchQuery.toLowerCase()))
                       ));
                     if (!prod || !matchesSearch) return null;
-                    
                     const stock = invItem.stock > 0 ? invItem.stock : 999;
                     const price = getProductPrice(invItem, prod);
-                    
                     return (
                       <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-sm">
                         <div className="flex gap-3 items-center min-w-0 flex-1">
@@ -4079,7 +3901,6 @@ export function ClientDashboard({
                   })
                 )}
               </div>
-
               {/* Checkout panel */}
               <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs checkout-panel">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Panier Client</h5>
@@ -4092,7 +3913,6 @@ export function ClientDashboard({
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedRetailer);
                       const unitPrice = getProductPrice(invItem, prod);
                       const total = unitPrice * qty;
-
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
@@ -4101,7 +3921,6 @@ export function ClientDashboard({
                       );
                     })}
                 </div>
-
                 {/* Subtotal & Delivery details breakdown */}
                 {Object.values(cart).some(q => (q as number) > 0) && (
                   <div className="pt-2.5 pb-1 space-y-1.5 border-t border-zinc-150">
@@ -4139,7 +3958,6 @@ export function ClientDashboard({
                     </div>
                   </div>
                 )}
-
                 <div className="space-y-3 pt-3 border-t border-zinc-150">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Adresse de livraison (Auto-complétion)</label>
@@ -4151,7 +3969,6 @@ export function ClientDashboard({
                       id="client-checkout-shipping-address"
                     />
                   </div>
-
                   {/* Real-time Dynamic Delivery Calculator widget */}
                   <OrderCreationDeliveryCalculator
                     sellerRegion={resolveRegionLabel(selectedShopObj?.address || selectedShopObj?.region || "Abidjan")}
@@ -4164,7 +3981,6 @@ export function ClientDashboard({
                     title="Estimation Frais de Livraison"
                     editableRegions={false}
                   />
-
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase">Moyen de Paiement</label>
                     <select
@@ -4179,7 +3995,6 @@ export function ClientDashboard({
                     </select>
                   </div>
                 </div>
-
                 <button
                   onClick={handleCheckout}
                   disabled={Object.values(cart).every(q => q === 0)}
@@ -4192,12 +4007,10 @@ export function ClientDashboard({
           )}
         </div>
       )}
-
       {activeTab === "orders" && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Historique & Suivi GPS en direct</h4>
-            
             <div className="flex flex-wrap gap-2">
               {(["TOUS", "EN_COURS", "LIVRE", "ANNULE"] as const).map((filter) => (
                 <button
@@ -4214,7 +4027,6 @@ export function ClientDashboard({
               ))}
             </div>
           </div>
-
           {myOrders.filter(order => {
             if (orderStatusFilter === "TOUS") return true;
             if (orderStatusFilter === "EN_COURS") return [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.SHIPPED, OrderStatus.DELIVERING].includes(order.status);
@@ -4256,7 +4068,6 @@ export function ClientDashboard({
                       <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100 mt-1">{formatCFA(order.totalAmount)}</p>
                     </div>
                   </div>
-
                   {/* Dynamic tracking panel if active */}
                   {order.status === OrderStatus.DELIVERING && (
                     <div className="p-4 bg-zinc-950 text-white rounded-xl space-y-3 border border-zinc-800">
@@ -4266,7 +4077,6 @@ export function ClientDashboard({
                         </span>
                         <span className="text-zinc-400 font-mono">Distance : {order.distanceKm} km • ETA : 4 mins</span>
                       </div>
-
                       {/* Map Animation */}
                       <div className="relative aspect-video rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800 flex items-center justify-center">
                         <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -4279,7 +4089,6 @@ export function ClientDashboard({
                           {/* Route line */}
                           <path d="M10,30 L50,30 L50,70 L90,70" fill="none" stroke="#10b981" strokeWidth="3" strokeDasharray="5" className="animate-[dash_10s_linear_infinite]" />
                         </svg>
-
                         {/* Starting Node */}
                         <div className="absolute top-[30%] left-[10%] -translate-x-1/2 -translate-y-1/2 bg-blue-600 p-1.5 rounded-full z-10 shadow-lg">
                           <MapPin className="w-3.5 h-3.5 text-white" />
@@ -4293,7 +4102,6 @@ export function ClientDashboard({
                           <Truck className="w-4 h-4 text-white" />
                         </div>
                       </div>
-
                       {/* OTP code needed to validate reception */}
                       <div className="bg-zinc-900 p-3 rounded-lg flex justify-between items-center border border-zinc-850">
                         <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">CODE OTP DE LIVRAISON</span>
@@ -4303,7 +4111,6 @@ export function ClientDashboard({
                       </div>
                     </div>
                   )}
-
                   {/* Post-delivery Client Review Form */}
                   {order.status === OrderStatus.DELIVERED && (
                     <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800">
@@ -4326,7 +4133,6 @@ export function ClientDashboard({
                       </form>
                     </div>
                   )}
-
                   <OrderClaimAndConfirm
                     orderId={order.id}
                     status={order.status}
@@ -4342,7 +4148,6 @@ export function ClientDashboard({
           )}
         </div>
       )}
-
       {activeTab === "addresses" && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 space-y-4">
           <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Adresses Enregistrées</h4>
@@ -4363,7 +4168,6 @@ export function ClientDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 6. DRIVER DASHBOARD (ALL 3 ROLES: Driver M2W, W2R, R2C)
 // ----------------------------------------------------------------------
@@ -4375,7 +4179,6 @@ interface DriverDashboardProps {
   onCompleteDelivery: (orderId: string, otpInput?: string, sig?: string, img?: string) => void;
   onUpdateOrderStatus: (orderId: string, status: OrderStatus, driverId?: string, claimMessage?: string, claimStatus?: "NONE" | "OPEN" | "RESOLVED") => void;
 }
-
 export function DriverDashboard({
   currentUser,
   orders,
@@ -4388,13 +4191,10 @@ export function DriverDashboard({
   const [otpInput, setOtpInput] = useState<string>("");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [photoMockActive, setPhotoMockActive] = useState(false);
-
   // Filter orders assigned to this driver
   const myAssignedOrders = orders.filter((o) => o.driverId === currentUser.id);
-
   // Canvas drawing logic for digital signature pad
   const [isDrawing, setIsDrawing] = useState(false);
-
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -4404,7 +4204,6 @@ export function DriverDashboard({
     ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
     setIsDrawing(true);
   };
-
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
@@ -4416,7 +4215,6 @@ export function DriverDashboard({
     ctx.lineWidth = 2.5;
     ctx.stroke();
   };
-
   const stopDrawing = () => {
     setIsDrawing(false);
     const canvas = canvasRef.current;
@@ -4424,7 +4222,6 @@ export function DriverDashboard({
       setSignatureData(canvas.toDataURL());
     }
   };
-
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -4433,7 +4230,6 @@ export function DriverDashboard({
       setSignatureData("");
     }
   };
-
   return (
     <div className="space-y-6" id="driver-dashboard">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-4">
@@ -4452,7 +4248,6 @@ export function DriverDashboard({
           </span>
         </div>
       </div>
-
       {myAssignedOrders.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
           <Truck className="w-10 h-10 text-zinc-300 mx-auto mb-2" />
@@ -4463,7 +4258,6 @@ export function DriverDashboard({
           {myAssignedOrders.map((order) => {
             const client = users.find((u) => u.id === order.senderId);
             const vendor = users.find((u) => u.id === order.receiverId);
-
             return (
               <div key={order.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl shadow-xs space-y-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
@@ -4485,7 +4279,6 @@ export function DriverDashboard({
                     <p className="text-[10px] text-zinc-500 mt-2">Distance : {order.distanceKm} km</p>
                   </div>
                 </div>
-
                 {/* Live Driver Interactive route map simulator */}
                 {order.status === OrderStatus.DELIVERING && (
                   <div className="p-4 bg-zinc-950 text-white rounded-xl space-y-4 border border-zinc-850">
@@ -4496,7 +4289,6 @@ export function DriverDashboard({
                       <span>Volume Cargo : {order.items.reduce((sum, i) => sum + i.quantity, 0)} colis</span>
                       <span>ETA Estimé : {order.estimatedTimeMins} mins</span>
                     </div>
-
                     {/* Package contents display */}
                     <div className="bg-zinc-900 p-2.5 rounded border border-zinc-800 text-[10px] space-y-1 mb-3">
                       <p className="font-bold text-zinc-300 uppercase tracking-wider mb-1.5 border-b border-zinc-800 pb-1">Contenu du Colis</p>
@@ -4510,7 +4302,6 @@ export function DriverDashboard({
                         );
                       })}
                     </div>
-
                     {/* Security digital verification tools for Retailer/Client validation */}
                     <div className="space-y-3 pt-3 border-t border-zinc-800">
                       {/* 1. Client OTP check (R2C driver only) */}
@@ -4526,7 +4317,6 @@ export function DriverDashboard({
                           />
                         </div>
                       )}
-
                       {/* 2. Photo attachment */}
                       <div>
                         <button
@@ -4539,7 +4329,6 @@ export function DriverDashboard({
                           <p className="text-[9px] text-emerald-400 mt-1 font-mono">✓ Photo enregistrée : [COLIS_LIVRE_SEUIL.jpg]</p>
                         )}
                       </div>
-
                       {/* 3. Digital signature Canvas pad */}
                       <div>
                         <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Émargement / Signature Numérique</label>
@@ -4562,7 +4351,6 @@ export function DriverDashboard({
                           </button>
                         </div>
                       </div>
-
                       {/* Final Complete dispatch validation action */}
                       <button
                         onClick={() => {
@@ -4579,7 +4367,6 @@ export function DriverDashboard({
                     </div>
                   </div>
                 )}
-
                 {/* Driver accepts missions state buttons */}
                 {order.status === OrderStatus.SHIPPED && (
                   <button
@@ -4597,7 +4384,6 @@ export function DriverDashboard({
     </div>
   );
 }
-
 // ----------------------------------------------------------------------
 // 7. SEMI-WHOLESALER (DEMI-GROSSISTE) DASHBOARD
 // ----------------------------------------------------------------------
@@ -4629,7 +4415,6 @@ interface SemiWholesalerDashboardProps {
   favoriteProductIds?: string[];
   onSelectProduct?: (product: Product, inventoryItem?: InventoryItem) => void;
 }
-
 export function SemiWholesalerDashboard({
   currentUser,
   products,
@@ -4659,6 +4444,31 @@ export function SemiWholesalerDashboard({
   onSelectProduct,
 }: SemiWholesalerDashboardProps) {
   const [activeTab, setActiveTab] = useState<"sales_dashboard" | "dashboard" | "procure" | "purchases" | "incoming" | "pos" | "inventory" | "accounting" | "buyers" | "clients" | "sync" | "reviews">("sales_dashboard");
+  const handleDiagnoseDelivery = async (order: Order) => {
+    import("../services/connectionService").then(async ({ connectionService }) => {
+      const diag = await connectionService.validateRelationshipActive(order.senderId, order.receiverId);
+      if (diag.isActive) {
+        alert("Diagnostic ✅ : Le partenariat B2B est correctement configuré et actif. La livraison peut s'effectuer normalement.");
+      } else {
+        if (confirm(`Diagnostic ⚠️ : Problème de partenariat détecté (${diag.statut}). Voulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
+          let connectionId = diag.relationId;
+          if (!connectionId) {
+             const senderObj = users.find(u => u.id === order.senderId);
+             if (senderObj) {
+                 const req = await connectionService.envoyerDemandeConnexion(currentUser, senderObj, "Auto-diagnostic");
+                 connectionId = req.relationId;
+             }
+          }
+          if (connectionId) {
+              await connectionService.acceptConnection(connectionId, currentUser.id);
+              alert("Réparation effectuée avec succès ! Le partenariat est maintenant actif.");
+          } else {
+              alert("Impossible de réparer automatiquement : le compte acheteur est introuvable.");
+          }
+        }
+      }
+    });
+  };
   const [selectedWholesaler, setSelectedWholesaler] = useState<string>("");
   const [procureCart, setProcureCart] = useState<Record<string, number>>({});
   const [posCart, setPosCart] = useState<Record<string, number>>({});
@@ -4667,10 +4477,8 @@ export function SemiWholesalerDashboard({
   const [posAmountPaid, setPosAmountPaid] = useState<number>(0);
   const [posReceipt, setPosReceipt] = useState<{ id: string; date: string; items: any[]; total: number; customerType: string } | null>(null);
   const [stockSort, setStockSort] = useState<"none" | "asc" | "desc">("none");
-
   // Full product edit modal state
   const [editingModalItem, setEditingModalItem] = useState<{ product: Product; inventoryItem: InventoryItem } | null>(null);
-
   // Edit stock state
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editStock, setEditStock] = useState<number>(0);
@@ -4678,7 +4486,6 @@ export function SemiWholesalerDashboard({
   const [editPrixGros, setEditPrixGros] = useState<number>(0);
   const [editPrixDetail, setEditPrixDetail] = useState<number>(0);
   const [editMinQty, setEditMinQty] = useState<number>(1);
-
   // Product addition state
   const [isAdding, setIsAdding] = useState(false);
   const [semiWholesalerCategory, setSemiWholesalerCategory] = useState("Alimentation");
@@ -4689,12 +4496,10 @@ export function SemiWholesalerDashboard({
   const [newPrixGros, setNewPrixGros] = useState(1000);
   const [newPrixDetail, setNewPrixDetail] = useState(150);
   const [newMinQty, setNewMinQty] = useState(5);
-
   const [uploadMode, setUploadMode] = useState<"url" | "file">("url");
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
   useEffect(() => {
     if (!isAdding) {
       setUploadedImage("");
@@ -4702,16 +4507,13 @@ export function SemiWholesalerDashboard({
       setSelectedProdId("");
     }
   }, [isAdding]);
-
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = () => {
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
@@ -4719,13 +4521,11 @@ export function SemiWholesalerDashboard({
       handleFileProcess(e.dataTransfer.files[0]);
     }
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       handleFileProcess(e.target.files[0]);
     }
   };
-
   const handleFileProcess = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -4735,7 +4535,6 @@ export function SemiWholesalerDashboard({
     };
     reader.readAsDataURL(file);
   };
-
   // Filter wholesalers (suppliers)
   const wholesalers = useMemo(() => {
     return users.filter((u) => {
@@ -4751,7 +4550,6 @@ export function SemiWholesalerDashboard({
   const myInventory = useMemo(() => {
     return inventory.filter((i) => i.ownerId === currentUser.id || i.ownerId === currentUser.email);
   }, [inventory, currentUser]);
-
   const myLightClientIds = useMemo(() => {
     return new Set(
       lightClients
@@ -4759,7 +4557,6 @@ export function SemiWholesalerDashboard({
         .map(lc => lc.id)
     );
   }, [lightClients, currentUser.id]);
-
   const incomingOrders = useMemo(() => {
     return orders.filter((o) => 
       o.receiverId === currentUser.id || 
@@ -4767,17 +4564,13 @@ export function SemiWholesalerDashboard({
       (currentUser.email && o.receiverId === currentUser.email)
     );
   }, [orders, currentUser.id, myLightClientIds, currentUser.email]);
-
   const myPurchases = useMemo(() => {
     return orders.filter((o) => o.senderId === currentUser.id && o.orderType.startsWith("B2B"));
   }, [orders, currentUser.id]);
-
   const sg2rDrivers = users.filter((u) => u.role === UserRole.DRIVER_SG2R && u.status === "ACTIVE");
   const r2cDrivers = users.filter((u) => u.role === UserRole.DRIVER_R2C && u.status === "ACTIVE");
-
   // Selected driver per order
   const [selectedDrivers, setSelectedDrivers] = useState<Record<string, string>>({});
-
   // Persistent Order Archiving & Active Orders Filter State
   const [archivedOrderIds, setArchivedOrderIds] = useState<string[]>(() => {
     try {
@@ -4787,10 +4580,8 @@ export function SemiWholesalerDashboard({
       return [];
     }
   });
-
   const [orderFilterMode, setOrderFilterMode] = useState<"active_only" | "all" | "archived">("active_only");
   const [orderSortOrder, setOrderSortOrder] = useState<SortOrder>("desc");
-
   const toggleArchiveOrder = (orderId: string) => {
     setArchivedOrderIds(prev => {
       const isArchived = prev.includes(orderId);
@@ -4803,21 +4594,17 @@ export function SemiWholesalerDashboard({
       return updated;
     });
   };
-
   const activeIncomingOrders = useMemo(() => {
     return incomingOrders.filter(o => !archivedOrderIds.includes(o.id));
   }, [incomingOrders, archivedOrderIds]);
-
   const archivedIncomingOrders = useMemo(() => {
     return incomingOrders.filter(o => archivedOrderIds.includes(o.id));
   }, [incomingOrders, archivedOrderIds]);
-
   const displayedIncomingOrders = useMemo(() => {
     if (orderFilterMode === "active_only") return activeIncomingOrders;
     if (orderFilterMode === "archived") return archivedIncomingOrders;
     return incomingOrders;
   }, [orderFilterMode, activeIncomingOrders, archivedIncomingOrders, incomingOrders]);
-
   const sortedDisplayedIncomingOrders = useMemo(() => {
     const list = [...displayedIncomingOrders];
     return list.sort((a, b) => {
@@ -4826,7 +4613,6 @@ export function SemiWholesalerDashboard({
       return orderSortOrder === "desc" ? timeB - timeA : timeA - timeB;
     });
   }, [displayedIncomingOrders, orderSortOrder]);
-
   const handleClearAllIncomingOrders = () => {
     const idsToArchive = sortedDisplayedIncomingOrders.map(o => o.id);
     setArchivedOrderIds(prev => {
@@ -4839,22 +4625,17 @@ export function SemiWholesalerDashboard({
       return updated;
     });
   };
-
   // Calculations for dashboard
   const totalProcurementCost = myPurchases.reduce((sum, o) => sum + o.totalAmount, 0);
   const incomingCompletedSales = incomingOrders.filter((o) => o.status === OrderStatus.DELIVERED);
-  
   const wholesaleSalesVal = incomingCompletedSales
     .filter((o) => o.orderType === "B2B_SG2R")
     .reduce((sum, o) => sum + o.totalAmount, 0);
-
   const retailSalesVal = incomingCompletedSales
     .filter((o) => o.orderType === "B2C_SG2C")
     .reduce((sum, o) => sum + o.totalAmount, 0);
-
   const totalSalesRevenue = wholesaleSalesVal + retailSalesVal;
   const activeAlerts = myInventory.filter((item) => item.stock <= item.threshold);
-
   // Unique Buyers (B2B and B2C)
   const myBuyers = useMemo(() => {
     const buyerIds = new Set<string>();
@@ -4875,14 +4656,12 @@ export function SemiWholesalerDashboard({
       .map(id => users.find(u => u.id === id))
       .filter((u): u is UserProfile => !!u && [UserRole.RETAILER, UserRole.CLIENT].includes(u.role));
   }, [orders, lightClients, users, currentUser.id]);
-
   const handleAddToCartProcure = (prodId: string, qty: number) => {
     setProcureCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutProcure = () => {
     if (!selectedWholesaler) {
       alert("Veuillez sélectionner un grossiste avant de passer commande.");
@@ -4891,7 +4670,6 @@ export function SemiWholesalerDashboard({
     const items = Object.keys(procureCart)
       .filter((id) => procureCart[id] > 0)
       .map((id) => ({ productId: id, quantity: procureCart[id] }));
-
     if (items.length === 0) {
       alert("Votre panier d'approvisionnement est vide.");
       return;
@@ -4901,14 +4679,12 @@ export function SemiWholesalerDashboard({
     alert("Votre commande d'approvisionnement B2B auprès du grossiste a été envoyée !");
     setActiveTab("purchases");
   };
-
   const handleAddToPOSCart = (prodId: string, qty: number) => {
     setPosCart((prev) => ({
       ...prev,
       [prodId]: Math.max(0, (prev[prodId] || 0) + qty),
     }));
   };
-
   const handleCheckoutPOS = () => {
     const items = Object.keys(posCart)
       .filter((id) => posCart[id] > 0)
@@ -4916,28 +4692,22 @@ export function SemiWholesalerDashboard({
         productId: id,
         quantity: posCart[id]
       }));
-
     if (items.length === 0) return;
-
     const clientId = posCustomerType === "LIGHT_CLIENT" ? posSelectedLightClientId : "CASH_CLIENT";
-    
     if (posCustomerType === "LIGHT_CLIENT" && !posSelectedLightClientId) {
       alert("Veuillez sélectionner un client pour une vente à crédit.");
       return;
     }
-
     onPlaceSale(
       clientId,
       items,
       posAmountPaid,
       "CASH"
     );
-
     setPosCart({});
     setPosAmountPaid(0);
     alert("Vente enregistrée avec succès au Point de Vente !");
   };
-
   const startEditItem = (item: InventoryItem) => {
     setEditingItemId(item.id);
     setEditStock(item.stock);
@@ -4946,18 +4716,15 @@ export function SemiWholesalerDashboard({
     setEditPrixDetail(item.prixDetail || 0);
     setEditMinQty(item.quantiteMinimum || 1);
   };
-
   const saveEditItem = () => {
     if (!editingItemId) return;
     onUpdateInventory(editingItemId, editStock, editPrice, editPrixGros, editPrixDetail, editMinQty);
     setEditingItemId(null);
     alert("Stock et tarifs mis à jour avec succès !");
   };
-
   const semiWholesalerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
   }, [inventory, products, currentUser]);
-
   return (
     <div className="space-y-6" id="semi-wholesaler-dashboard">
       {/* Tabs list with Sync Indicator */}
@@ -4982,7 +4749,6 @@ export function SemiWholesalerDashboard({
           { id: "buyers", label: "Mes Acheteurs", icon: Users },
         ]}
       />
-
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
@@ -4990,6 +4756,7 @@ export function SemiWholesalerDashboard({
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
           <MyBuyersModule
+            connections={connections}
             currentUser={currentUser}
             users={users}
             orders={orders}
@@ -5002,7 +4769,6 @@ export function SemiWholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "sales_dashboard" && (
         <div className="animate-fade-in">
           <MerchantSalesDashboard
@@ -5014,12 +4780,10 @@ export function SemiWholesalerDashboard({
           />
         </div>
       )}
-
       {/* Tab: Dashboard */}
       {activeTab === "dashboard" && (
         <div className="space-y-6 animate-fade-in">
           <ExpirationAlertsBanner alerts={semiWholesalerExpirationAlerts} />
-
           <ThirtyDaySalesAndStockChart
             orders={orders}
             inventory={inventory}
@@ -5027,7 +4791,6 @@ export function SemiWholesalerDashboard({
             stockMovements={stockMovements}
             currentUserId={currentUser.id}
           />
-
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Inventory & Alerts (Takes 2 columns) */}
           <div className="lg:col-span-2 space-y-6">
@@ -5076,10 +4839,9 @@ export function SemiWholesalerDashboard({
                 </div>
               )}
             </div>
-
-            <LowStockAlerts inventory={inventory} products={products} currentUserId={currentUser.id} />
+            <LowStockAlerts inventory={inventory} products={products}
+             currentUserId={currentUser.id} />
           </div>
-
           {/* Right Column: Alerts & Notifications */}
           <div className="space-y-6">
             {/* Stock Alerts Panel */}
@@ -5120,7 +4882,6 @@ export function SemiWholesalerDashboard({
                 </div>
               )}
             </div>
-
             {/* Notifications */}
             <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
               <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4 flex items-center gap-1.5">
@@ -5138,7 +4899,6 @@ export function SemiWholesalerDashboard({
               </div>
             </div>
           </div>
-
           {/* Favorites Section */}
           {onSelectProduct && (
             <div className="lg:col-span-3 mt-4">
@@ -5153,14 +4913,14 @@ export function SemiWholesalerDashboard({
         </div>
       </div>
       )}
-
       {/* Tab: Procure from Wholesalers */}
       {activeTab === "procure" && (
         <div className="space-y-6 animate-fade-in">
           <SupplierSelector
+            connections={connections}
+            orders={orders}
             currentUser={currentUser}
             users={users}
-            connections={connections}
             lightClients={lightClients}
             selectedSupplierId={selectedWholesaler}
             onSelectSupplier={(id) => {
@@ -5172,7 +4932,6 @@ export function SemiWholesalerDashboard({
             title="S'approvisionner : Achat auprès des Grossistes, Usines & Demi-Grossistes"
             description="Choisissez un fournisseur dans votre carnet d'adresses ou entrez son numéro de téléphone / email."
           />
-
           {selectedWholesaler && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="md:col-span-2 space-y-3">
@@ -5183,7 +4942,6 @@ export function SemiWholesalerDashboard({
                       const invItem = inventory.find((i) => i.productId === prod.id && i.ownerId === selectedWholesaler);
                       const stock = invItem ? invItem.stock : 999;
                       const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
-                      
                       return (
                         <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
                           <div className="flex gap-2 items-center min-w-0">
@@ -5215,7 +4973,6 @@ export function SemiWholesalerDashboard({
                     })}
                 </div>
               </div>
-
               {/* Basket */}
               <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Bon d'Approvisionnement</h5>
@@ -5227,7 +4984,6 @@ export function SemiWholesalerDashboard({
                       const prod = products.find((p) => p.id === prodId);
                       const invItem = inventory.find((i) => i.productId === prodId && i.ownerId === selectedWholesaler);
                       const unitPrice = invItem?.price || invItem?.prixGros || prod?.prixGros || prod?.prixDetail || (prod as any)?.price || 1000;
-
                       return (
                         <div key={prodId} className="flex justify-between items-center text-[11px] text-zinc-600 dark:text-zinc-400">
                           <span className="truncate max-w-[120px]">{prod?.name}</span>
@@ -5236,7 +4992,6 @@ export function SemiWholesalerDashboard({
                       );
                     })}
                 </div>
-
                 <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 flex justify-between items-center font-bold">
                   <span>TOTAL ESTIMÉ</span>
                   <span className="font-mono text-emerald-600">
@@ -5252,7 +5007,6 @@ export function SemiWholesalerDashboard({
                     )}
                   </span>
                 </div>
-
                 <button
                   onClick={handleCheckoutProcure}
                   className="w-full bg-orange-600 hover:bg-orange-500 text-white py-2 rounded-xl text-xs font-bold transition"
@@ -5264,7 +5018,6 @@ export function SemiWholesalerDashboard({
           )}
         </div>
       )}
-
       {/* Tab: Track purchases */}
       {activeTab === "purchases" && (
         <div className="space-y-4 animate-fade-in">
@@ -5288,7 +5041,6 @@ export function SemiWholesalerDashboard({
                         Statut: {order.status}
                       </span>
                     </div>
-
                     <div className="border-t border-zinc-100 dark:border-zinc-800 pt-2 space-y-1">
                       {order.items.map((i, idx) => {
                         const prod = products.find((p) => p.id === i.productId);
@@ -5300,12 +5052,10 @@ export function SemiWholesalerDashboard({
                         );
                       })}
                     </div>
-
                     <div className="flex justify-between items-center text-xs pt-2 font-bold">
                       <span>Total payé/dû :</span>
                       <span className="font-mono text-emerald-600">{formatCFA(order.totalAmount)}</span>
                     </div>
-
                     {/* Order tracking claim logic */}
                     <div className="pt-2">
                       <OrderClaimAndConfirm
@@ -5317,7 +5067,6 @@ export function SemiWholesalerDashboard({
                         users={users}
                       />
                     </div>
-
                     {order.paymentStatus === "PENDING" && onPayOrder && (
                       <button
                         onClick={() => {
@@ -5336,7 +5085,6 @@ export function SemiWholesalerDashboard({
           )}
         </div>
       )}
-
       {/* Tab: Incoming Orders */}
       {activeTab === "incoming" && (
         <div className="space-y-4 animate-fade-in bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 sm:p-5">
@@ -5362,7 +5110,6 @@ export function SemiWholesalerDashboard({
                     <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                     <span>Actives ({activeIncomingOrders.length})</span>
                   </button>
-
                   <button
                     onClick={() => setOrderFilterMode("all")}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
@@ -5373,7 +5120,6 @@ export function SemiWholesalerDashboard({
                   >
                     <span>Toutes ({incomingOrders.length})</span>
                   </button>
-
                   <button
                     onClick={() => setOrderFilterMode("archived")}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
@@ -5421,7 +5167,6 @@ export function SemiWholesalerDashboard({
                     <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                     <span>Actives ({activeIncomingOrders.length})</span>
                   </button>
-
                   <button
                     onClick={() => setOrderFilterMode("all")}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
@@ -5432,7 +5177,6 @@ export function SemiWholesalerDashboard({
                   >
                     <span>Toutes ({incomingOrders.length})</span>
                   </button>
-
                   <button
                     onClick={() => setOrderFilterMode("archived")}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
@@ -5452,7 +5196,6 @@ export function SemiWholesalerDashboard({
                 const buyerObj = users.find((u) => u.id === order.senderId);
                 const assignedDriverObj = users.find((u) => u.id === order.driverId);
                 const isArchived = archivedOrderIds.includes(order.id);
-
                 return (
                   <OrderWidgetCard
                     key={order.id}
@@ -5462,6 +5205,7 @@ export function SemiWholesalerDashboard({
                     onUpdateOrderStatus={onUpdateOrderStatus}
                     onArchiveOrder={toggleArchiveOrder}
                     onDownloadPDF={handleDownloadOrderPDF}
+                    onDiagnoseDelivery={handleDiagnoseDelivery}
                     isArchived={isArchived}
                   />
                 );
@@ -5470,7 +5214,6 @@ export function SemiWholesalerDashboard({
           )}
         </div>
       )}
-
       {activeTab === "pos" && (
         <div className="space-y-6 animate-fade-in">
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
@@ -5489,7 +5232,6 @@ export function SemiWholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "inventory" && (
         <div className="space-y-4 animate-fade-in">
           <div className="flex justify-between items-center">
@@ -5504,7 +5246,6 @@ export function SemiWholesalerDashboard({
               <Plus className="w-4 h-4" /> {isAdding ? "Fermer" : "Gérer mon Catalogue"}
             </button>
           </div>
-
           {isAdding && (
             <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
               <div className="flex flex-col sm:flex-row gap-4 items-end">
@@ -5531,13 +5272,11 @@ export function SemiWholesalerDashboard({
                   </div>
                 )}
               </div>
-
               {(selectedProdId === "__NEW__" || (selectedProdId && selectedProdId !== "__NEW__")) && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     const fd = new FormData(e.currentTarget);
-                    
                     if (selectedProdId === "__NEW__") {
                       let finalImage = "https://images.unsplash.com/photo-1542838132-92c53300491e?w=300";
                       if (uploadMode === "file") {
@@ -5547,7 +5286,6 @@ export function SemiWholesalerDashboard({
                         if (urlImg) finalImage = urlImg;
                         else if (uploadedImage && uploadedImage.startsWith("http")) finalImage = uploadedImage;
                       }
-
                       const p = {
                         name: fd.get("name") as string,
                         description: fd.get("description") as string,
@@ -5574,7 +5312,6 @@ export function SemiWholesalerDashboard({
                         }
                       }
                     }
-                    
                     setIsAdding(false);
                     setSelectedProdId("");
                     setUploadedImage("");
@@ -5669,7 +5406,6 @@ export function SemiWholesalerDashboard({
                             <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
-
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
                           <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
@@ -5688,7 +5424,6 @@ export function SemiWholesalerDashboard({
                               <LinkIcon className="w-3.5 h-3.5" /> URL
                             </button>
                           </div>
-
                           {uploadMode === "file" ? (
                             <div
                               onDragOver={handleDragOver}
@@ -5742,7 +5477,6 @@ export function SemiWholesalerDashboard({
                       </div>
                     </div>
                   )}
-
                   <div className="grid grid-cols-2 gap-2 md:col-span-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 mt-2">
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold uppercase text-[10px]">Quantité Entrée</label>
@@ -5753,7 +5487,6 @@ export function SemiWholesalerDashboard({
                       <input required name="price" type="number" defaultValue="1000" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                   </div>
-
                   <div className="md:col-span-2 pt-2">
                     <button type="submit" className="w-full bg-orange-600 hover:bg-orange-500 text-white py-2.5 rounded-xl font-bold shadow-lg shadow-orange-600/20 transition-all flex items-center justify-center gap-2">
                       <Save className="w-4 h-4" /> {selectedProdId === "__NEW__" ? "Créer et Ajouter" : "Ajouter au Catalogue"}
@@ -5763,7 +5496,6 @@ export function SemiWholesalerDashboard({
               )}
             </div>
           )}
-
           <StockCategoryOrganizer
             inventory={inventory}
             products={products}
@@ -5778,7 +5510,6 @@ export function SemiWholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "clients" && (
         <div className="animate-fade-in">
           <ClientManagement 
@@ -5796,29 +5527,25 @@ export function SemiWholesalerDashboard({
           />
         </div>
       )}
-
       {activeTab === "sync" && (
         <div className="animate-fade-in">
           <SyncHistory queue={syncQueue} />
         </div>
       )}
-
       {activeTab === "accounting" && (
         <div className="animate-fade-in">
           <AccountingDashboard currentUserId={currentUser.id} orders={orders} />
         </div>
       )}
-
       {activeTab === "reviews" && (
         <div className="animate-fade-in">
           <PartnerReviewsSection
+            connections={connections}
             currentUser={currentUser}
             users={users}
-            connections={connections}
           />
         </div>
       )}
-
       {/* Edit Product & Stock Modal */}
       <EditProductStockModal
         isOpen={!!editingModalItem}
