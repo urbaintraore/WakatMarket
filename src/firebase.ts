@@ -13,6 +13,7 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
   onSnapshot,
   serverTimestamp,
   type Firestore,
@@ -149,6 +150,27 @@ export async function firestoreGetLimitOrdered(collectionName: string, orderFiel
   }
   const snap = await getDocs(collection(db, collectionName));
   return snap.docs.slice(0, limitCount).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+}
+
+/**
+ * Lecture paginée d'une collection par chunks (curseur startAfter).
+ * Utile pour la découverte de partenaires au-delà des 500 premiers documents.
+ */
+export async function firestoreGetChunked(collectionName: string, orderField: string, pageSize: number = 500, maxPages: number = 4): Promise<any[]> {
+  const db = getFirebaseDb();
+  const out: any[] = [];
+  let cursor: any = null;
+  for (let page = 0; page < maxPages; page++) {
+    const base = [collection(db, collectionName)];
+    let qql = query(base[0], orderBy(orderField, "desc"), limit(pageSize));
+    if (cursor) qql = query(base[0], orderBy(orderField, "desc"), startAfter(cursor), limit(pageSize));
+    const snap = await getDocs(qql);
+    const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+    out.push(...rows);
+    if (snap.docs.length < pageSize) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  return out;
 }
 
 /**

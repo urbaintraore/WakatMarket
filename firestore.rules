@@ -159,10 +159,17 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (
         isAdmin() ||
         resource.data.sender_id == request.auth.uid ||
-        resource.data.receiver_id == request.auth.uid
+        resource.data.receiver_id == request.auth.uid ||
+        (exists(/databases/$(database)/documents/messages/$(messageId)) &&
+         resource.data.conversation_id != null &&
+         exists(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)) &&
+         get(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)).data.participants.hasAny([request.auth.uid]))
       );
       allow create: if isAuthenticated() &&
-        (request.resource.data.sender_id == request.auth.uid);
+        (request.resource.data.sender_id == request.auth.uid ||
+         (request.resource.data.conversation_id != null &&
+          exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)) &&
+          get(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)).data.participants.hasAny([request.auth.uid])));
       allow update, delete: if isAdmin() ||
         resource.data.sender_id == request.auth.uid;
     }

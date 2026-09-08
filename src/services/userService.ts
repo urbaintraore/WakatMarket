@@ -6,7 +6,7 @@ import {
   firestoreGetById,
   firestoreGetWhere,
   firestoreGetAll,
-  firestoreGetLimitOrdered,
+  firestoreGetChunked,
   firestoreUpdate,
   firestoreDelete,
   firestoreSubscribe
@@ -14,6 +14,12 @@ import {
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou, isRootAdminEmail } from "../types";
 import { profileToDb } from "./dbMappers";
 import { db } from "../data";
+
+// Cache de session pour l'index des profils (découverte de partenaires) :
+// évite de re-parcourir Firestore à chaque frappe de recherche.
+let profilesCache: UserProfileData[] | null = null;
+let profilesCacheAt = 0;
+const PROFILES_CACHE_TTL = 5 * 60 * 1000;
 
 export interface UserProfileData {
   uid: string;
@@ -231,14 +237,21 @@ export const userService = {
 
   /**
    * Récupérer tous les utilisateurs enregistrés dans Firestore
+   * (pagination par chunks, avec cache de session pour la recherche partenaire)
    */
   async getAllUsers(): Promise<UserProfileData[]> {
     if (!isFirebaseConfigured()) return [];
     try {
-      const rows = await firestoreGetLimitOrdered("profiles", "created_at", 500);
-      return rows
+      const now = Date.now();
+      if (profilesCache && now - profilesCacheAt < PROFILES_CACHE_TTL) {
+        return profilesCache;
+      }
+      const rows = await firestoreGetChunked("profiles", "created_at", 500, 4);
+      profilesCache = rows
         .map(normalizeRow)
         .filter((p): p is UserProfileData => !!p);
+      profilesCacheAt = now;
+      return profilesCache;
     } catch (e) {
       if (isNetworkError(e)) {
         console.warn("[userService] Réseau Firestore indisponible pour getAllUsers (mode hors-ligne actif).");

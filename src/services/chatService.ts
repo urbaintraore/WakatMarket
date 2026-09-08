@@ -2,14 +2,48 @@ import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types"
 import { isFirebaseConfigured, firestoreUpsert, firestoreUpdate, firestoreSubscribe, firestoreSubscribeWhere } from "../firebase";
 import { uploadToCloudflare } from "../cloudflare";
 import { db } from "../data";
+import apiService from "./apiService";
 
 import { connectionService, ensureUsersExistLocally } from "./connectionService";
+
+const READ_MARKER_KEY = "wakat_erp_v2_conv_read";
+
+function getReadMarkers(): Record<string, Record<string, string>> {
+  try {
+    return JSON.parse(localStorage.getItem(READ_MARKER_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReadMarker(convId: string, userId: string, iso: string) {
+  const markers = getReadMarkers();
+  markers[convId] = { ...(markers[convId] || {}), [userId]: iso };
+  localStorage.setItem(READ_MARKER_KEY, JSON.stringify(markers));
+}
+
+/** Historique de lecture local (offline-first) d'une conversation. */
+function lastReadAt(convId: string, userId: string): string | null {
+  return getReadMarkers()[convId]?.[userId] || null;
+}
+
+/** Compteur de non-lus calculé depuis le cache local des messages. */
+function localUnreadFor(convId: string, userId: string): number {
+  if (!convId || !userId) return 0;
+  const last = lastReadAt(convId, userId);
+  return db
+    .getMessages()
+    .filter((m) => m.conversationId === convId && m.senderId !== userId && (!last || (m.createdAt || "") > last))
+    .length;
+}
 
 function rowToMessage(row: any): ChatMessage {
   return {
     id: row.id,
     conversationId: row.conversation_id,
     senderId: row.sender_id,
+    receiverId: row.receiver_id,
+    senderName: row.sender_name || row.senderName,
     content: row.text || row.content || "",
     text: row.text || row.content || "",
     type: row.type ? (row.type as MessageType) : MessageType.TEXT,
@@ -148,6 +182,8 @@ export const chatService = {
           id: messageId,
           conversation_id: conversationId,
           sender_id: senderId,
+          sender_name: senderUser?.companyName || senderUser?.name || "",
+          receiver_id: receiverId || "",
           text: finalContent,
           created_at: nowIso
         };
@@ -165,6 +201,19 @@ export const chatService = {
           });
         } catch (convErr: any) {
           console.warn("Notice update conversation Firestore:", convErr.message);
+        }
+
+        // Notification serveur "nouveau message" (fire-and-forget, idempotente)
+        if (receiverId && receiverId !== senderId) {
+          void apiService
+            .post(`/api/messages/${messageId}/notify`, {
+              conversationId,
+              senderId,
+              receiverId
+            })
+            .catch(() => {
+              /* best-effort : pas de notif serveur = pas bloquant */
+            });
         }
       } catch (e: any) {
         console.warn("Notice Firestore sendMessage error:", e.message || e);
@@ -278,13 +327,18 @@ export const chatService = {
             if (!parsedParts.includes(userId)) return null;
             if (!parsedParts.length) return null;
 
+            const remoteUnread = Number(row[`unread_count_${userId}`] || 0);
+            const unread = Math.max(remoteUnread, localUnreadFor(row.id, userId));
+
             return {
               id: row.id,
               type: "PRIVATE",
               participants: parsedParts,
               groupName: "Discussion",
               participantDetails: {},
-              unreadCount: {},
+              unreadCount: { [userId]: unread },
+              lastMessage: row.last_message || "",
+              lastMessageDate: row.updated_at || row.last_message_at || "",
               createdAt: row.created_at || new Date().toISOString(),
               updatedAt: row.updated_at || new Date().toISOString()
             };
@@ -303,7 +357,9 @@ export const chatService = {
         participants: [c.senderId, c.receiverId],
         groupName: c.senderId === userId ? c.receiverName : c.senderName,
         participantDetails: {},
-        unreadCount: {},
+        unreadCount: { [userId]: localUnreadFor(c.id, userId) },
+        lastMessage: c.status === "en_attente" ? "Demande de partenariat en attente" : "",
+        lastMessageDate: c.updatedAt || "",
         createdAt: c.createdAt,
         updatedAt: c.updatedAt
       }));
@@ -324,6 +380,8 @@ export const chatService = {
     };
     if (typeof window !== "undefined") {
       window.addEventListener("wakat_connections_updated", handleLocalConnChange);
+      window.addEventListener("wakat_messages_updated", handleLocalConnChange);
+      window.addEventListener("wakat_conversations_updated", handleLocalConnChange);
     }
 
     let unsubscribeRemote: (() => void) | null = null;
@@ -340,6 +398,8 @@ export const chatService = {
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_connections_updated", handleLocalConnChange);
+        window.removeEventListener("wakat_messages_updated", handleLocalConnChange);
+        window.removeEventListener("wakat_conversations_updated", handleLocalConnChange);
       }
       if (unsubscribeRemote) unsubscribeRemote();
     };
@@ -353,10 +413,28 @@ export const chatService = {
   },
 
   /**
-   * Marquer une conversation comme lue
+   * Marquer une conversation comme lue (local + Firestore pour multi-appareils)
    */
-  async markConversationAsRead(_conversationId: string, _userId: string): Promise<void> {
-    return;
+  async markConversationAsRead(conversationId: string, userId: string): Promise<void> {
+    if (!conversationId || !userId) return;
+
+    const nowIso = new Date().toISOString();
+    saveReadMarker(conversationId, userId, nowIso);
+
+    if (isFirebaseConfigured()) {
+      try {
+        await firestoreUpdate("conversations", conversationId, {
+          [`unread_count_${userId}`]: 0,
+          [`last_read_at_${userId}`]: nowIso
+        });
+      } catch (e: any) {
+        console.warn("Notice markConversationAsRead Firestore:", e?.message || e);
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("wakat_conversations_updated"));
+    }
   },
 
   /**
