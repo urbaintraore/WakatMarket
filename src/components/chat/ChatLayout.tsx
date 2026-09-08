@@ -9,6 +9,17 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatWindow } from './ChatWindow';
 import { Search, X, MessageSquare, User, UserPlus, CheckCircle2 } from 'lucide-react';
 
+// Persistance locale des demandes de partenariat envoyées depuis le chat,
+// afin que l'état "Envoyée" survive au rechargement (clé par utilisateur).
+const sentRequestsKey = (userId: string) => `wakat_erp_v2_sent_requests_${userId}`;
+function loadSentRequests(userId: string): Record<string, { partnerId: string; sentAt: string }> {
+  try {
+    return JSON.parse(localStorage.getItem(sentRequestsKey(userId)) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
 interface ChatLayoutProps {
   currentUser?: UserProfile | null;
   users: UserProfile[];
@@ -42,6 +53,15 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
   useEffect(() => {
     let cancelled = false;
     if (currentUser) {
+      if (currentUser) {
+        const persisted = loadSentRequests(currentUser.id);
+        setPartnersRequested(
+          Object.values(persisted).reduce<Record<string, boolean>>((acc, entry) => {
+            if (entry?.partnerId) acc[entry.partnerId] = true;
+            return acc;
+          }, {})
+        );
+      }
       setMarketLoading(true);
       userService
         .getAllUsers()
@@ -100,6 +120,18 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
 
   const allowedPartners = getAllowedChatPartners();
 
+  // Demandes envoyées en attente, dérivées des vraies connexions (survit à un reload).
+  const pendingSentPartnerIds = React.useMemo(() => {
+    if (!currentUser?.id) return new Set<string>();
+    const s = new Set<string>();
+    connections.forEach(c => {
+      const statut = String((c as any).statut || c.status || "").toLowerCase();
+      if (c.senderId === currentUser.id && (c.status === "en_attente" || statut === "pending" || statut === "en_attente" || statut === "p"))
+        s.add(c.receiverId);
+    });
+    return s;
+  }, [connections, currentUser?.id]);
+
   // Annuaire complet : profils distants (index marché) complétés par les données locales.
   const searchDirectory = React.useMemo(() => {
     const map = new Map<string, UserProfile>();
@@ -150,18 +182,27 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     }
 
     // Pas encore partenaire → envoyer une demande de partenariat (MVP réseau B2B).
-    if (partnersRequested[otherUser.id]) {
-      alert("Demande de partenariat déjà envoyée à " + (otherUser.companyName || otherUser.name) + ".");
+    const nomCible = otherUser.companyName || otherUser.name;
+    if (partnersRequested[otherUser.id] || pendingSentPartnerIds.has(otherUser.id)) {
+      alert(
+        `Demande de partenariat déjà envoyée à ${nomCible} et en attente de validation.\n` +
+        `Pour suivre son statut : Tableau de bord → Partenaires → « En attente ».`
+      );
       return;
     }
     const init = window.confirm(
-      `Envoyer une demande de partenariat à ${otherUser.companyName || otherUser.name} ?\nLe chat s'ouvrira une fois la demande acceptée.`
+      `Envoyer une demande de partenariat à ${nomCible} ?\nLe chat s'ouvrira une fois la demande acceptée.`
     );
     if (!init) return;
     try {
       await connectionService.sendConnectionRequest(currentUser, otherUser);
       setPartnersRequested((prev) => ({ ...prev, [otherUser.id]: true }));
-      alert(`Demande de partenariat envoyée à ${otherUser.companyName || otherUser.name} (en attente de confirmation).`);
+      try {
+        const persisted = loadSentRequests(currentUser.id);
+        persisted[otherUser.id] = { partnerId: otherUser.id, sentAt: new Date().toISOString() };
+        localStorage.setItem(sentRequestsKey(currentUser.id), JSON.stringify(persisted));
+      } catch { /* best-effort */ }
+      alert(`Demande de partenariat envoyée à ${nomCible} (en attente de confirmation).`);
     } catch (e) {
       console.error(e);
       alert("Erreur lors de l'envoi de la demande de partenariat.");
@@ -276,7 +317,7 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
               ) : (
                 filteredPartners.map(partner => {
                   const isPartner = allowedPartners.some(p => p.id === partner.id);
-                  const requested = partnersRequested[partner.id];
+                  const requested = partnersRequested[partner.id] || pendingSentPartnerIds.has(partner.id);
                   return (
                     <button
                       key={partner.id}
