@@ -19,7 +19,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
   const favoriteProducts = products.filter((p) => favoriteIds.includes(p.id));
 
   return (
-    <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-3xl space-y-4 shadow-xs" id="favorites-section">
+    <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-3xl space-y-4 shadow-xs" id="favorites-section">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="p-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-xl">
@@ -57,14 +57,14 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
               <div
                 key={`fav-${p.id}`}
                 onClick={() => onSelectProduct(p, invItem)}
-                className="p-3 bg-zinc-50 dark:bg-zinc-850 border border-zinc-150 dark:border-zinc-800 rounded-2xl hover:border-amber-400 dark:hover:border-amber-400 cursor-pointer transition-all duration-300 shadow-xs hover:shadow-md flex flex-col justify-between space-y-2 group"
+                className="p-3 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-800 rounded-2xl hover:border-amber-400 dark:hover:border-amber-400 cursor-pointer transition-all duration-300 shadow-xs hover:shadow-md flex flex-col justify-between space-y-2 group"
               >
                 <div className="flex gap-2.5 items-center">
                   <div className="relative shrink-0">
                     <img
                       src={p.image}
                       alt={p.name}
-                      className="w-11 h-11 rounded-xl object-cover border border-zinc-200/50 dark:border-zinc-750"
+                      className="w-11 h-11 rounded-xl object-cover border border-zinc-200/50 dark:border-zinc-800"
                       referrerPolicy="no-referrer"
                     />
                     <span className="absolute -top-1 -left-1 bg-amber-500 text-white p-0.5 rounded-full shadow-xs">
@@ -81,7 +81,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-zinc-150 dark:border-zinc-800 flex justify-between items-center text-xs">
+                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-xs">
                   <span className="font-bold text-emerald-600 font-mono">
                     {formatCFA(price)}
                   </span>

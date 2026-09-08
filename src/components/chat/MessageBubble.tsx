@@ -221,7 +221,7 @@ export function MessageBubble({ message, isOwn, showAvatar, avatarUrl, senderNam
             </div>
 
             {/* Smart Transcription Panel */}
-            <div className={`mt-1 pt-1.5 border-t ${isOwn ? 'border-emerald-400/20' : 'border-zinc-100 dark:border-zinc-750'} flex flex-col gap-1 text-[11px]`}>
+            <div className={`mt-1 pt-1.5 border-t ${isOwn ? 'border-emerald-400/20' : 'border-zinc-100 dark:border-zinc-800'} flex flex-col gap-1 text-[11px]`}>
               {!transcription && !isTranscribing ? (
                 <button
                   type="button"
@@ -240,7 +240,7 @@ export function MessageBubble({ message, isOwn, showAvatar, avatarUrl, senderNam
                 </div>
               ) : (
                 <div className={`p-2 rounded-lg leading-relaxed text-left max-w-full break-words text-[11px] ${
-                  isOwn ? 'bg-emerald-600/30 text-emerald-50 border border-emerald-400/10' : 'bg-zinc-50 dark:bg-zinc-850 text-zinc-600 dark:text-zinc-300 border border-zinc-100 dark:border-zinc-850'
+                  isOwn ? 'bg-emerald-600/30 text-emerald-50 border border-emerald-400/10' : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border border-zinc-100 dark:border-zinc-800'
                 }`}>
                   <div className="flex items-center gap-1 mb-1 text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                     <Sparkles size={9} />

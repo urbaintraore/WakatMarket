@@ -1,4 +1,3 @@
-import { supabase } from "../supabase";
 import { syncService } from "./syncService";
 
 export interface LigneVenteDirecte {
@@ -25,7 +24,7 @@ export interface VenteDirecteData {
 
 export const venteService = {
   /**
-   * Enregistre une vente directe dans PostgreSQL (table ventes) selon le schéma officiel
+   * Enregistre une vente directe dans Firestore (collection ventes) selon le schéma officiel
    */
   async enregistrerVenteHorsLigneDirecte(data: VenteDirecteData): Promise<string> {
     const venteId = data.venteId || `vnt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

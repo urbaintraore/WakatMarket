@@ -5,7 +5,7 @@ import './index.css';
 import { AuthProvider } from './context/AuthContext.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
-console.log("[WAKATMARKET] SUPABASE-ALIGNMENT-V1");
+console.log("[WAKATMARKET] Firebase-Alignment-V1");
 
 // Global PWA prompt capture immediately before any component lifecycle mounts
 if (typeof window !== "undefined") {

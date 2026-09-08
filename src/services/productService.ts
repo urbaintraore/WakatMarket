@@ -1,5 +1,15 @@
 import { Product } from "../types";
-import { supabase, uploadToSupabaseStorage, formatStorageUrl, supabaseConfigError, isNetworkError } from "../supabase";
+import {
+  isFirebaseConfigured,
+  firebaseConfigError,
+  isNetworkError,
+  firestoreUpsert,
+  firestoreUpdate,
+  firestoreDelete,
+  firestoreGetLimitOrdered,
+  firestoreSubscribe
+} from "../firebase";
+import { uploadToCloudflare } from "../cloudflare";
 import { productToDb, productFromDb } from "./dbMappers";
 
 export interface ProductUploadResult {
@@ -21,29 +31,16 @@ async function base64ToFile(base64: string, filename: string): Promise<File> {
 
 export const productService = {
   /**
-   * Récupérer tous les produits depuis la table PostgreSQL 'products'
+   * Récupérer tous les produits depuis Firestore (collection 'products')
    */
   async getAllProducts(): Promise<Product[]> {
-    if (!supabase) return [];
+    if (!isFirebaseConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        if (isNetworkError(error)) {
-          console.warn("[productService] Réseau Supabase indisponible pour getAllProducts (mode hors-ligne).");
-        } else {
-          console.error("Erreur getAllProducts Supabase:", error);
-        }
-        return [];
-      }
-
-      return (data || []).map(mapRowToProduct);
+      const rows = await firestoreGetLimitOrdered("products", "created_at", 500);
+      return rows.map(mapRowToProduct);
     } catch (err) {
       if (isNetworkError(err)) {
-        console.warn("[productService] Exception réseau getAllProducts (mode hors-ligne):", (err as any)?.message || err);
+        console.warn("[productService] Réseau Firestore indisponible pour getAllProducts (mode hors-ligne).");
       } else {
         console.error("Exception dans getAllProducts:", err);
       }
@@ -52,37 +49,26 @@ export const productService = {
   },
 
   /**
-   * S'abonner aux mises à jour en temps réel de la table 'products'
+   * S'abonner aux mises à jour en temps réel de la collection 'products'
    */
   subscribeToProducts(callback: (products: Product[]) => void): () => void {
-    if (!supabase) return () => {};
+    if (!isFirebaseConfigured()) return () => {};
 
-    // Chargement initial
     this.getAllProducts().then(callback);
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:products:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "products" },
-        () => {
-          this.getAllProducts().then(callback);
-        }
-      )
-      .subscribe();
+    const unsubscribe = firestoreSubscribe("products", (rows) => {
+      callback(rows.map(mapRowToProduct));
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   },
 
   /**
-   * Téléversement d'image produit vers Supabase Storage (MonBucket)
+   * Téléversement d'image produit vers Cloudflare R2 (dossier MonBucket)
    */
   async uploadProductImage(file: File, creatorId?: string, productId?: string): Promise<ProductUploadResult> {
-    if (!supabase) {
-      throw new Error(`Supabase n'est pas configuré : ${supabaseConfigError || "Veuillez renseigner VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY."}`);
+    if (!isFirebaseConfigured()) {
+      throw new Error(`Firebase n'est pas configuré : ${firebaseConfigError || "Veuillez renseigner VITE_FIREBASE_*."}`);
     }
 
     const ext = file.name ? file.name.split(".").pop()?.toLowerCase() || "jpg" : "jpg";
@@ -91,55 +77,53 @@ export const productService = {
     const userFolder = creatorId || "common";
     const prodFolder = productId || "new";
     const filePath = `products/${userFolder}/${prodFolder}_${timestamp}_${randomSuffix}.${ext}`;
-    const targetBucket = "MonBucket";
+    const folder = "MonBucket";
 
-    const res = await uploadToSupabaseStorage(targetBucket, filePath, file, file.type || "image/jpeg");
-    if (!res || !res.publicUrl) {
-      throw new Error("Échec du téléversement de l'image sur Supabase Storage (MonBucket).");
+    const publicUrl = await uploadToCloudflare(folder, filePath, file, file.type || "image/jpeg");
+    if (!publicUrl) {
+      throw new Error("Échec du téléversement de l'image sur Cloudflare R2 (MonBucket).");
     }
 
     return {
-      publicUrl: res.publicUrl,
-      storagePath: filePath,
-      bucket: res.bucket
+      publicUrl,
+      storagePath: `${folder}/${filePath}`,
+      bucket: folder
     };
   },
 
   /**
-   * Créer ou mettre à jour un produit dans PostgreSQL
+   * Créer ou mettre à jour un produit dans Firestore
    */
   async createProduct(product: Product): Promise<void> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas initialisé.");
+    if (!isFirebaseConfigured()) {
+      throw new Error(`Firebase n'est pas initialisé. ${firebaseConfigError || ""}`);
     }
 
     let finalImageUrl = product.imageUrl || product.image || "";
 
-    // 1. Si l'image est en base64, l'uploader sur Supabase Storage (MonBucket)
+    // 1. Si l'image est en base64, l'uploader sur Cloudflare R2 (MonBucket)
     if (finalImageUrl.startsWith("data:image")) {
       try {
         const file = await base64ToFile(finalImageUrl, `prod_${product.id}.jpg`);
         const uploadRes = await this.uploadProductImage(file, product.creatorId, product.id);
         finalImageUrl = uploadRes.publicUrl;
       } catch (uploadError) {
-        console.warn("Échec de l'upload de l'image sur Supabase Storage, utilisation du Base64 en fallback:", uploadError);
+        console.warn("Échec de l'upload de l'image sur Cloudflare R2, utilisation du Base64 en fallback:", uploadError);
       }
     }
 
-    // 2. Persister directement dans la table PostgreSQL 'products' via mapper centralisé
+    // 2. Persister directement dans Firestore via mapper centralisé
     const record = productToDb({
       ...product,
       image: finalImageUrl,
       imageUrl: finalImageUrl,
     });
 
-    const { data, error } = await supabase
-      .from("products")
-      .upsert(record)
-      .select()
-      .single();
+    if (!record.created_at) record.created_at = new Date().toISOString();
 
-    if (error) {
+    try {
+      await firestoreUpsert("products", record);
+    } catch (error: any) {
       console.error("[SYNC PRODUCT] FAILED", {
         productId: product.id,
         error: error.message,
@@ -152,8 +136,7 @@ export const productService = {
     console.log("[SYNC PRODUCT] SUCCESS", {
       productId: product.id,
       name: product.name,
-      creatorId: product.creatorId,
-      data
+      creatorId: product.creatorId
     });
   },
 
@@ -161,15 +144,16 @@ export const productService = {
    * Mettre à jour un produit
    */
   async updateProduct(id: string, updates: Partial<Product>): Promise<void> {
-    if (!supabase) return;
+    if (!isFirebaseConfigured()) return;
     const dbUpdates = productToDb(updates);
     delete dbUpdates.id;
 
     if (Object.keys(dbUpdates).length === 0) return;
 
-    const { error } = await supabase.from("products").update(dbUpdates).eq("id", id);
-    if (error) {
-      console.error("Erreur update produit Supabase:", error);
+    try {
+      await firestoreUpdate("products", id, dbUpdates);
+    } catch (error: any) {
+      console.error("Erreur update produit Firestore:", error);
       throw error;
     }
   },
@@ -178,12 +162,8 @@ export const productService = {
    * Supprimer un produit
    */
   async deleteProduct(id: string): Promise<void> {
-    if (!supabase) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) {
-      console.error("Erreur suppression produit Supabase:", error);
-      throw error;
-    }
+    if (!isFirebaseConfigured()) return;
+    await firestoreDelete("products", id);
   },
 
   /**
@@ -193,4 +173,3 @@ export const productService = {
     return this.createProduct(product);
   }
 };
-

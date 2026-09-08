@@ -309,7 +309,7 @@ export function PWAInstallModal({
                         Dans la barre d'adresse de Chrome ou Edge
                       </p>
                       <p className="text-zinc-500 dark:text-zinc-400 text-[11px]">
-                        Cliquez sur l'icône d'installation <strong>(petit écran avec flèche ⤓)</strong> située à droite de la barre d'adresse.
+                        Cliquez sur l'icône d'installation <strong>(petit écran avec flèche )</strong> située à droite de la barre d'adresse.
                       </p>
                     </div>
                   </div>
@@ -333,7 +333,7 @@ export function PWAInstallModal({
             {/* Note & Close */}
             <div className="flex items-center justify-between pt-1">
               <span className="text-[11px] text-zinc-400">
-                {isStandalone ? "🟢 Application déjà installée en mode autonome" : "💡 L'application fonctionne aussi directement dans le navigateur"}
+                {isStandalone ? " Application déjà installée en mode autonome" : " L'application fonctionne aussi directement dans le navigateur"}
               </span>
               <button
                 onClick={onClose}

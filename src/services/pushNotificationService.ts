@@ -22,7 +22,7 @@ class PushNotificationService {
       if (permission === "granted") {
         this.playNotificationSound("payment");
         this.sendPushNotification({
-          title: "Notifications WakatMarket activées ! 🔔",
+          title: "Notifications WakatMarket activées ! ",
           body: "Vous recevrez désormais des alertes en temps réel pour vos paiements et vos stocks critiques.",
           tag: "welcome-notif"
         });
@@ -155,7 +155,7 @@ class PushNotificationService {
     notifiedPaymentAlerts.add(alertKey);
 
     const formattedAmount = formatCFA(amount);
-    const title = "💰 Paiement reçu !";
+    const title = " Paiement reçu !";
     const body = `Paiement de ${formattedAmount} reçu de la part de "${payerName}" (Réf: ${referenceRef}). Votre solde a été mis à jour.`;
 
     this.sendPushNotification({
@@ -178,7 +178,7 @@ class PushNotificationService {
     if (notifiedStockAlerts.has(alertKey)) return;
     notifiedStockAlerts.add(alertKey);
 
-    const title = "⚠️ Alerte Stock Critique !";
+    const title = " Alerte Stock Critique !";
     const body = `Le produit "${productName}" n'a plus que ${currentStock} unité(s) en stock (seuil d'alerte: ${threshold}). Réapprovisionnez au plus vite !`;
 
     this.sendPushNotification({

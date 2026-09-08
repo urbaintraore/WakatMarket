@@ -486,8 +486,8 @@ export default function ReportsModule({ orders, products, inventory, currentUser
       )}
 
       {/* Dedicated CSV Exports Section for Managers */}
-      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-850/60 border border-zinc-200 dark:border-zinc-800 rounded-xl space-y-3">
-        <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-750 pb-2.5">
+      <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 rounded-xl space-y-3">
+        <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2.5">
           <h4 className="text-xs font-bold text-zinc-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
             <Download className="w-4 h-4 text-emerald-600" />
             Centre d'Exportation CSV & Téléchargements
@@ -545,7 +545,7 @@ export default function ReportsModule({ orders, products, inventory, currentUser
       </div>
 
       {/* Main Stats Table */}
-      <div className="border border-zinc-150 dark:border-zinc-800 rounded-xl overflow-hidden mb-6">
+      <div className="border border-zinc-100 dark:border-zinc-800 rounded-xl overflow-hidden mb-6">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
@@ -576,7 +576,7 @@ export default function ReportsModule({ orders, products, inventory, currentUser
       <div className="flex justify-end pt-2 border-t border-zinc-100 dark:border-zinc-800">
         <button
           onClick={handleExportCSV}
-          className="flex items-center gap-1.5 px-3 py-2 border border-zinc-200 dark:border-zinc-750 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-2 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-semibold rounded-xl transition cursor-pointer"
           id="export-csv-btn"
         >
           <Download className="w-3.5 h-3.5" /> Exporter le tableau en CSV

@@ -38,11 +38,8 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Avoid caching Supabase / external API requests
-  if (
-    url.hostname.includes("supabase.co") ||
-    url.pathname.startsWith("/api/")
-  ) {
+  // Avoid caching external API requests
+  if (url.pathname.startsWith("/api/")) {
     return;
   }
 

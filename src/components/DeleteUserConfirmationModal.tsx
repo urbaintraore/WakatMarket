@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { X, AlertTriangle, Trash2, RefreshCw, CheckCircle } from "lucide-react";
 import { userService } from "../services/userService";
-import { supabase } from "../supabase";
+import { firestoreDelete, isFirebaseConfigured } from "../firebase";
 import { UserProfile } from "../types";
 
 interface DeleteUserConfirmationModalProps {
@@ -77,9 +77,9 @@ export default function DeleteUserConfirmationModal({
     try {
       await userService.deleteUser(user.id);
       
-      // Also clean up from Supabase table if directly available
-      if (supabase) {
-        await supabase.from("profiles").delete().eq("id", user.id);
+      // Also clean up from Firestore collection if directly available
+      if (isFirebaseConfigured()) {
+        await firestoreDelete("profiles", user.id);
       }
 
       setSuccess(true);
@@ -156,7 +156,7 @@ export default function DeleteUserConfirmationModal({
                       <div>
                         <h4 className="font-bold text-sm text-amber-800 dark:text-amber-400">Action irréversible</h4>
                         <p className="text-xs text-amber-700 dark:text-amber-500/90 mt-1 leading-relaxed">
-                          La suppression détruira définitivement l'accès de l'utilisateur à l'application et supprimera sa fiche d'identité Supabase. Ses commandes et données de transactions antérieures ne seront plus associées à un utilisateur actif.
+                          La suppression détruira définitivement l'accès de l'utilisateur à l'application et supprimera sa fiche d'identité Firebase. Ses commandes et données de transactions antérieures ne seront plus associées à un utilisateur actif.
                         </p>
                       </div>
                     </div>

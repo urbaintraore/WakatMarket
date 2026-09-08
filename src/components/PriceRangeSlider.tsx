@@ -105,14 +105,14 @@ export const PriceRangeSlider: React.FC<PriceRangeSliderProps> = ({
       </div>
 
       {/* Current Range Display Badges */}
-      <div className="flex items-center justify-between gap-2 bg-zinc-50 dark:bg-zinc-800/60 p-2 rounded-xl border border-zinc-150 dark:border-zinc-800 font-mono text-xs">
+      <div className="flex items-center justify-between gap-2 bg-zinc-50 dark:bg-zinc-800/60 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800 font-mono text-xs">
         <div className="flex flex-col">
           <span className="text-[9px] uppercase font-bold text-zinc-400">Min</span>
           <span className="font-extrabold text-emerald-700 dark:text-emerald-300">
             {formatCFA(localMin)}
           </span>
         </div>
-        <div className="text-zinc-400 font-bold text-xs">➔</div>
+        <div className="text-zinc-400 font-bold text-xs"></div>
         <div className="flex flex-col text-right">
           <span className="text-[9px] uppercase font-bold text-zinc-400">Max</span>
           <span className="font-extrabold text-emerald-700 dark:text-emerald-300">

@@ -164,7 +164,7 @@ export function EditProductStockModal({
         setImage(res.publicUrl);
       }
     } catch (err: any) {
-      console.warn("Upload Supabase échoué, bascule vers Data URL locale:", err);
+      console.warn("Upload Cloud échoué, bascule vers Data URL locale:", err);
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -253,7 +253,7 @@ export function EditProductStockModal({
             
             {/* 1. Informations Générales */}
             <div className="space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
                 <Tag className="w-4 h-4" /> Informations Générales du Produit
               </h4>
 
@@ -267,7 +267,7 @@ export function EditProductStockModal({
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-semibold text-zinc-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-semibold text-zinc-900 dark:text-white"
                   />
                 </div>
 
@@ -279,7 +279,7 @@ export function EditProductStockModal({
                     type="text"
                     value={brand}
                     onChange={(e) => setBrand(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
                   />
                 </div>
 
@@ -300,14 +300,14 @@ export function EditProductStockModal({
                             setCategory(val);
                           }
                         }}
-                        className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                        className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
                       >
                         {PREDEFINED_CATEGORIES.map((cat) => (
                           <option key={cat} value={cat}>
                             {cat}
                           </option>
                         ))}
-                        <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                        <option value="AUTRE"> Autre (saisir manuellement)...</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                         ▼
@@ -322,7 +322,7 @@ export function EditProductStockModal({
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
                         placeholder="Saisir la catégorie..."
-                        className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                        className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
                       />
                       <button
                         type="button"
@@ -347,7 +347,7 @@ export function EditProductStockModal({
                     value={unit}
                     placeholder="Sac, Carton, Bidon, Pièce..."
                     onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
                   />
                 </div>
 
@@ -359,7 +359,7 @@ export function EditProductStockModal({
                     rows={3}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white resize-none"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white resize-none"
                   />
                 </div>
               </div>
@@ -367,7 +367,7 @@ export function EditProductStockModal({
 
             {/* 2. Caractéristiques physiques : Date de péremption, Poids & Volume */}
             <div className="space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
                 <Calendar className="w-4 h-4" /> Caractéristiques physiques : Date de péremption & Spécifications
               </h4>
 
@@ -380,7 +380,7 @@ export function EditProductStockModal({
                     type="date"
                     value={expirationDate}
                     onChange={(e) => setExpirationDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono font-bold"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono font-bold"
                   />
                   {expirationDate && (
                     <span className="text-[10px] text-zinc-500 mt-1 block">
@@ -399,7 +399,7 @@ export function EditProductStockModal({
                     min="0"
                     value={weight}
                     onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono"
                   />
                 </div>
 
@@ -413,7 +413,7 @@ export function EditProductStockModal({
                     min="0"
                     value={volume}
                     onChange={(e) => setVolume(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-mono"
                   />
                 </div>
               </div>
@@ -492,7 +492,7 @@ export function EditProductStockModal({
                         setUploadedImage(e.target.value);
                       }}
                       placeholder="https://images.unsplash.com/photo-..."
-                      className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white"
+                      className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white"
                     />
                     {image && (
                       <img
@@ -508,7 +508,7 @@ export function EditProductStockModal({
 
             {/* 3. Gestion de Stock & Tarifs */}
             <div className="space-y-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
                 <Layers className="w-4 h-4" /> Gestion de Stock & Tarifs
               </h4>
 
@@ -574,7 +574,7 @@ export function EditProductStockModal({
                     min="0"
                     value={prixGros}
                     onChange={(e) => setPrixGros(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                   />
                   <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                     Tarif pour grossistes : {formatCFA(prixGros)}
@@ -590,7 +590,7 @@ export function EditProductStockModal({
                     min="0"
                     value={prixDetail}
                     onChange={(e) => setPrixDetail(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                   />
                   <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                     Tarif au détail : {formatCFA(prixDetail)}
@@ -606,7 +606,7 @@ export function EditProductStockModal({
                     min="1"
                     value={quantiteMinimum}
                     onChange={(e) => setQuantiteMinimum(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                   />
                   <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                     Minimum : {quantiteMinimum} unité(s)
@@ -628,9 +628,9 @@ export function EditProductStockModal({
                 const detailMargin = calculateMargin(prixDetail);
 
                 const getMarginColor = (pct: number) => {
-                  if (pct <= 0) return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-250 dark:border-rose-900/40";
-                  if (pct < 15) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-250 dark:border-amber-900/40";
-                  return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/40";
+                  if (pct <= 0) return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40";
+                  if (pct < 15) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40";
+                  return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40";
                 };
 
                 return (
@@ -638,7 +638,7 @@ export function EditProductStockModal({
                     <div className="flex justify-between items-center flex-wrap gap-2.5">
                       <div>
                         <h5 className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                          📈 Calculateur de Marge Nette & Profit
+                           Calculateur de Marge Nette & Profit
                         </h5>
                         <p className="text-[10px] text-zinc-500 font-medium">Simulez l'impact du coût d'acquisition sur vos prix de vente</p>
                       </div>
@@ -650,7 +650,7 @@ export function EditProductStockModal({
                             min="0"
                             value={costPrice}
                             onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                            className="w-24 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-855 rounded-xl font-mono font-bold text-xs text-zinc-950 dark:text-white"
+                            className="w-24 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-xs text-zinc-950 dark:text-white"
                             placeholder="Coût unitaire"
                           />
                           <span className="absolute right-2 top-1.5 text-[9px] text-zinc-400 font-bold">CFA</span>

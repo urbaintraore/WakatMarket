@@ -7,7 +7,7 @@ import {
   UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, 
   ChatMessage, AIRecommendation, GeoNode, PlatformStats, 
   LightClient, StockMovement, DebtPayment, PriceTier,
-  Connection, Notification, normalizeUserRole, isBonkoungou
+  Connection, Notification, normalizeUserRole, isBonkoungou, isRootAdminEmail
 } from "./types";
 
 // Simulated Geographies in Africa
@@ -50,146 +50,6 @@ export const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = 
 
 // Seed Users
 const INITIAL_USERS: UserProfile[] = [];
-
-// Seed Products
-export const DEFAULT_PRODUCTS: Product[] = [
-  {
-    id: "prod-riz-50kg",
-    name: "Sac de Riz 50kg (Parfumé Super)",
-    category: "Alimentation / Céréales",
-    brand: "Import",
-    unit: "Sac",
-    weight: 50,
-    volume: 0.1,
-    barcode: "12345678901",
-    qrCode: "QR-RIZ-50KG",
-    creatorId: "sys-admin",
-    prixGros: 22500,
-    prixDetail: 24000,
-    quantiteMinimum: 5,
-    image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400",
-    description: "Riz parfumé de première qualité importé, sac de 50kg."
-  },
-  {
-    id: "prod-huile-5l",
-    name: "Carton Huile Dinor 5L (4 bidons)",
-    category: "Alimentation / Huiles",
-    brand: "Dinor",
-    unit: "Carton",
-    weight: 20,
-    volume: 0.05,
-    barcode: "12345678902",
-    qrCode: "QR-HUILE-5L",
-    creatorId: "sys-admin",
-    prixGros: 16000,
-    prixDetail: 17500,
-    quantiteMinimum: 2,
-    image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400",
-    description: "Huile végétale raffinée Dinor, 4 bidons de 5L par carton."
-  },
-  {
-    id: "prod-sucre-50kg",
-    name: "Sac de Sucre SN-SOSUCO 50kg",
-    category: "Alimentation / Sucre",
-    brand: "SN-SOSUCO",
-    unit: "Sac",
-    weight: 50,
-    volume: 0.1,
-    barcode: "12345678903",
-    qrCode: "QR-SUCRE-50KG",
-    creatorId: "sys-admin",
-    prixGros: 31000,
-    prixDetail: 33000,
-    quantiteMinimum: 2,
-    image: "https://images.unsplash.com/photo-1622484210800-885107718982?w=400",
-    description: "Sucre blanc granulé d'origine local SN-SOSUCO, sac 50kg."
-  },
-  {
-    id: "prod-farine-25kg",
-    name: "Farine de Blé Grands Moulins 25kg",
-    category: "Alimentation / Farine",
-    brand: "Grands Moulins",
-    unit: "Sac",
-    weight: 25,
-    volume: 0.06,
-    barcode: "12345678904",
-    qrCode: "QR-FARINE-25KG",
-    creatorId: "sys-admin",
-    prixGros: 13500,
-    prixDetail: 14500,
-    quantiteMinimum: 3,
-    image: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400",
-    description: "Farine boulangère supérieure Grands Moulins du Faso."
-  },
-  {
-    id: "prod-lait-1kg",
-    name: "Carton Lait Bonnet Rouge 1kg (12 boîtes)",
-    category: "Alimentation / Lait",
-    brand: "Bonnet Rouge",
-    unit: "Carton",
-    weight: 12,
-    volume: 0.04,
-    barcode: "12345678905",
-    qrCode: "QR-LAIT-1KG",
-    creatorId: "sys-admin",
-    prixGros: 28000,
-    prixDetail: 30000,
-    quantiteMinimum: 1,
-    image: "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400",
-    description: "Lait en poudre entier Bonnet Rouge, carton de 12 boîtes de 1kg."
-  },
-  {
-    id: "prod-pates-500g",
-    name: "Carton Pâtes Alimentaires Ramo 500g (24 sachets)",
-    category: "Alimentation / Pâtes",
-    brand: "Ramo",
-    unit: "Carton",
-    weight: 12,
-    volume: 0.04,
-    barcode: "12345678906",
-    qrCode: "QR-PATES-500G",
-    creatorId: "sys-admin",
-    prixGros: 7500,
-    prixDetail: 8500,
-    quantiteMinimum: 5,
-    image: "https://images.unsplash.com/photo-1621996346565-e3d5d6281352?w=400",
-    description: "Pâtes spaghetti Ramo 500g, 24 sachets par carton."
-  },
-  {
-    id: "prod-ciment-50kg",
-    name: "Ciment CIMAHO 50kg (CPJ 42.5)",
-    category: "Matériaux / BTP",
-    brand: "CIMAHO",
-    unit: "Sac",
-    weight: 50,
-    volume: 0.08,
-    barcode: "12345678907",
-    qrCode: "QR-CIMENT-50KG",
-    creatorId: "sys-admin",
-    prixGros: 4600,
-    prixDetail: 5000,
-    quantiteMinimum: 20,
-    image: "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?w=400",
-    description: "Ciment gris haute résistance CIMAHO 50kg."
-  },
-  {
-    id: "prod-savon-bf",
-    name: "Carton Savon Citron BF 400g (24 morceaux)",
-    category: "Hygiène & Entretien",
-    brand: "BF",
-    unit: "Carton",
-    weight: 10,
-    volume: 0.03,
-    barcode: "12345678908",
-    qrCode: "QR-SAVON-BF",
-    creatorId: "sys-admin",
-    prixGros: 9000,
-    prixDetail: 10000,
-    quantiteMinimum: 3,
-    image: "https://images.unsplash.com/photo-1607006482172-34808528751c?w=400",
-    description: "Savon de ménage au citron BF, carton de 24 morceaux."
-  }
-];
 
 const INITIAL_PRODUCTS: Product[] = [];
 
@@ -325,7 +185,7 @@ class ERPStorage {
       const normEmail = u.email ? u.email.toLowerCase().trim() : "";
       
       let normRole = normalizeUserRole(u.role);
-      if (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin")) {
+      if (isRootAdminEmail(normEmail)) {
         normRole = UserRole.ADMIN;
       } else if (isBonkoungou(u.email, u.companyName, u.name)) {
         normRole = UserRole.SEMI_WHOLESALER;
@@ -374,7 +234,7 @@ class ERPStorage {
               const uid = parsed.uid || parsed.email;
               if (uid) {
                 let roleDetermined = normalizeUserRole(parsed.rôle || parsed.role || UserRole.CLIENT);
-                if (parsed.email === "urbain.traore@yahoo.fr" || parsed.email === "urbain.traoreurb@gmail.com") {
+                if (isRootAdminEmail(parsed.email)) {
                   roleDetermined = UserRole.ADMIN;
                 } else if (isBonkoungou(parsed.email, parsed.companyName || parsed.nomDEntreprise, `${parsed.prénom || ""} ${parsed.nom || ""}`)) {
                   roleDetermined = UserRole.SEMI_WHOLESALER;

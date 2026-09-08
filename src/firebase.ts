@@ -1,0 +1,199 @@
+import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, onAuthStateChanged, type Auth, type User } from "firebase/auth";
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot,
+  serverTimestamp,
+  type Firestore,
+  type WhereFilterOp
+} from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY || "").trim(),
+  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "").trim(),
+  projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID || "").trim(),
+  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "").trim(),
+  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "").trim(),
+  appId: (import.meta.env.VITE_FIREBASE_APP_ID || "").trim()
+};
+
+export let firebaseConfigError: string | null = null;
+
+let firebaseApp: FirebaseApp | null = null;
+
+if (!firebaseConfig.apiKey || !firebaseConfig.projectId || !firebaseConfig.appId) {
+  firebaseConfigError =
+    "Le projet Firebase n'est pas configuré. Renseignez les variables VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID et VITE_FIREBASE_APP_ID.";
+} else {
+  try {
+    firebaseApp = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+  } catch (err: any) {
+    firebaseConfigError = `Erreur d'initialisation Firebase : ${err?.message || err}`;
+    console.error("Firebase initialization failed:", err);
+  }
+}
+
+export function isFirebaseConfigured(): boolean {
+  return !!firebaseApp;
+}
+
+export function getFirebaseApp(): FirebaseApp {
+  if (!firebaseApp) {
+    throw new Error(`Firebase n'est pas configuré. ${firebaseConfigError || ""}`);
+  }
+  return firebaseApp;
+}
+
+export function getFirebaseAuth(): Auth {
+  return getAuth(getFirebaseApp());
+}
+
+export function getFirebaseDb(): Firestore {
+  return getFirestore(getFirebaseApp());
+}
+
+/**
+ * Détecte les erreurs réseau pour basculer en mode hors-ligne
+ */
+export function isNetworkError(err: any): boolean {
+  if (!err) return false;
+  if (typeof err === "string") {
+    const s = err.toLowerCase();
+    return s.includes("failed to fetch") || s.includes("network") || s.includes("abort") || s.includes("load failed") || s.includes("timeout") || s.includes("unavailable");
+  }
+  const rawMsg = [
+    err?.message,
+    err?.code,
+    err?.name,
+    err?.error,
+    err?.statusText,
+    String(err)
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return (
+    err?.name === "TypeError" ||
+    err?.code === "unavailable" ||
+    rawMsg.includes("failed to fetch") ||
+    rawMsg.includes("network") ||
+    rawMsg.includes("typeerror") ||
+    rawMsg.includes("abort") ||
+    rawMsg.includes("load failed") ||
+    rawMsg.includes("timeout") ||
+    rawMsg.includes("connection refused")
+  );
+}
+
+// --- Auth helpers -------------------------------------------------------
+
+export function subscribeAuth(callback: (user: User | null) => void): () => void {
+  if (!firebaseApp) return () => {};
+  return onAuthStateChanged(getFirebaseAuth(), (user) => callback(user));
+}
+
+export async function getAuthUser(): Promise<User | null> {
+  if (!firebaseApp) return null;
+  return getFirebaseAuth().currentUser;
+}
+
+// --- Firestore helpers ---------------------------------------------------
+// Les documents sont écrits avec le même champ `id` et les mêmes noms de champs
+// (snake_case) que l'ancien schéma PostgreSQL, pour conserver les mappers existants.
+
+export function rowFromDoc(docSnap: any): any {
+  if (!docSnap?.exists()) return null;
+  return { id: docSnap.id, ...(docSnap.data() || {}) };
+}
+
+export async function firestoreGetAll(collectionName: string): Promise<any[]> {
+  const db = getFirebaseDb();
+  const snap = await getDocs(collection(db, collectionName));
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+}
+
+export async function firestoreGetById(collectionName: string, id: string): Promise<any | null> {
+  if (!id) return null;
+  const db = getFirebaseDb();
+  const snap = await getDoc(doc(db, collectionName, id));
+  return rowFromDoc(snap);
+}
+
+export async function firestoreGetWhere(
+  collectionName: string,
+  field: string,
+  op: WhereFilterOp,
+  value: any
+): Promise<any[]> {
+  const db = getFirebaseDb();
+  const q = query(collection(db, collectionName), where(field, op, value));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+}
+
+export async function firestoreGetLimitOrdered(collectionName: string, orderField: string, limitCount: number = 500): Promise<any[]> {
+  const db = getFirebaseDb();
+  if (orderField) {
+    const q = query(collection(db, collectionName), orderBy(orderField, "desc"), limit(limitCount));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  }
+  const snap = await getDocs(collection(db, collectionName));
+  return snap.docs.slice(0, limitCount).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+}
+
+/**
+ * Upsert (merge) d'un document. Nécessite un champ id ou uid.
+ */
+export async function firestoreUpsert(collectionName: string, record: Record<string, any>): Promise<void> {
+  const id = record.id || record.uid;
+  if (!id) {
+    throw new Error(`[Firestore] Impossible d'écrire dans '${collectionName}' sans identifiant (id/uid).`);
+  }
+  const db = getFirebaseDb();
+  await setDoc(doc(db, collectionName, id), record, { merge: true });
+}
+
+export async function firestoreUpdate(collectionName: string, id: string, partial: Record<string, any>): Promise<void> {
+  if (!id) return;
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, collectionName, id), partial);
+}
+
+export async function firestoreDelete(collectionName: string, id: string): Promise<void> {
+  if (!id) return;
+  const db = getFirebaseDb();
+  await deleteDoc(doc(db, collectionName, id));
+}
+
+export function firestoreSubscribe(collectionName: string, callback: (rows: any[]) => void): () => void {
+  const db = getFirebaseDb();
+  return onSnapshot(collection(db, collectionName), (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) })));
+  });
+}
+
+export function firestoreSubscribeWhere(
+  collectionName: string,
+  field: string,
+  op: WhereFilterOp,
+  value: any,
+  callback: (rows: any[]) => void
+): () => void {
+  const db = getFirebaseDb();
+  const q = query(collection(db, collectionName), where(field, op, value));
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...(d.data() || {}) })));
+  });
+}
+
+export { serverTimestamp };

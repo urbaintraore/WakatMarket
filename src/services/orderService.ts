@@ -1,5 +1,12 @@
 import { Order, OrderStatus, Product, UserProfile } from "../types";
-import { supabase, isNetworkError } from "../supabase";
+import {
+  isFirebaseConfigured,
+  isNetworkError,
+  firestoreUpsert,
+  firestoreUpdate,
+  firestoreGetLimitOrdered,
+  firestoreSubscribe
+} from "../firebase";
 import { orderToDb, orderFromDb } from "./dbMappers";
 import { jsPDF } from "jspdf";
 
@@ -14,38 +21,32 @@ export const orderService = {
   generateInvoicePDF(order: Order, products: Product[], users: UserProfile[]): void {
     if (!order) return;
     
-    // Create new PDF doc in A4 portrait format
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: "a4"
     });
 
-    // Color palette - elegant charcoal and warm orange/zinc theme
-    const primaryColor = [24, 24, 27]; // zinc-900 / anthracite
-    const secondaryColor = [234, 88, 12]; // orange-600 (wakat accent)
-    const grayColor = [113, 113, 122]; // zinc-500
-    const lightBgColor = [244, 244, 245]; // zinc-100
+    const primaryColor = [24, 24, 27];
+    const secondaryColor = [234, 88, 12];
+    const grayColor = [113, 113, 122];
+    const lightBgColor = [244, 244, 245];
 
-    // Document styling helper
     const setFont = (style: "normal" | "bold" | "italic", size: number, color: number[]) => {
       doc.setFont("helvetica", style);
       doc.setFontSize(size);
       doc.setTextColor(color[0], color[1], color[2]);
     };
 
-    // Header / Branding
     doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-    doc.rect(0, 0, 210, 15, "F"); // Orange brand bar
+    doc.rect(0, 0, 210, 15, "F");
 
-    // WakatMarket Title / Logo text
     setFont("bold", 22, primaryColor);
     doc.text("WakatMarket ERP", 15, 30);
     
     setFont("normal", 8, grayColor);
     doc.text("Plateforme de commerce et de distribution B2B / B2C", 15, 35);
 
-    // Invoice Meta (right aligned)
     setFont("bold", 14, secondaryColor);
     doc.text("FACTURE", 195, 30, { align: "right" });
     
@@ -62,16 +63,13 @@ export const orderService = {
     }) : new Date().toLocaleDateString("fr-FR");
     doc.text(`Date: ${dateStr}`, 195, 42, { align: "right" });
 
-    // Find profiles for Sender and Receiver
     const sender = users.find(u => u.id === order.senderId);
     const receiver = users.find(u => u.id === order.receiverId);
 
-    // Coordinates for Party details
     const col1 = 15;
     const col2 = 110;
     let y = 55;
 
-    // Party section title background
     doc.setFillColor(lightBgColor[0], lightBgColor[1], lightBgColor[2]);
     doc.rect(15, y, 180, 7, "F");
     
@@ -81,7 +79,6 @@ export const orderService = {
 
     y += 12;
 
-    // Sender details
     setFont("bold", 10, primaryColor);
     const senderName = (order as any).receiverName || receiver?.companyName || receiver?.name || "Vendeur Wakat";
     doc.text(senderName, col1, y);
@@ -103,7 +100,6 @@ export const orderService = {
       doc.text(senderCountryRegion, col1, y + senderOffset);
     }
 
-    // Receiver / Buyer details
     setFont("bold", 10, primaryColor);
     const receiverName = (order as any).senderName || sender?.companyName || sender?.name || "Acheteur Wakat";
     doc.text(receiverName, col2, y);
@@ -125,10 +121,8 @@ export const orderService = {
       doc.text(receiverCountryRegion, col2, y + receiverOffset);
     }
 
-    // Adjust y coordinate for Table
     y = 100;
 
-    // Table Header
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(15, y, 180, 8, "F");
 
@@ -140,7 +134,6 @@ export const orderService = {
 
     y += 8;
 
-    // Table rows
     order.items.forEach((item, index) => {
       if (index % 2 === 1) {
         doc.setFillColor(lightBgColor[0], lightBgColor[1], lightBgColor[2]);
@@ -161,14 +154,12 @@ export const orderService = {
       y += 8;
     });
 
-    // Divider line
     doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.setLineWidth(0.5);
     doc.line(15, y + 2, 195, y + 2);
 
     y += 8;
 
-    // Total section (right aligned)
     setFont("bold", 11, primaryColor);
     doc.text("Total Facture:", 145, y, { align: "right" });
     setFont("bold", 11, secondaryColor);
@@ -188,19 +179,16 @@ export const orderService = {
     doc.text("Reste à payer:", 145, y, { align: "right" });
     doc.text(`${reste.toLocaleString("fr-FR")} FCFA`, 190, y, { align: "right" });
 
-    // Status / Signature Footer
     y = 230;
     
-    // Delivered banner
-    doc.setFillColor(220, 252, 231); // light emerald
+    doc.setFillColor(220, 252, 231);
     doc.rect(15, y, 180, 12, "F");
     
-    setFont("bold", 10, [21, 128, 61]); // dark green
+    setFont("bold", 10, [21, 128, 61]);
     doc.text("STATUT DE LA COMMANDE: LIVRÉE ET RÉCEPTIONNÉE", 20, y + 7.5);
 
     y += 22;
 
-    // Signature Area
     setFont("normal", 8, grayColor);
     doc.text("Signature & Cachet du Fournisseur", 15, y);
     doc.text("Bon pour réception (Client)", 195, y, { align: "right" });
@@ -215,62 +203,45 @@ export const orderService = {
     doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
     doc.text("Merci pour votre confiance. Document généré numériquement via WakatMarket ERP.", 105, 285, { align: "center" });
 
-    // Trigger PDF download
     doc.save(`Facture_Wakat_${order.id.substring(0, 8).toUpperCase()}.pdf`);
   },
   /**
-   * Récupérer toutes les commandes depuis PostgreSQL
+   * Récupérer toutes les commandes depuis Firestore
    */
   async getAllOrders(): Promise<Order[]> {
-    if (!supabase) return [];
+    if (!isFirebaseConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        if (isNetworkError(error)) {
-          console.warn("[orderService] Réseau Supabase indisponible pour getAllOrders (mode hors-ligne).");
-        } else {
-          console.error("Erreur getAllOrders Supabase:", error);
-        }
-        return [];
-      }
-
-      return (data || []).map(mapRowToOrder);
+      const rows = await firestoreGetLimitOrdered("orders", "created_at", 500);
+      return rows.map(mapRowToOrder);
     } catch (err) {
       if (isNetworkError(err)) {
-        console.warn("[orderService] Exception réseau getAllOrders (mode hors-ligne):", (err as any)?.message || err);
+        console.warn("[orderService] Réseau Firestore indisponible pour getAllOrders (mode hors-ligne).");
       } else {
-        console.error("Exception dans getAllOrders:", err);
+        console.error("Erreur getAllOrders Firestore:", err);
       }
       return [];
     }
   },
 
   /**
-   * Créer une commande dans PostgreSQL
+   * Créer une commande dans Firestore
    */
   async createOrder(order: Order): Promise<void> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas initialisé.");
+    if (!isFirebaseConfigured()) {
+      throw new Error("Firebase n'est pas initialisé.");
     }
 
     const orderRecord = orderToDb(order);
+    if (!orderRecord.created_at) orderRecord.created_at = order.createdAt || new Date().toISOString();
 
-    const { error } = await supabase.from("orders").upsert(orderRecord);
-    if (error) {
-      console.error("Erreur createOrder Supabase:", error);
-      throw error;
-    }
+    await firestoreUpsert("orders", orderRecord);
   },
 
   /**
    * Mettre à jour une commande (seul status ou total/items existent en DB)
    */
   async updateOrder(orderId: string, fields: Partial<Order> & { total?: number }): Promise<void> {
-    if (!supabase || !orderId) return;
+    if (!isFirebaseConfigured() || !orderId) return;
 
     const updates: Record<string, any> = {};
 
@@ -284,36 +255,21 @@ export const orderService = {
 
     if (Object.keys(updates).length === 0) return;
 
-    const { error } = await supabase.from("orders").update(updates).eq("id", orderId);
-    if (error) {
-      console.error("Erreur updateOrder Supabase:", error);
-      throw error;
-    }
+    await firestoreUpdate("orders", orderId, updates);
   },
 
   /**
    * S'abonner aux commandes en temps réel
    */
   subscribeToOrders(callback: (orders: Order[]) => void): () => void {
-    if (!supabase) return () => {};
+    if (!isFirebaseConfigured()) return () => {};
 
     this.getAllOrders().then(callback);
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:orders:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          this.getAllOrders().then(callback);
-        }
-      )
-      .subscribe();
+    const unsubscribe = firestoreSubscribe("orders", (rows) => {
+      callback(rows.map(mapRowToOrder));
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   }
 };
-

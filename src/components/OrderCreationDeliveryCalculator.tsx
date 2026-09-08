@@ -40,7 +40,7 @@ export const OrderCreationDeliveryCalculator: React.FC<OrderCreationDeliveryCalc
   }, [selectedSeller, selectedBuyer]);
 
   return (
-    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-150 dark:border-zinc-850 rounded-2xl space-y-3 shadow-xs">
+    <div className="p-4 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 rounded-2xl space-y-3 shadow-xs">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-zinc-950 dark:text-white font-bold text-xs uppercase tracking-wider">
           <Truck className="w-4 h-4 text-emerald-500 animate-pulse" />
@@ -100,7 +100,7 @@ export const OrderCreationDeliveryCalculator: React.FC<OrderCreationDeliveryCalc
 
       {/* Metrics breakdown */}
       <div className="grid grid-cols-3 gap-2 pt-1">
-        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-150 dark:border-zinc-800 text-center space-y-0.5">
+        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800 text-center space-y-0.5">
           <p className="text-[9px] font-bold text-zinc-400 uppercase">Distance</p>
           <div className="text-xs font-bold text-zinc-900 dark:text-white font-mono flex items-center justify-center gap-0.5">
             <span>{shippingInfo.distance}</span>
@@ -108,7 +108,7 @@ export const OrderCreationDeliveryCalculator: React.FC<OrderCreationDeliveryCalc
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-150 dark:border-zinc-800 text-center space-y-0.5">
+        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800 text-center space-y-0.5">
           <p className="text-[9px] font-bold text-zinc-400 uppercase">Temps Estimé</p>
           <div className="text-xs font-bold text-zinc-900 dark:text-white font-mono flex items-center justify-center gap-0.5">
             <Clock className="w-3.5 h-3.5 text-zinc-400 inline" />
@@ -117,7 +117,7 @@ export const OrderCreationDeliveryCalculator: React.FC<OrderCreationDeliveryCalc
           </div>
         </div>
 
-        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-150 dark:border-zinc-800 text-center space-y-0.5">
+        <div className="bg-white dark:bg-zinc-800 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800 text-center space-y-0.5">
           <p className="text-[9px] font-bold text-zinc-400 uppercase">Frais Estimé</p>
           <div className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
             {formatCFA(shippingInfo.fee)}

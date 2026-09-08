@@ -332,7 +332,7 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
             >
               {isDraftPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
             </button>
-            <div className="flex-1 h-1.5 bg-emerald-200 dark:bg-emerald-850 rounded-full overflow-hidden relative">
+            <div className="flex-1 h-1.5 bg-emerald-200 dark:bg-emerald-800 rounded-full overflow-hidden relative">
               <div 
                 className="h-full bg-emerald-500 rounded-full transition-all duration-100" 
                 style={{ width: `${draftProgress}%` }}
@@ -371,7 +371,7 @@ export function ChatInput({ onSendMessage, disabled }: ChatInputProps) {
                   className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-800/60 rounded-xl focus:ring-1 focus:ring-emerald-500 text-zinc-700 dark:text-zinc-200 min-h-[50px] resize-none"
                 />
                 <p className="text-[9px] text-emerald-600/85 dark:text-emerald-400/85 italic mt-1 leading-tight">
-                  💡 Vous pouvez modifier directement la transcription automatique avant d'envoyer votre note vocale.
+                   Vous pouvez modifier directement la transcription automatique avant d'envoyer votre note vocale.
                 </p>
               </div>
             )}

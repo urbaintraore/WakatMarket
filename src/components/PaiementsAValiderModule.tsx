@@ -13,10 +13,10 @@ import {
   X, 
   AlertTriangle 
 } from "lucide-react";
-import { supabase } from "../supabase";
 import { UserProfile, Order } from "../types";
 import { paymentProofService } from "../services/paymentProofService";
 import { billingService } from "../services/billingService";
+import { firestoreGetWhere, firestoreSubscribeWhere, isFirebaseConfigured } from "../firebase";
 
 interface PaiementsAValiderModuleProps {
   currentUser?: UserProfile;
@@ -59,7 +59,7 @@ export function PaiementsAValiderModule({
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!currentId || !supabase) {
+    if (!currentId || !isFirebaseConfigured()) {
       setLoading(false);
       return;
     }
@@ -68,17 +68,12 @@ export function PaiementsAValiderModule({
 
     const fetchSales = async () => {
       try {
-        const { data, error } = await supabase
-          .from("orders")
-          .select("*")
-          .or(`sender_id.eq.${currentId},receiver_id.eq.${currentId}`)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.warn("Supabase fetch orders error:", error);
-          setLoading(false);
-          return;
-        }
+        const [senderRows, receiverRows] = await Promise.all([
+          firestoreGetWhere("orders", "sender_id", "==", currentId),
+          firestoreGetWhere("orders", "receiver_id", "==", currentId)
+        ]);
+        const data = [...senderRows, ...receiverRows];
+        data.sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
 
         const formatted = (data || []).map((row: any) => ({
           id: row.id,
@@ -99,7 +94,7 @@ export function PaiementsAValiderModule({
 
         setSales(formatted);
       } catch (err) {
-        console.error("Error loading sales from Supabase:", err);
+        console.error("Error loading sales from Firestore:", err);
       } finally {
         setLoading(false);
       }
@@ -107,20 +102,20 @@ export function PaiementsAValiderModule({
 
     fetchSales();
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:orders:user:${currentId}:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          fetchSales();
-        }
-      )
-      .subscribe();
+    const unsubs: Array<() => void> = [];
+    try {
+      unsubs.push(firestoreSubscribeWhere("orders", "sender_id", "==", currentId, () => {
+        fetchSales();
+      }));
+      unsubs.push(firestoreSubscribeWhere("orders", "receiver_id", "==", currentId, () => {
+        fetchSales();
+      }));
+    } catch (e) {
+      console.warn("Notice Firestore channel orders:", e);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubs.forEach(u => { try { u(); } catch (e) {} });
     };
   }, [currentId]);
 

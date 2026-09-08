@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import type { User } from "@supabase/supabase-js";
-import { authService, formatSupabaseAuthError } from "../services/authService";
-import { userService, SupabaseUser } from "../services/userService";
-import { UserRole, normalizeUserRole, isBonkoungou } from "../types";
-import { isNetworkError } from "../supabase";
+import type { User } from "firebase/auth";
+import { authService, formatFirebaseAuthError } from "../services/authService";
+import { userService, FirebaseUser } from "../services/userService";
+import { UserRole, normalizeUserRole, isBonkoungou, isRootAdminEmail } from "../types";
+import { isNetworkError } from "../firebase";
 
 export interface AuthUserObject {
   uid: string;
@@ -11,12 +11,14 @@ export interface AuthUserObject {
   email: string;
   displayName?: string;
   emailVerified?: boolean;
+  phoneNumber?: string;
+  photoURL?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  supabaseUser: AuthUserObject | null; // For backward compatibility with existing views
-  dbUser: SupabaseUser | null;
+  firebaseUser: AuthUserObject | null;
+  dbUser: FirebaseUser | null;
   loading: boolean;
   error: string | null;
   confirmationResult: any;
@@ -46,25 +48,25 @@ interface AuthContextType {
   ) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (fields: Partial<SupabaseUser>) => Promise<void>;
+  updateProfile: (fields: Partial<FirebaseUser>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
-  const [dbUser, setDbUser] = useState<SupabaseUser | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [dbUser, setDbUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Synchronize Supabase user and profile on auth state changes
+  // Synchronize Firebase user and profile on auth state changes
   useEffect(() => {
     let isMounted = true;
 
     async function loadUserProfile(user: User | null) {
       if (!user) {
         if (isMounted) {
-          setSupabaseUser(null);
+          setFirebaseUser(null);
           setDbUser(null);
           setLoading(false);
         }
@@ -72,20 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (isMounted) {
-        setSupabaseUser(user);
+        setFirebaseUser(user);
         setLoading(true);
       }
 
       try {
-        let profile = await userService.getUser(user.id);
+        let profile = await userService.getUser(user.uid);
         const email = (user.email || "").toLowerCase().trim();
 
         if (!profile) {
-          // Création automatique du profil dans PostgreSQL si manquant
-          const metaRole = user.user_metadata?.role || user.user_metadata?.rôle || "CLIENT";
-          const metaName = user.user_metadata?.name || user.user_metadata?.nom || email.split("@")[0];
-          let roleToSet = metaRole;
-          if (email === "urbain.traore@yahoo.fr" || email === "urbain.traoreurb@gmail.com" || email.includes("admin")) {
+          // Création automatique du profil dans Firestore si manquant
+          const metaName = user.displayName || email.split("@")[0];
+          let roleToSet = "CLIENT";
+          if (isRootAdminEmail(email)) {
             roleToSet = UserRole.ADMIN;
           } else if (isBonkoungou(email)) {
             roleToSet = UserRole.SEMI_WHOLESALER;
@@ -93,12 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           const normRole = normalizeUserRole(roleToSet);
           profile = {
-            uid: user.id,
-            id: user.id,
+            uid: user.uid,
+            id: user.uid,
             nom: metaName,
-            prénom: user.user_metadata?.prénom || "",
+            prénom: "",
             email: email,
-            téléphone: user.user_metadata?.phone || user.user_metadata?.téléphone || "",
+            téléphone: user.phoneNumber || "",
             rôle: normRole,
             role: normRole,
             dateCréation: new Date().toISOString(),
@@ -114,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (isNetworkError(err)) {
           console.warn("[AuthContext] Synchronisation profil en mode hors-ligne.");
         } else {
-          console.error("Erreur lors de la récupération du profil Supabase:", err);
+          console.error("Erreur lors de la récupération du profil Firestore:", err);
         }
       } finally {
         if (isMounted) {
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { user } = await authService.signInWithEmail(email, password);
       if (user) {
-        let profile = await userService.getUser(user.id);
+        let profile = await userService.getUser(user.uid);
         if (!profile) {
           const normEmail = email.toLowerCase().trim();
           let determinedRole = "CLIENT";
@@ -153,16 +154,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           else if (normEmail.includes("demi-grossiste") || normEmail.includes("demigros") || normEmail.includes("semi")) determinedRole = "SEMI_WHOLESALER";
           else if (normEmail.includes("grossiste") || normEmail.includes("wholesaler")) determinedRole = "WHOLESALER";
           else if (normEmail.includes("fabricant") || normEmail.includes("manufacturer")) determinedRole = "MANUFACTURER";
-          else if (normEmail.includes("admin") || normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com") determinedRole = "ADMIN";
+          else if (isRootAdminEmail(normEmail)) determinedRole = "ADMIN";
 
           const normRole = normalizeUserRole(determinedRole);
           profile = {
-            uid: user.id,
-            id: user.id,
+            uid: user.uid,
+            id: user.uid,
             nom: normEmail.split("@")[0],
             prénom: "",
             email: normEmail,
-            téléphone: "",
+            téléphone: user.phoneNumber || "",
             rôle: normRole,
             role: normRole,
             dateCréation: new Date().toISOString(),
@@ -171,10 +172,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await userService.createUser(profile);
         }
         setDbUser(profile);
-        setSupabaseUser(user);
+        setFirebaseUser(user);
       }
     } catch (err: any) {
-      const msg = formatSupabaseAuthError(err?.message || "Identifiants invalides ou erreur de connexion.");
+      const msg = formatFirebaseAuthError(err?.message || "Identifiants invalides ou erreur de connexion.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -199,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     const normEmail = email.toLowerCase().trim();
-    const finalRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com" || normEmail.includes("admin"))
+    const finalRole = isRootAdminEmail(normEmail)
       ? UserRole.ADMIN
       : (isBonkoungou(normEmail) || normEmail.includes("bonkoungou") || normEmail.includes("bonkougou"))
         ? UserRole.SEMI_WHOLESALER
@@ -215,9 +216,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (user) {
-        const newUser: SupabaseUser = {
-          uid: user.id,
-          id: user.id,
+        const newUser: FirebaseUser = {
+          uid: user.uid,
+          id: user.uid,
           nom: nom.trim(),
           prénom: prénom.trim(),
           email: normEmail,
@@ -237,10 +238,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         await userService.createUser(newUser);
         setDbUser(newUser);
-        setSupabaseUser(user);
+        setFirebaseUser(user);
       }
     } catch (err: any) {
-      const msg = formatSupabaseAuthError(err?.message || "Erreur lors de l'inscription.");
+      const msg = formatFirebaseAuthError(err?.message || "Erreur lors de l'inscription.");
       setError(msg);
       throw new Error(msg);
     } finally {
@@ -249,7 +250,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const requestPhoneOTP = async (_phoneNumber: string, _recaptchaContainerId: string) => {
-    // Supabase Phone OTP endpoint
     setError("La connexion par SMS n'est pas activée sur ce projet.");
   };
 
@@ -273,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authService.logout();
       setDbUser(null);
-      setSupabaseUser(null);
+      setFirebaseUser(null);
     } catch (err: any) {
       setError(err.message || "Erreur de déconnexion.");
       throw err;
@@ -282,8 +282,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateProfile = async (fields: Partial<SupabaseUser>) => {
-    const targetUid = supabaseUser?.id || dbUser?.uid;
+  const updateProfile = async (fields: Partial<FirebaseUser>) => {
+    const targetUid = firebaseUser?.uid || dbUser?.uid;
     if (!targetUid) throw new Error("Aucun utilisateur connecté.");
 
     // Sécurité: Détection et filtrage des tentatives de modification non autorisées de champs sensibles
@@ -325,28 +325,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       await userService.updateUser(targetUid, safeFields);
-      setDbUser((prev) => (prev ? { ...prev, ...safeFields } : ({ uid: targetUid, ...safeFields } as SupabaseUser)));
+      setDbUser((prev) => (prev ? { ...prev, ...safeFields } : ({ uid: targetUid, ...safeFields } as FirebaseUser)));
     } catch (err: any) {
       setError(err.message || "Erreur de mise à jour du profil.");
       throw err;
     }
   };
 
-  const authUserObject: AuthUserObject | null = supabaseUser
+  const authUserObject: AuthUserObject | null = firebaseUser
     ? {
-        uid: supabaseUser.id,
-        id: supabaseUser.id,
-        email: supabaseUser.email || dbUser?.email || "",
-        displayName: dbUser ? `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() : supabaseUser.email,
-        emailVerified: true
+        uid: firebaseUser.uid,
+        id: firebaseUser.uid,
+        email: firebaseUser.email || dbUser?.email || "",
+        displayName: dbUser ? `${dbUser.prénom || ""} ${dbUser.nom || ""}`.trim() : firebaseUser.email,
+        emailVerified: true,
+        phoneNumber: firebaseUser.phoneNumber || dbUser?.téléphone || undefined,
+        photoURL: firebaseUser.photoURL || undefined
       }
     : null;
 
   return (
     <AuthContext.Provider
       value={{
-        user: supabaseUser,
-        supabaseUser: authUserObject,
+        user: firebaseUser,
+        firebaseUser: authUserObject,
         dbUser,
         loading,
         error,

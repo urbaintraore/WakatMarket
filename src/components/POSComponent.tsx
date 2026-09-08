@@ -155,7 +155,7 @@ export function POSComponent({
           </div>
         )}
         
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
           <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 absolute left-3 top-3 text-zinc-400" />
             <input
@@ -246,7 +246,7 @@ export function POSComponent({
             const prixAffiche = getApplicablePrice(item);
             
             return (
-              <div key={item.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs hover:border-emerald-200 dark:hover:border-emerald-900/30 transition-colors">
+              <div key={item.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between shadow-xs hover:border-emerald-200 dark:hover:border-emerald-900/30 transition-colors">
                 <div className="flex gap-3 items-center min-w-0">
                   <div className="w-10 h-10 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex-shrink-0 overflow-hidden">
                     <img loading="lazy" src={prod.image} alt={prod.name} className="w-full h-full object-cover" />
@@ -280,7 +280,7 @@ export function POSComponent({
       </div>
 
       <div className="flex flex-col gap-4">
-        <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl shadow-sm space-y-5 sticky top-4">
+        <div className="p-5 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl shadow-sm space-y-5 sticky top-4">
           <div className="flex items-center justify-between pb-2 border-b border-zinc-100 dark:border-zinc-800">
             <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-widest flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-600" /> Caisse ({typeVente})

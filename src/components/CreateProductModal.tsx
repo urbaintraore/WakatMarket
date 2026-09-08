@@ -89,13 +89,13 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
     }
     setIsUploading(true);
     try {
-      // Direct upload to Supabase Storage (MonBucket)
+      // Upload direct vers Cloudflare R2 (MonBucket)
       const res = await productService.uploadProductImage(file);
       if (res?.publicUrl) {
         setUploadedImage(res.publicUrl);
       }
     } catch (err: any) {
-      console.warn("Upload Supabase échoué, bascule vers Data URL locale:", err);
+      console.warn("Upload R2 échoué, bascule vers Data URL locale:", err);
       const reader = new FileReader();
       reader.onload = (e) => {
         if (e.target?.result) {
@@ -196,7 +196,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in my-auto">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-zinc-150 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60">
+        <div className="flex items-center justify-between p-5 border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-2xl">
               <Package className="w-6 h-6" />
@@ -223,7 +223,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
           
           {/* Section 1: Identité Produit & Visuel */}
           <div className="space-y-4">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
               <Tag className="w-4 h-4" /> 1. Identité du Produit & Illustration
             </h4>
 
@@ -239,7 +239,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="ex: Eau Minérale 1.5L, Riz Parfumé 25kg..."
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium"
                   />
                 </div>
 
@@ -252,7 +252,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     placeholder="Description complète du produit, spécifications, ingrédients..."
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
                   />
                 </div>
 
@@ -274,14 +274,14 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                               setCategory(val);
                             }
                           }}
-                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
                         >
                           {PREDEFINED_CATEGORIES.map((cat) => (
                             <option key={cat} value={cat}>
                               {cat}
                             </option>
                           ))}
-                          <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                          <option value="AUTRE"> Autre (saisir manuellement)...</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                           ▼
@@ -296,7 +296,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                           value={category}
                           onChange={(e) => setCategory(e.target.value)}
                           placeholder="Saisir la catégorie..."
-                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
                         />
                         <button
                           type="button"
@@ -320,7 +320,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                       value={brand}
                       onChange={(e) => setBrand(e.target.value)}
                       placeholder="Marque"
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
+                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
                     />
                   </div>
                 </div>
@@ -335,15 +335,15 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
                     placeholder="ex: Carton de 24 bouteilles, Sac de 50kg..."
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white"
                   />
                 </div>
               </div>
 
-              {/* Upload Image Section (Supabase Storage) */}
+              {/* Upload Image Section (Cloudflare R2) */}
               <div className="space-y-3">
                 <label className="block font-bold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Illustration du Produit (Fichier Supabase / URL)
+                  Illustration du Produit (Fichier R2 / URL)
                 </label>
                 
                 <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-[10px] font-bold">
@@ -353,10 +353,10 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     className={`flex-1 py-1.5 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
                       uploadMode === "file"
                         ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs"
-                        : "text-zinc-500 hover:text-zinc-850"
+                        : "text-zinc-500 hover:text-zinc-800"
                     }`}
                   >
-                    <Upload className="w-3.5 h-3.5" /> Fichier (Supabase)
+                    <Upload className="w-3.5 h-3.5" /> Fichier (R2)
                   </button>
                   <button
                     type="button"
@@ -364,7 +364,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     className={`flex-1 py-1.5 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
                       uploadMode === "url"
                         ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs"
-                        : "text-zinc-500 hover:text-zinc-850"
+                        : "text-zinc-500 hover:text-zinc-800"
                     }`}
                   >
                     <LinkIcon className="w-3.5 h-3.5" /> Lien Web URL
@@ -380,7 +380,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     className={`border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center min-h-[140px] ${
                       isDragging
                         ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600"
-                        : "border-zinc-200 dark:border-zinc-750 hover:border-emerald-400 bg-zinc-50/50 dark:bg-zinc-800/40"
+                        : "border-zinc-200 dark:border-zinc-800 hover:border-emerald-400 bg-zinc-50/50 dark:bg-zinc-800/40"
                     }`}
                   >
                     <input
@@ -393,7 +393,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                     {isUploading ? (
                       <div className="space-y-2 text-center py-2">
                         <div className="animate-spin w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full mx-auto" />
-                        <p className="text-[11px] font-bold text-emerald-600">Stockage de l'image sur Supabase Storage...</p>
+                        <p className="text-[11px] font-bold text-emerald-600">Stockage de l'image sur Cloudflare R2...</p>
                       </div>
                     ) : uploadedImage ? (
                       <div className="space-y-2 w-full flex flex-col items-center">
@@ -413,7 +413,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                         <p className="text-[11px] text-zinc-600 dark:text-zinc-400 font-medium">
                           Glissez-déposez une image ou <span className="text-emerald-600 font-bold underline">parcourez vos fichiers</span>
                         </p>
-                        <p className="text-[9px] text-zinc-400">Stockée directement sur Supabase • PNG, JPG, WEBP</p>
+                        <p className="text-[9px] text-zinc-400">Stockée directement sur Cloudflare R2 • PNG, JPG, WEBP</p>
                       </div>
                     )}
                   </div>
@@ -424,7 +424,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                       placeholder="https://images.unsplash.com/photo-..."
                       value={uploadedImage}
                       onChange={(e) => setUploadedImage(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
+                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl"
                     />
                     {uploadedImage.startsWith("http") && (
                       <div className="flex items-center gap-2 p-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
@@ -440,7 +440,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
           {/* Section 2: Caractéristiques Physiques & Date de Péremption */}
           <div className="space-y-4 pt-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
               <Calendar className="w-4 h-4" /> 2. Caractéristiques Physiques & Date de Péremption
             </h4>
 
@@ -470,7 +470,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   min="0"
                   value={weight}
                   onChange={(e) => setWeight(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono"
                 />
                 <span className="text-[9px] text-zinc-400 mt-1 block">Utile pour le calcul des frais de transport</span>
               </div>
@@ -485,7 +485,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   min="0"
                   value={volume}
                   onChange={(e) => setVolume(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono"
                 />
                 <span className="text-[9px] text-zinc-400 mt-1 block">Volume d'encombrement par unité</span>
               </div>
@@ -494,7 +494,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
 
           {/* Section 3: Gestion de Stock & Tarifications */}
           <div className="space-y-4 pt-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-150 dark:border-zinc-800 pb-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 border-b border-zinc-100 dark:border-zinc-800 pb-2">
               <Layers className="w-4 h-4" /> 3. Quantité en Stock & Tarifications
             </h4>
 
@@ -579,7 +579,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   min="0"
                   value={prixGros}
                   onChange={(e) => setPrixGros(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                 />
                 <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                   {formatCFA(prixGros)}
@@ -595,7 +595,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   min="0"
                   value={prixDetail}
                   onChange={(e) => setPrixDetail(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                 />
                 <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                   {formatCFA(prixDetail)}
@@ -611,7 +611,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   min="1"
                   value={quantiteMinimum}
                   onChange={(e) => setQuantiteMinimum(parseInt(e.target.value) || 1)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-zinc-950 dark:text-white"
                 />
                 <span className="text-[9px] text-zinc-500 mt-1 block font-medium">
                   Commandes min : {quantiteMinimum} u
@@ -633,9 +633,9 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
               const detailMargin = calculateMargin(prixDetail);
 
               const getMarginColor = (pct: number) => {
-                if (pct <= 0) return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-250 dark:border-rose-900/40";
-                if (pct < 15) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-250 dark:border-amber-900/40";
-                return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/40";
+                if (pct <= 0) return "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40";
+                if (pct < 15) return "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40";
+                return "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40";
               };
 
               return (
@@ -643,7 +643,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                   <div className="flex justify-between items-center flex-wrap gap-2.5">
                     <div>
                       <h5 className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                        📈 Calculateur de Marge Nette & Profit
+                         Calculateur de Marge Nette & Profit
                       </h5>
                       <p className="text-[10px] text-zinc-500 font-medium">Simulez l'impact du coût d'acquisition sur vos prix de vente</p>
                     </div>
@@ -655,7 +655,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
                           min="0"
                           value={costPrice}
                           onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                          className="w-24 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-850 rounded-xl font-mono font-bold text-xs text-zinc-950 dark:text-white"
+                          className="w-24 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono font-bold text-xs text-zinc-950 dark:text-white"
                           placeholder="Coût unitaire"
                         />
                         <span className="absolute right-2 top-1.5 text-[9px] text-zinc-400 font-bold">CFA</span>
@@ -709,7 +709,7 @@ export const CreateProductModal: React.FC<CreateProductModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 flex justify-end gap-3">
+          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}

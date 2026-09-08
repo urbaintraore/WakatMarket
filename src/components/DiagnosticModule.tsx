@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { supabase, uploadToSupabaseStorage, supabaseConfigError } from "../supabase";
+import { firestoreGetLimitOrdered, isFirebaseConfigured, getAuthUser, firebaseConfigError } from "../firebase";
+import { uploadToCloudflare, cloudflareConfigError, isCloudflareConfigured } from "../cloudflare";
 import { 
   CheckCircle2, 
   XCircle, 
@@ -34,32 +35,32 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
   
   const [results, setResults] = useState<DiagnosticTestResult[]>([
     {
-      id: "postgres_rw",
-      title: "1. Écriture & Relecture PostgreSQL Supabase",
+      id: "firestore_rw",
+      title: "1. Écriture & Relecture Firestore Firebase",
       status: "idle",
-      userMessage: "En attente du test d'écriture et de lecture dans PostgreSQL...",
-      technicalDetail: "Effectue une requête SELECT et UPSERT sur les tables PostgreSQL de Supabase."
+      userMessage: "En attente du test d'écriture et de lecture dans Firestore...",
+      technicalDetail: "Effectue une requête de lecture sur les collections Firestore de Firebase."
     },
     {
-      id: "supabase_auth",
-      title: "2. Statut Supabase Auth & Session",
+      id: "firebase_auth",
+      title: "2. Statut Firebase Auth & Session",
       status: "idle",
-      userMessage: "En attente de la vérification du module Supabase Auth...",
-      technicalDetail: "Vérifie l'état de la session utilisateur et la disponibilité du serveur d'authentification Supabase GoTrue."
+      userMessage: "En attente de la vérification du module Firebase Auth...",
+      technicalDetail: "Vérifie l'état de la session utilisateur et la disponibilité du service d'authentification Firebase."
     },
     {
-      id: "cloud_storage",
-      title: "3. Supabase Storage (MonBucket)",
+      id: "cloud_storage_r2",
+      title: "3. Cloudflare R2 Storage (MonBucket)",
       status: "idle",
       userMessage: "En attente du test de téléversement d'image dans MonBucket...",
-      technicalDetail: "Téléverse une image PNG de test vers le bucket Supabase Storage MonBucket et valide l'URL publique."
+      technicalDetail: "Téléverse une image PNG de test vers le bucket Cloudflare R2 MonBucket et valide l'URL publique."
     },
     {
       id: "config_check",
-      title: "4. Configuration des Clés & Variables Supabase",
+      title: "4. Configuration des Clés & Variables Firebase/Cloudflare",
       status: "idle",
       userMessage: "En attente de la vérification de la configuration...",
-      technicalDetail: "Contrôle la validité des variables VITE_SUPABASE_URL et VITE_SUPABASE_PUBLISHABLE_KEY."
+      technicalDetail: "Contrôle la validité des variables VITE_FIREBASE_* et VITE_CLOUDFLARE_WORKER_URL."
     }
   ]);
 
@@ -74,27 +75,24 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
     setResults(prev => prev.map(r => ({ ...r, status: "running", userMessage: "Test en cours...", imageUrl: undefined })));
 
     // -------------------------------------------------------------
-    // TEST 1 : PostgreSQL
+    // TEST 1 : Firestore
     // -------------------------------------------------------------
     try {
-      updateTestState("postgres_rw", { status: "running", userMessage: "Interrogation de la base PostgreSQL Supabase..." });
+      updateTestState("firestore_rw", { status: "running", userMessage: "Interrogation de la base Firestore Firebase..." });
       
-      if (!supabase) {
-        throw new Error(supabaseConfigError || "Supabase n'est pas initialisé.");
+      if (!isFirebaseConfigured()) {
+        throw new Error(firebaseConfigError || "Firebase n'est pas configuré.");
       }
 
-      const { data, error } = await supabase.from("products").select("id").limit(1);
-      if (error) {
-        throw error;
-      }
+      const rows = await firestoreGetLimitOrdered("products", "", 1);
 
-      updateTestState("postgres_rw", {
+      updateTestState("firestore_rw", {
         status: "success",
-        userMessage: "Connexion PostgreSQL établie avec succès !",
-        technicalDetail: `Requête réussie sur la table 'products'. Données disponibles.`
+        userMessage: "Connexion Firestore établie avec succès !",
+        technicalDetail: `Requête réussie sur la collection 'products'. ${rows.length} document(s) disponible(s).`
       });
     } catch (err: any) {
-      updateTestState("postgres_rw", {
+      updateTestState("firestore_rw", {
         status: "error",
         userMessage: "Échec de la connexion à la base de données.",
         technicalDetail: `Erreur : ${err?.message || err}`
@@ -102,57 +100,56 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
     }
 
     // -------------------------------------------------------------
-    // TEST 2 : Supabase Auth
+    // TEST 2 : Firebase Auth
     // -------------------------------------------------------------
     try {
-      updateTestState("supabase_auth", { status: "running", userMessage: "Vérification de la session Auth..." });
+      updateTestState("firebase_auth", { status: "running", userMessage: "Vérification de la session Auth..." });
       
-      if (!supabase) {
-        throw new Error("Client Supabase absent.");
+      if (!isFirebaseConfigured()) {
+        throw new Error("Client Firebase absent.");
       }
 
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
+      const currentUser = await getAuthUser();
 
-      updateTestState("supabase_auth", {
+      updateTestState("firebase_auth", {
         status: "success",
-        userMessage: data.session ? `Session active pour : ${data.session.user.email}` : "Service Supabase Auth opérationnel (Prêt pour connexion)",
-        technicalDetail: `Statut Auth : ${data.session ? "Utilisateur connecté" : "Invité / Non connecté"}`
+        userMessage: currentUser ? `Session active pour : ${currentUser.email || currentUser.uid}` : "Service Firebase Auth opérationnel (Prêt pour connexion)",
+        technicalDetail: `Statut Auth : ${currentUser ? "Utilisateur connecté" : "Invité / Non connecté"}`
       });
     } catch (err: any) {
-      updateTestState("supabase_auth", {
+      updateTestState("firebase_auth", {
         status: "error",
-        userMessage: "Erreur d'accès au service Supabase Auth.",
+        userMessage: "Erreur d'accès au service Firebase Auth.",
         technicalDetail: `Détail : ${err?.message || err}`
       });
     }
 
     // -------------------------------------------------------------
-    // TEST 3 : Supabase Storage (MonBucket)
+    // TEST 3 : Cloudflare R2 Storage (MonBucket)
     // -------------------------------------------------------------
     try {
-      updateTestState("cloud_storage", { status: "running", userMessage: "Téléversement d'une image test vers MonBucket..." });
+      updateTestState("cloud_storage_r2", { status: "running", userMessage: "Téléversement d'une image test vers MonBucket..." });
 
-      if (!supabase) throw new Error("Supabase non initialisé");
+      if (!isCloudflareConfigured()) throw new Error(cloudflareConfigError || "Worker R2 non configuré.");
 
       // 1x1 transparent PNG
       const base64Pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
       const resBlob = await fetch(base64Pixel).then(r => r.blob());
       const testFile = new File([resBlob], "diagnostic_test.png", { type: "image/png" });
 
-      const uploadRes = await uploadToSupabaseStorage("MonBucket", `diagnostic/test_${Date.now()}.png`, testFile, "image/png");
-      if (!uploadRes?.publicUrl) throw new Error("Aucune URL publique retournée par Supabase Storage.");
+      const publicUrl = await uploadToCloudflare("MonBucket", `diagnostic/test_${Date.now()}.png`, testFile, "image/png");
+      if (!publicUrl) throw new Error("Aucune URL publique retournée par Cloudflare R2.");
 
-      updateTestState("cloud_storage", {
+      updateTestState("cloud_storage_r2", {
         status: "success",
-        userMessage: "Téléversement réussi sur Supabase Storage (MonBucket) !",
-        technicalDetail: `URL publique vérifiée : ${uploadRes.publicUrl}`,
-        imageUrl: uploadRes.publicUrl
+        userMessage: "Téléversement réussi sur Cloudflare R2 (MonBucket) !",
+        technicalDetail: `URL publique vérifiée : ${publicUrl}`,
+        imageUrl: publicUrl
       });
     } catch (err: any) {
-      updateTestState("cloud_storage", {
+      updateTestState("cloud_storage_r2", {
         status: "error",
-        userMessage: "Échec du téléversement vers Supabase Storage.",
+        userMessage: "Échec du téléversement vers Cloudflare R2.",
         technicalDetail: `Erreur : ${err?.message || err}`
       });
     }
@@ -161,22 +158,24 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
     // TEST 4 : Configuration des clés
     // -------------------------------------------------------------
     try {
-      const url = (import.meta.env.VITE_SUPABASE_URL || "").trim();
-      const key = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "").trim();
+      const apiKey = (import.meta.env.VITE_FIREBASE_API_KEY || "").trim();
+      const projectId = (import.meta.env.VITE_FIREBASE_PROJECT_ID || "").trim();
+      const appId = (import.meta.env.VITE_FIREBASE_APP_ID || "").trim();
+      const workerUrl = (import.meta.env.VITE_CLOUDFLARE_WORKER_URL || "").trim();
 
-      if (!url || !key) {
-        throw new Error("Variables VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY manquantes.");
+      if (!apiKey || !projectId || !appId || !workerUrl) {
+        throw new Error("Variables VITE_FIREBASE_* ou VITE_CLOUDFLARE_WORKER_URL manquantes.");
       }
 
       updateTestState("config_check", {
         status: "success",
-        userMessage: "Configuration Supabase stricte et conforme.",
-        technicalDetail: `URL : ${url} | Clé publique détectée.`
+        userMessage: "Configuration Firebase/Cloudflare stricte et conforme.",
+        technicalDetail: `Projet : ${projectId} | Worker R2 : ${workerUrl}`
       });
     } catch (err: any) {
       updateTestState("config_check", {
         status: "error",
-        userMessage: "Configuration Supabase incomplète.",
+        userMessage: "Configuration Firebase/Cloudflare incomplète.",
         technicalDetail: `Détail : ${err?.message || err}`
       });
     }
@@ -200,10 +199,10 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
           )}
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <ShieldCheck className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-            Diagnostic d'Infrastructure Supabase
+            Diagnostic d'Infrastructure Firebase/Cloudflare
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Validation en temps réel de Supabase (PostgreSQL, Storage, Auth & Realtime)
+            Validation en temps réel de Firebase (Firestore, Auth) et Cloudflare R2
           </p>
         </div>
 
@@ -220,8 +219,8 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {results.map((result) => {
           let icon = <Database className="w-5 h-5 text-slate-400" />;
-          if (result.id === "supabase_auth") icon = <Key className="w-5 h-5 text-slate-400" />;
-          if (result.id === "cloud_storage") icon = <CloudUpload className="w-5 h-5 text-slate-400" />;
+          if (result.id === "firebase_auth") icon = <Key className="w-5 h-5 text-slate-400" />;
+          if (result.id === "cloud_storage_r2") icon = <CloudUpload className="w-5 h-5 text-slate-400" />;
           if (result.id === "config_check") icon = <ShieldCheck className="w-5 h-5 text-slate-400" />;
 
           return (
@@ -276,7 +275,7 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
               {result.imageUrl && (
                 <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center gap-3">
                   <img src={result.imageUrl} alt="Preuve de test" className="w-10 h-10 object-contain rounded border border-slate-200 bg-white" />
-                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Image de validation Supabase Storage accessible</span>
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Image de validation Cloudflare R2 accessible</span>
                 </div>
               )}
             </div>
@@ -294,9 +293,9 @@ export const DiagnosticModule: React.FC<DiagnosticModuleProps> = ({ onBack }) =>
             )}
             <div className="text-sm">
               {allSuccess ? (
-                <span><strong>Architecture Supabase Opérationnelle :</strong> La base de données PostgreSQL, l'authentification et le stockage Cloud (MonBucket) sont synchronisés et prêts pour la production.</span>
+                <span><strong>Architecture Firebase Opérationnelle :</strong> La base Firestore, l'authentification et le stockage Cloud R2 (MonBucket) sont synchronisés et prêts pour la production.</span>
               ) : (
-                <span><strong>Points d'attention détectés :</strong> Certains tests nécessitent une vérification de vos variables d'environnement Supabase ou des règles de sécurité.</span>
+                <span><strong>Points d'attention détectés :</strong> Certains tests nécessitent une vérification de vos variables d'environnement Firebase ou Cloudflare ou des règles de sécurité Firestore.</span>
               )}
             </div>
           </div>

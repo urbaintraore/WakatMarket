@@ -70,7 +70,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         const senderId = n.senderId || (n as any).expediteurId || (n as any).metadata?.sender_id;
         
         try {
-          const status = await connectionService.getRelationStatusFromSupabase(relId, currentUserId, senderId);
+          const status = await connectionService.getRelationStatusFromFirestore(relId, currentUserId, senderId);
           newStatuses[n.id] = status;
         } catch (err) {
           console.error(`Error fetching status for notification ${n.id}:`, err);

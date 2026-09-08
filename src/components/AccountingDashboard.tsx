@@ -25,7 +25,7 @@ import {
 } from "recharts";
 import { Order } from "../types";
 import { formatCFA } from "../data";
-import { supabase } from "../supabase";
+import { firestoreGetWhere, firestoreSubscribeWhere, firestoreUpsert, isFirebaseConfigured } from "../firebase";
 
 interface AccountingDashboardProps {
   currentUserId: string;
@@ -50,23 +50,15 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
   const [newDesc, setNewDesc] = useState("");
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
 
-  // Écoute et chargement des dépenses depuis Supabase
+  // Écoute et chargement des dépenses depuis Firestore
   useEffect(() => {
     if (!currentUserId) return;
 
     const fetchExpenses = async () => {
-      if (!supabase) return;
+      if (!isFirebaseConfigured()) return;
       try {
-        const { data, error } = await supabase
-          .from("comptabilite_depenses")
-          .select("*")
-          .eq("user_id", currentUserId)
-          .order("date", { ascending: false });
-
-        if (error) {
-          console.warn("Notice: Supabase comptabilite_depenses query error:", error.message);
-          return;
-        }
+        const data = await firestoreGetWhere("comptabilite_depenses", "user_id", "==", currentUserId);
+        data.sort((a: any, b: any) => String(b.date || "").localeCompare(String(a.date || "")));
 
         if (data) {
           const list: Expense[] = data.map((d: any) => ({
@@ -85,30 +77,17 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
 
     fetchExpenses();
 
-    // Supabase Realtime Subscription
+    // Firestore onSnapshot Subscription
     let channel: any = null;
-    if (supabase) {
-      const uniqueId = Math.random().toString(36).substring(7);
-      channel = supabase
-        .channel(`comptabilite_${currentUserId}_${uniqueId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "comptabilite_depenses",
-            filter: `user_id=eq.${currentUserId}`
-          },
-          () => {
-            fetchExpenses();
-          }
-        )
-        .subscribe();
+    if (isFirebaseConfigured()) {
+      channel = firestoreSubscribeWhere("comptabilite_depenses", "user_id", "==", currentUserId, () => {
+        fetchExpenses();
+      });
     }
 
     return () => {
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
+      if (channel) {
+        channel();
       }
     };
   }, [currentUserId]);
@@ -133,9 +112,9 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
     setNewDesc("");
     setNewDate(new Date().toISOString().slice(0, 10));
 
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        const { error } = await supabase.from("comptabilite_depenses").upsert({
+        await firestoreUpsert("comptabilite_depenses", {
           id: newExp.id,
           user_id: currentUserId,
           categorie: newExp.categorie,
@@ -144,12 +123,8 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
           date: newExp.date,
           created_at: new Date().toISOString()
         });
-
-        if (error) {
-          console.error("Erreur enregistrement dépense Supabase:", error.message);
-        }
       } catch (err) {
-        console.error("Erreur enregistrement dépense Supabase:", err);
+        console.error("Erreur enregistrement dépense Firestore:", err);
       }
     }
   };
@@ -427,7 +402,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
               </thead>
               <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {expenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-850/50">
+                  <tr key={exp.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50">
                     <td className="p-3 text-zinc-600 dark:text-zinc-300 font-mono">{exp.date}</td>
                     <td className="p-3 font-semibold text-zinc-900 dark:text-white">{exp.categorie}</td>
                     <td className="p-3 text-zinc-600 dark:text-zinc-400">{exp.description}</td>
@@ -462,7 +437,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
                 <select 
                   value={newCat} 
                   onChange={(e) => setNewCat(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white"
                 >
                   <option value="Loyer">Loyer</option>
                   <option value="Transport">Transport / Carburant</option>
@@ -482,7 +457,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
                   placeholder="Ex: 50000"
                   value={newAmount}
                   onChange={(e) => setNewAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white font-mono"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white font-mono"
                 />
               </div>
 
@@ -493,7 +468,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
                   placeholder="Ex: Achat de matériel d'emballage"
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white"
                 />
               </div>
 
@@ -504,7 +479,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({ curren
                   required
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white font-mono"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-900 dark:text-white font-mono"
                 />
               </div>
 

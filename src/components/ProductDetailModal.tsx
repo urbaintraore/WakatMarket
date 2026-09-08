@@ -185,7 +185,7 @@ export function ProductDetailModal({
         </div>
 
         {/* View Mode Segmented Control Switcher */}
-        <div className="px-6 pt-4 bg-zinc-50/50 dark:bg-zinc-950/40 border-b border-zinc-150 dark:border-zinc-800 flex items-center justify-between flex-wrap gap-3 shrink-0">
+        <div className="px-6 pt-4 bg-zinc-50/50 dark:bg-zinc-950/40 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between flex-wrap gap-3 shrink-0">
           <div className="flex p-1 bg-zinc-200/80 dark:bg-zinc-800 rounded-xl text-xs font-bold w-full sm:w-auto">
             <button
               onClick={() => setActiveTab("stocks")}
@@ -233,7 +233,7 @@ export function ProductDetailModal({
           {/* Main Info Card (Always Visible) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-zinc-50 dark:bg-zinc-950/60 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800">
             {/* Image Preview */}
-            <div className="flex flex-col items-center justify-center bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-150 dark:border-zinc-800 relative group">
+            <div className="flex flex-col items-center justify-center bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-100 dark:border-zinc-800 relative group">
               <img
                 src={product.image || product.imageUrl || "https://images.unsplash.com/photo-1542838132-92c53300491e?w=300"}
                 alt={product.name}
@@ -301,11 +301,11 @@ export function ProductDetailModal({
             <div className="space-y-6 animate-in fade-in duration-200">
               {/* Tarification Différenciée & Paramètres de Stock */}
               <div className="bg-zinc-50 dark:bg-zinc-950/60 p-5 rounded-2xl border border-zinc-200 dark:border-zinc-800 space-y-4">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-650 dark:text-emerald-400 flex items-center gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 pb-2 border-b border-zinc-200 dark:border-zinc-800">
                   <Info className="w-4 h-4" /> Tarifs Différenciés & Gestion des Alertes de Stock
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
                     <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Prix de Gros B2B</span>
                     <span className="font-mono text-base font-extrabold text-zinc-900 dark:text-white">
                       {formatCFA(inventoryItem?.prixGros || product.prixGros || currentSellingPrice)}
@@ -313,7 +313,7 @@ export function ProductDetailModal({
                     <span className="text-[10px] text-zinc-500 block mt-1">Tarif pour professionnels</span>
                   </div>
 
-                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
                     <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Prix de Détail</span>
                     <span className="font-mono text-base font-extrabold text-zinc-900 dark:text-white">
                       {formatCFA(inventoryItem?.prixDetail || product.prixDetail || currentSellingPrice)}
@@ -321,7 +321,7 @@ export function ProductDetailModal({
                     <span className="text-[10px] text-zinc-500 block mt-1">Tarif grand public</span>
                   </div>
 
-                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
                     <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Quantité Minimum (MOQ)</span>
                     <span className="text-base font-extrabold text-zinc-900 dark:text-white">
                       {inventoryItem?.quantiteMinimum || product.quantiteMinimum || 1} unité(s)
@@ -329,7 +329,7 @@ export function ProductDetailModal({
                     <span className="text-[10px] text-zinc-500 block mt-1">Seuil minimal de commande</span>
                   </div>
 
-                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800">
+                  <div className="bg-white dark:bg-zinc-900 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
                     <span className="text-[10px] text-zinc-400 font-bold block uppercase mb-1">Seuil Alerte Réappro.</span>
                     <span className="text-base font-extrabold text-amber-600 dark:text-amber-400">
                       {thresholdValue} unité(s)
@@ -402,7 +402,7 @@ export function ProductDetailModal({
                       onClick={() => setActiveTab("price_history")}
                       className="px-3 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                     >
-                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Voir l'évolution des prix ➔
+                      <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Voir l'évolution des prix 
                     </button>
                   </div>
                 </div>
@@ -499,7 +499,7 @@ export function ProductDetailModal({
               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-5 shadow-xs space-y-4">
                 
                 {/* Chart Toolbar */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-150 dark:border-zinc-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800">
                   <div>
                     <h4 className="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                       <TrendingUp className="w-4 h-4 text-emerald-600" />
@@ -598,7 +598,7 @@ export function ProductDetailModal({
                             return (
                               <div className="bg-zinc-900 text-white p-3 rounded-xl shadow-xl border border-zinc-800 text-xs space-y-1.5">
                                 <p className="font-bold text-zinc-300 border-b border-zinc-800 pb-1 flex items-center justify-between gap-4">
-                                  <span>📅 {data.fullDate}</span>
+                                  <span> {data.fullDate}</span>
                                   <span className="text-[10px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">
                                     Marge: {data.margePercent}%
                                   </span>
@@ -668,7 +668,7 @@ export function ProductDetailModal({
                 </div>
 
                 {/* Bottom 30d Min/Max Breakdown */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-150 dark:border-zinc-800 text-[11px]">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-[11px]">
                   <div className="bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl">
                     <span className="text-zinc-400 block font-medium">Prix d'Achat Min</span>
                     <span className="font-bold text-amber-700 dark:text-amber-400">{formatCFA(stats.minAchat)}</span>

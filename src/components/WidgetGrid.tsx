@@ -62,7 +62,7 @@ export function WidgetGridHeader({
   };
 
   return (
-    <div className={`space-y-3 pb-3 border-b border-zinc-150 dark:border-zinc-800/80 ${className}`}>
+    <div className={`space-y-3 pb-3 border-b border-zinc-100 dark:border-zinc-800/80 ${className}`}>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         {/* Left Title & Status */}
         <div className="flex items-center gap-2.5">
@@ -116,8 +116,8 @@ export function WidgetGridHeader({
                 className="bg-transparent font-bold text-xs text-zinc-800 dark:text-zinc-200 focus:outline-none cursor-pointer pr-1"
                 aria-label="Trier par date"
               >
-                <option value="desc">Date : Plus récente ➔ Plus ancienne</option>
-                <option value="asc">Date : Plus ancienne ➔ Plus récente</option>
+                <option value="desc">Date : Plus récente  Plus ancienne</option>
+                <option value="asc">Date : Plus ancienne  Plus récente</option>
               </select>
             </div>
           )}
@@ -347,7 +347,7 @@ export function WidgetCard({
       } ${className}`}
     >
       {(title || onClear || isLoading || onToggleFullScreen) && (
-        <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-zinc-150 dark:border-zinc-800/80">
+        <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-zinc-100 dark:border-zinc-800/80">
           <div className="flex items-center gap-2">
             {icon}
             {title && <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100">{title}</h4>}
@@ -600,10 +600,10 @@ export function OrderWidgetCard({
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="mt-4 pt-4 border-t border-zinc-150 dark:border-zinc-800 space-y-4"
+            className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-4"
           >
             {/* Extended Info Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-zinc-50/80 dark:bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-200/60 dark:border-zinc-750">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-zinc-50/80 dark:bg-zinc-800/40 p-3.5 rounded-xl border border-zinc-200/60 dark:border-zinc-800">
               <div className="space-y-1">
                 <p className="font-bold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-orange-500" />
@@ -631,7 +631,7 @@ export function OrderWidgetCard({
                 <Package className="w-3.5 h-3.5 text-emerald-600" />
                 Liste détaillée des produits commandés ({order.items.length})
               </p>
-              <div className="divide-y divide-zinc-150 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900">
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden bg-white dark:bg-zinc-900">
                 {order.items.map((item, idx) => {
                   const prod = products.find(p => p.id === item.productId);
                   return (
@@ -668,7 +668,7 @@ export function OrderWidgetCard({
             </div>
 
             {/* Action controls */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-150 dark:border-zinc-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 {onArchiveOrder && (
                   <button

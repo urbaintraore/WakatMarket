@@ -141,10 +141,10 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
       if (finalDuration > 0) {
         const minutesStr = Math.floor(finalDuration / 60);
         const secondsStr = finalDuration % 60;
-        const durationText = `📞 Appel vocal terminé (${minutesStr}:${secondsStr < 10 ? '0' : ''}${secondsStr})`;
+        const durationText = ` Appel vocal terminé (${minutesStr}:${secondsStr < 10 ? '0' : ''}${secondsStr})`;
         handleSendMessage(MessageType.TEXT, durationText);
       } else {
-        handleSendMessage(MessageType.TEXT, "📞 Appel vocal manqué (sans réponse)");
+        handleSendMessage(MessageType.TEXT, " Appel vocal manqué (sans réponse)");
       }
     }, 1200);
   };
@@ -252,11 +252,11 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         console.log(`[ChatModule] File selected for upload: name=${file.name}, size=${file.size} bytes, type=${file.type}`);
         let url;
         try {
-          console.log(`[ChatModule] Attempting to upload to Supabase Storage...`);
+          console.log(`[ChatModule] Attempting to upload to Cloudflare R2...`);
           url = await chatService.uploadMedia(file, type.toLowerCase() + 's', `${Date.now()}_${file.name}`);
           console.log(`[ChatModule] Upload successful. URL obtained: ${url.substring(0, 50)}...`);
         } catch (e) {
-          console.warn("[ChatModule] Supabase Storage upload failed. Fallback to base64 encoding.", e);
+          console.warn("[ChatModule] Cloudflare R2 upload failed. Fallback to base64 encoding.", e);
           if (file.size > 750000) {
             console.error(`[ChatModule] File size (${file.size} bytes) exceeds limit for base64 fallback (750KB).`);
             alert(`Impossible d'envoyer : le fichier de ${(file.size/1000000).toFixed(2)} Mo est trop volumineux pour le mode hors ligne/limité.`);
@@ -530,7 +530,7 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
                       <button
                         onClick={() => setIsMuted(!isMuted)}
                         className={`p-4 rounded-full transition ${
-                          isMuted ? "bg-zinc-700 text-rose-500" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-750"
+                          isMuted ? "bg-zinc-700 text-rose-500" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-800"
                         }`}
                         title={isMuted ? "Activer le micro" : "Couper le micro"}
                       >
@@ -550,7 +550,7 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
                       <button
                         onClick={() => setIsSpeaker(!isSpeaker)}
                         className={`p-4 rounded-full transition ${
-                          isSpeaker ? "bg-zinc-700 text-emerald-400" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-750"
+                          isSpeaker ? "bg-zinc-700 text-emerald-400" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-800"
                         }`}
                         title={isSpeaker ? "Haut-parleur désactivé" : "Haut-parleur activé"}
                       >

@@ -234,7 +234,7 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
         </div>
 
         {/* Establishment Contact & Metrics Bar */}
-        <div className="p-4 bg-zinc-50 dark:bg-zinc-850 border-b border-zinc-200/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+        <div className="p-4 bg-zinc-50 dark:bg-zinc-800 border-b border-zinc-200/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex flex-wrap items-center gap-4 text-zinc-600 dark:text-zinc-300 font-medium">
             {partner.phone && (
               <a href={`tel:${partner.phone}`} className="flex items-center gap-1.5 hover:text-emerald-600 font-mono font-semibold">
@@ -339,7 +339,7 @@ export const PartnerStockModal: React.FC<PartnerStockModalProps> = ({
                 return (
                   <div 
                     key={item.id}
-                    className="p-4 bg-white dark:bg-zinc-850 border border-zinc-200/90 dark:border-zinc-750 rounded-2xl shadow-xs hover:shadow-md hover:border-emerald-500/50 transition flex flex-col justify-between gap-3 group"
+                    className="p-4 bg-white dark:bg-zinc-800 border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-xs hover:shadow-md hover:border-emerald-500/50 transition flex flex-col justify-between gap-3 group"
                   >
                     <div className="flex gap-3">
                       <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-xl overflow-hidden shrink-0 border border-zinc-200 dark:border-zinc-700 relative">

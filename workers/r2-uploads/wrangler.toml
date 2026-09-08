@@ -1,0 +1,17 @@
+name = "r2-uploads"
+main = "src/index.js"
+compatibility_date = "2026-02-01"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "wakatmarket"
+
+[vars]
+ACCOUNT_ID = "cd44f1e5d743fa022f002ad54615856b"
+BUCKET_NAME = "wakatmarket"
+# Optionnel : base URL d'un bucket R2 public (sinon le worker sert /file/<path>)
+R2_PUBLIC_BASE = "https://pub-bdb977a6970345cfb010a8a70f3e14cc.r2.dev"
+
+# Secrets à définir avec `wrangler secret put` :
+R2_ACCESS_KEY_ID = "6491ca67beafb9fbb2db7aa652e18297"
+R2_SECRET_ACCESS_KEY = "1c40e649b5659184132e4af243f01c0ec4b1b0c4cb2f61808f6976c0ab66b2f9"

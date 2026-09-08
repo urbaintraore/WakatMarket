@@ -258,10 +258,10 @@ export function StockForecastModule({
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
         {[
           { key: "ALL", label: "Tous les Produits" },
-          { key: "CRITICAL", label: "🚨 Rupture Imminente" },
-          { key: "RECOMMENDED", label: "⚠️ Réappro. Recommandé" },
-          { key: "HEALTHY", label: "✅ Stock Serein" },
-          { key: "OVERSTOCK", label: "📦 Surstock" }
+          { key: "CRITICAL", label: " Rupture Imminente" },
+          { key: "RECOMMENDED", label: " Réappro. Recommandé" },
+          { key: "HEALTHY", label: " Stock Serein" },
+          { key: "OVERSTOCK", label: " Surstock" }
         ].map((tab) => (
           <button
             key={tab.key}

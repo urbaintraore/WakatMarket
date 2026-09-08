@@ -248,7 +248,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
       </div>
 
       {/* Segmented Controls & Actions */}
-      <div className="border-b border-zinc-150 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/40 px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/40 px-6 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1.5 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
           <button
             onClick={() => setActiveTab("received")}
@@ -286,21 +286,21 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                 placeholder="Rechercher par nom, commentaire..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-medium"
+                className="w-full pl-8 pr-3 py-1.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-medium"
               />
             </div>
             {/* Rating Filter */}
             <select
               value={selectedRatingFilter}
               onChange={(e) => setSelectedRatingFilter(e.target.value === "all" ? "all" : parseInt(e.target.value))}
-              className="px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-medium"
+              className="px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-medium"
             >
               <option value="all">Toutes les notes</option>
-              <option value="5">⭐⭐⭐⭐⭐ (5)</option>
-              <option value="4">⭐⭐⭐⭐ (4)</option>
-              <option value="3">⭐⭐⭐ (3)</option>
-              <option value="2">⭐⭐ (2)</option>
-              <option value="1">⭐ (1)</option>
+              <option value="5"> (5)</option>
+              <option value="4"> (4)</option>
+              <option value="3"> (3)</option>
+              <option value="2"> (2)</option>
+              <option value="1"> (1)</option>
             </select>
           </div>
         )}
@@ -344,7 +344,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                       return (
                         <div key={stars} className="flex items-center gap-2">
                           <span className="w-10 text-right shrink-0">{stars} étoiles</span>
-                          <div className="flex-1 h-2 bg-zinc-150 dark:bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="flex-1 h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-emerald-500 rounded-full" 
                               style={{ width: `${pct}%` }}
@@ -419,7 +419,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                       </div>
 
                       {/* Date footer */}
-                      <div className="flex justify-between items-center text-[9px] text-zinc-400 border-t border-zinc-100 dark:border-zinc-850 pt-2.5 mt-auto">
+                      <div className="flex justify-between items-center text-[9px] text-zinc-400 border-t border-zinc-100 dark:border-zinc-800 pt-2.5 mt-auto">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3 text-zinc-400" />
                           Le {new Date(review.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
@@ -440,7 +440,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
         {/* TAB 3: WRITE REVIEW FORM */}
         {activeTab === "write" && (
           <form onSubmit={handlePostReview} className="max-w-2xl mx-auto space-y-6 text-xs">
-            <h4 className="text-sm font-bold text-zinc-900 dark:text-white pb-2 border-b border-zinc-150 dark:border-zinc-800">
+            <h4 className="text-sm font-bold text-zinc-900 dark:text-white pb-2 border-b border-zinc-100 dark:border-zinc-800">
               Rédiger un nouvel avis de Partenariat
             </h4>
 
@@ -481,7 +481,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                       <select
                         value={selectedPartnerId}
                         onChange={(e) => setSelectedPartnerId(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-bold cursor-pointer pr-10"
+                        className="w-full px-3 py-2.5 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-bold cursor-pointer pr-10"
                         required
                       >
                         <option value="">-- Choisir un partenaire connecté --</option>
@@ -533,7 +533,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Décrivez brièvement la qualité du service, le respect des délais, la conformité des stocks ou la communication de ce partenaire..."
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium resize-none leading-relaxed"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium resize-none leading-relaxed"
                   />
                   <p className="text-[10px] text-zinc-400 mt-1">
                     Conseil : Donnez un avis constructif et poli pour préserver d'excellentes relations d'affaires.
@@ -541,7 +541,7 @@ export function PartnerReviewsSection({ currentUser, users, connections = [], or
                 </div>
 
                 {/* Submit Action */}
-                <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 flex justify-end gap-3">
+                <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3">
                   <button
                     type="button"
                     onClick={() => setActiveTab("received")}

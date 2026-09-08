@@ -58,7 +58,7 @@ export function AdminUserEditModal({
         exit={{ opacity: 0, scale: 0.95 }}
         className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
       >
-        <div className="p-4 border-b border-zinc-150 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-850">
+        <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-800">
           <div className="flex items-center gap-2">
             <UserCog className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             <div className="text-left">
@@ -77,7 +77,7 @@ export function AdminUserEditModal({
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Editor Form */}
-          <div className="w-full md:w-1/2 p-4 overflow-y-auto border-r border-zinc-150 dark:border-zinc-800 custom-scrollbar">
+          <div className="w-full md:w-1/2 p-4 overflow-y-auto border-r border-zinc-100 dark:border-zinc-800 custom-scrollbar">
             <h4 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider mb-4 flex items-center gap-2">
               <UserCog className="w-4 h-4" /> Modification Profil
             </h4>
@@ -149,7 +149,7 @@ export function AdminUserEditModal({
           </div>
 
           {/* Activity Section */}
-          <div className="w-full md:w-1/2 p-4 bg-zinc-50 dark:bg-zinc-850/50 overflow-y-auto custom-scrollbar space-y-6">
+          <div className="w-full md:w-1/2 p-4 bg-zinc-50 dark:bg-zinc-800/50 overflow-y-auto custom-scrollbar space-y-6">
             <div>
               <h4 className="text-xs font-bold text-zinc-800 dark:text-zinc-200 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <History className="w-4 h-4" /> Historique d'Activité
@@ -180,7 +180,7 @@ export function AdminUserEditModal({
                   <p className="text-xs text-zinc-500 italic">Aucune commande trouvée.</p>
                 ) : (
                   userOrders.slice(0, 5).map(o => (
-                    <div key={o.id} className="bg-white dark:bg-zinc-800 p-3 rounded-lg border border-zinc-150 dark:border-zinc-700 text-xs">
+                    <div key={o.id} className="bg-white dark:bg-zinc-800 p-3 rounded-lg border border-zinc-100 dark:border-zinc-700 text-xs">
                       <div className="flex justify-between items-start mb-1">
                         <span className="font-mono text-[10px] text-zinc-500">{o.id.substring(0,8)}...</span>
                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${

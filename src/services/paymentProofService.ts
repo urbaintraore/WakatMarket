@@ -1,6 +1,7 @@
 import { billingService } from "./billingService";
 import { OrderStatus } from "../types";
-import { supabase, uploadToSupabaseStorage } from "../supabase";
+import { isFirebaseConfigured, firestoreUpsert, firestoreUpdate } from "../firebase";
+import { uploadToCloudflare } from "../cloudflare";
 
 export interface PreuvePaiementParams {
   venteId: string;
@@ -32,9 +33,25 @@ export interface RejetPaiementParams {
   vendeurNom?: string;
 }
 
+async function insertNotification(payload: Record<string, any>): Promise<void> {
+  if (!isFirebaseConfigured()) return;
+  try {
+    await firestoreUpsert("notifications", {
+      id: payload.id,
+      user_id: payload.user_id,
+      title: payload.title,
+      read: false,
+      message: payload.message,
+      created_at: payload.created_at || new Date().toISOString()
+    });
+  } catch (notifErr) {
+    console.warn("Notice notif creation:", notifErr);
+  }
+}
+
 export const paymentProofService = {
   /**
-   * 1. Téléverse la capture d'écran vers Supabase Storage (MonBucket)
+   * 1. Téléverse la capture d'écran vers Cloudflare R2 (MonBucket)
    * et envoie une notification au vendeur
    */
   async uploadPreuvePaiement({
@@ -45,35 +62,30 @@ export const paymentProofService = {
     totalAmount,
     acheteurNom
   }: PreuvePaiementParams): Promise<string> {
-    if (!supabase) {
-      throw new Error("Supabase Storage n'est pas initialisé pour téléverser la preuve de paiement.");
+    if (!isFirebaseConfigured()) {
+      throw new Error("Firebase n'est pas configuré pour téléverser la preuve de paiement.");
     }
 
     const timestamp = Date.now();
     const extension = file instanceof File && file.name ? file.name.split(".").pop() : "jpg";
     const storagePath = `preuves-paiement/${venteId}/${timestamp}.${extension}`;
-    const storageBucket = "MonBucket";
+    const folder = "MonBucket";
 
-    const res = await uploadToSupabaseStorage(storageBucket, storagePath, file, file.type || "image/jpeg");
-    if (!res?.publicUrl) {
-      throw new Error("Échec de la récupération du lien public Supabase pour la preuve de paiement.");
+    const publicUrl = await uploadToCloudflare(folder, storagePath, file, file.type || "image/jpeg");
+    if (!publicUrl) {
+      throw new Error("Échec de la récupération du lien public Cloudflare R2 pour la preuve de paiement.");
     }
-    const downloadUrl = res.publicUrl;
+    const downloadUrl = publicUrl;
 
     // Notifier le vendeur
     if (vendeurId) {
-      try {
-        const clientLabel = acheteurNom || "L'acheteur";
-        await supabase.from("notifications").insert({
-          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-          user_id: vendeurId,
-          title: "Preuve de paiement soumise",
-          read: false,
-          message: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Voir: ${downloadUrl}`
-        });
-      } catch (notifErr) {
-        console.warn("Notice notif creation:", notifErr);
-      }
+      const clientLabel = acheteurNom || "L'acheteur";
+      await insertNotification({
+        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        user_id: vendeurId,
+        title: "Preuve de paiement soumise",
+        message: `${clientLabel} a soumis une capture de paiement pour la commande (Montant : ${totalAmount.toLocaleString("fr-FR")} FCFA). Voir: ${downloadUrl}`
+      });
     }
 
     if (typeof window !== "undefined") {
@@ -97,13 +109,13 @@ export const paymentProofService = {
     lignes,
     typeVente
   }: ValidationPaiementParams): Promise<{ success: boolean; factureUrl?: string }> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas initialisé.");
+    if (!isFirebaseConfigured()) {
+      throw new Error("Firebase n'est pas initialisé.");
     }
 
-    // 1. Mise à jour de la commande dans Supabase PostgreSQL (champ 'status')
+    // 1. Mise à jour de la commande dans Firestore (collection 'orders')
     try {
-      await supabase.from("orders").update({ status: OrderStatus.CONFIRMED }).eq("id", venteId);
+      await firestoreUpdate("orders", venteId, { status: OrderStatus.CONFIRMED, updated_at: new Date().toISOString() });
     } catch (e) {
       console.warn("Notice update order validation:", e);
     }
@@ -136,18 +148,13 @@ export const paymentProofService = {
 
     // 3. Notification pour l'acheteur
     if (acheteurId && acheteurId !== "CLIENT_ANONYME") {
-      try {
-        const sellerLabel = vendeurNom || "Le vendeur";
-        await supabase.from("notifications").insert({
-          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-          user_id: acheteurId,
-          title: "Paiement validé",
-          read: false,
-          message: `Votre paiement de ${totalAmount.toLocaleString("fr-FR")} FCFA a été validé avec succès par ${sellerLabel}. Votre facture officielle est prête.`
-        });
-      } catch (notifErr) {
-        console.warn("Notice notif creation:", notifErr);
-      }
+      const sellerLabel = vendeurNom || "Le vendeur";
+      await insertNotification({
+        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        user_id: acheteurId,
+        title: "Paiement validé",
+        message: `Votre paiement de ${totalAmount.toLocaleString("fr-FR")} FCFA a été validé avec succès par ${sellerLabel}. Votre facture officielle est prête.`
+      });
     }
 
     if (typeof window !== "undefined") {
@@ -167,32 +174,27 @@ export const paymentProofService = {
     commentaire,
     vendeurNom
   }: RejetPaiementParams): Promise<{ success: boolean }> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas initialisé.");
+    if (!isFirebaseConfigured()) {
+      throw new Error("Firebase n'est pas initialisé.");
     }
 
     const cleanComment = commentaire.trim() || "Preuve non conforme ou montant incorrect.";
 
     try {
-      await supabase.from("orders").update({ status: OrderStatus.CANCELLED }).eq("id", venteId);
+      await firestoreUpdate("orders", venteId, { status: OrderStatus.CANCELLED, updated_at: new Date().toISOString() });
     } catch (e) {
       console.warn("Notice update order rejection:", e);
     }
 
     // Notification pour l'acheteur
     if (acheteurId && acheteurId !== "CLIENT_ANONYME") {
-      try {
-        const sellerLabel = vendeurNom || "Le vendeur";
-        await supabase.from("notifications").insert({
-          id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-          user_id: acheteurId,
-          title: "Preuve de paiement rejetée",
-          read: false,
-          message: `${sellerLabel} a rejeté votre preuve de paiement. Motif : "${cleanComment}". Veuillez vérifier votre transaction et soumettre une nouvelle capture.`
-        });
-      } catch (notifErr) {
-        console.warn("Notice notif rejection:", notifErr);
-      }
+      const sellerLabel = vendeurNom || "Le vendeur";
+      await insertNotification({
+        id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        user_id: acheteurId,
+        title: "Preuve de paiement rejetée",
+        message: `${sellerLabel} a rejeté votre preuve de paiement. Motif : "${cleanComment}". Veuillez vérifier votre transaction et soumettre une nouvelle capture.`
+      });
     }
 
     if (typeof window !== "undefined") {
@@ -202,4 +204,3 @@ export const paymentProofService = {
     return { success: true };
   }
 };
-

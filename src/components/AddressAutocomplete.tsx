@@ -219,7 +219,7 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           }}
           onKeyDown={handleKeyDown}
           autoComplete="off"
-          className={`w-full pl-9 pr-8 py-2 text-xs border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition ${inputClassName}`}
+          className={`w-full pl-9 pr-8 py-2 text-xs border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition ${inputClassName}`}
         />
         {value && (
           <button

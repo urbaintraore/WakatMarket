@@ -98,7 +98,7 @@ export function PredictiveSearchBar({
           }}
           onFocus={() => setIsOpen(true)}
           placeholder={placeholder}
-          className="w-full pl-9 pr-8 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
+          className="w-full pl-9 pr-8 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition"
         />
         {value && (
           <button
@@ -123,7 +123,7 @@ export function PredictiveSearchBar({
                   <button
                     key={idx}
                     onClick={() => handleSelectCategory(cat)}
-                    className="px-2.5 py-1 bg-zinc-50 dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-700 dark:text-zinc-300 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg text-[10px] font-semibold transition border border-zinc-100 dark:border-zinc-750 flex items-center gap-1"
+                    className="px-2.5 py-1 bg-zinc-50 dark:bg-zinc-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-zinc-700 dark:text-zinc-300 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg text-[10px] font-semibold transition border border-zinc-100 dark:border-zinc-800 flex items-center gap-1"
                   >
                     <Sparkles className="w-2.5 h-2.5 text-emerald-500" />
                     {cat}

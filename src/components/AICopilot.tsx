@@ -147,7 +147,7 @@ export default function AICopilot({ products, inventory, onApplyRecommendation, 
                 }`}
               >
                 <div className="flex gap-3 items-start min-w-0">
-                  <div className="p-2 bg-zinc-850 rounded-lg flex-shrink-0 mt-0.5">
+                  <div className="p-2 bg-zinc-800 rounded-lg flex-shrink-0 mt-0.5">
                     {getIcon(rec.type)}
                   </div>
                   <div className="min-w-0">
@@ -176,9 +176,9 @@ export default function AICopilot({ products, inventory, onApplyRecommendation, 
                   </div>
                 </div>
 
-                <div className="flex-shrink-0 w-full md:w-auto flex md:flex-col items-end gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-850">
+                <div className="flex-shrink-0 w-full md:w-auto flex md:flex-col items-end gap-2 border-t md:border-t-0 pt-3 md:pt-0 border-zinc-800">
                   {isApplied ? (
-                    <span className="text-[10px] text-zinc-400 flex items-center gap-1.5 bg-zinc-850 px-3 py-1.5 rounded-lg w-full md:w-auto justify-center">
+                    <span className="text-[10px] text-zinc-400 flex items-center gap-1.5 bg-zinc-800 px-3 py-1.5 rounded-lg w-full md:w-auto justify-center">
                       <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Action Enregistrée
                     </span>
                   ) : (

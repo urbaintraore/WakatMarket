@@ -1,0 +1,19 @@
+{
+  "name": "wakatmarket-cloud-functions",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Cloud Functions Firebase (SDK v2) — logique métier WakatMarket (validation stock, comptabilité, paiements, partenariats, alertes réapprovisionnement).",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^5.1.0"
+  }
+}

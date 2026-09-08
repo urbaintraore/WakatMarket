@@ -175,7 +175,7 @@ export default function MerchantSalesDashboard({
         {/* Accès rapide Scanner */}
         <div 
           onClick={() => setShowScanner(!showScanner)}
-          className="bg-zinc-900 dark:bg-zinc-950 border border-zinc-850 p-5 rounded-2xl text-white shadow-sm flex flex-col justify-between cursor-pointer hover:bg-zinc-800 transition group"
+          className="bg-zinc-900 dark:bg-zinc-950 border border-zinc-800 p-5 rounded-2xl text-white shadow-sm flex flex-col justify-between cursor-pointer hover:bg-zinc-800 transition group"
         >
           <div>
             <div className="flex items-center justify-between">

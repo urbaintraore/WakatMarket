@@ -391,7 +391,7 @@ export function CaisseModule({
 
       const paymentMethod = amountPaid < totalAmount ? "DEFERRED" : "CASH";
 
-      // 1. Écriture directe Supabase (Offline-First dans /ventes/{venteId}) avec statut "en_attente_synchronisation"
+      // 1. Écriture directe Firebase (Offline-First dans /ventes/{venteId}) avec statut "en_attente_synchronisation"
       const generatedVenteId = await venteService.enregistrerVenteHorsLigneDirecte({
         vendeurId: currentUser.id,
         vendeurNom: currentUser.companyName || currentUser.name,
@@ -453,7 +453,7 @@ export function CaisseModule({
 
   if (successBillUrl) {
     return (
-      <div className="bg-white dark:bg-zinc-900 border border-emerald-150 dark:border-emerald-900/40 p-8 rounded-2xl text-center max-w-md mx-auto shadow-md animate-fade-in" id="caisse-success">
+      <div className="bg-white dark:bg-zinc-900 border border-emerald-100 dark:border-emerald-900/40 p-8 rounded-2xl text-center max-w-md mx-auto shadow-md animate-fade-in" id="caisse-success">
         <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-4">
           <CheckCircle className="w-8 h-8" />
         </div>
@@ -471,7 +471,7 @@ export function CaisseModule({
           </a>
           <button
             onClick={() => setSuccessBillUrl(null)}
-            className="w-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-750 py-2.5 rounded-xl font-bold transition text-xs cursor-pointer"
+            className="w-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 py-2.5 rounded-xl font-bold transition text-xs cursor-pointer"
           >
             Faire une autre vente
           </button>
@@ -496,7 +496,7 @@ export function CaisseModule({
               </div>
               <div className="space-y-1">
                 <h4 className="font-extrabold text-[10px] text-amber-800 dark:text-amber-300 uppercase tracking-widest">
-                  ⚠️ SEUIL DE CRÉDIT CRITIQUE ATTEINT
+                   SEUIL DE CRÉDIT CRITIQUE ATTEINT
                 </h4>
                 <p className="text-xs text-amber-700 dark:text-amber-400 font-bold leading-normal">
                   L'acheteur <span className="underline">{selectedBuyerDetails.name}</span> a consommé{" "}
@@ -520,7 +520,7 @@ export function CaisseModule({
               className="text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 font-extrabold text-sm p-1.5 cursor-pointer leading-none hover:bg-amber-100/40 rounded-lg transition-colors"
               title="Fermer cette notification"
             >
-              ✕
+              
             </button>
           </div>
         )}
@@ -532,7 +532,7 @@ export function CaisseModule({
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800">
           <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 absolute left-3 top-3.5 text-zinc-400" />
             <input
@@ -545,14 +545,14 @@ export function CaisseModule({
           </div>
 
           {/* Pricing tier switcher */}
-          <div className="flex bg-zinc-100 dark:bg-zinc-950 p-1 rounded-xl shrink-0 w-full sm:w-auto border border-zinc-200/50 dark:border-zinc-850">
+          <div className="flex bg-zinc-100 dark:bg-zinc-950 p-1 rounded-xl shrink-0 w-full sm:w-auto border border-zinc-200/50 dark:border-zinc-800">
             <button
               onClick={() => setPricingType("GROS")}
               disabled={isRetailer}
               className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 pricingType === "GROS" 
                   ? "bg-white dark:bg-zinc-800 shadow-sm text-emerald-700 dark:text-emerald-400" 
-                  : "text-zinc-500 hover:text-zinc-850 dark:hover:text-zinc-300"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
               } ${isRetailer ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
             >
               Tarif Gros
@@ -563,7 +563,7 @@ export function CaisseModule({
               className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 pricingType === "DETAIL" 
                   ? "bg-white dark:bg-zinc-800 shadow-sm text-emerald-700 dark:text-emerald-400" 
-                  : "text-zinc-500 hover:text-zinc-850 dark:hover:text-zinc-300"
+                  : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
               } ${isWholesaler ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
             >
               Tarif Détail
@@ -583,7 +583,7 @@ export function CaisseModule({
                 className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer border ${
                   isSelected
                     ? "bg-emerald-600 border-emerald-600 text-white shadow-sm shadow-emerald-600/25"
-                    : "bg-white dark:bg-zinc-900 border-zinc-150 dark:border-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700"
+                    : "bg-white dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800 text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700"
                 }`}
               >
                 {cat}
@@ -611,7 +611,7 @@ export function CaisseModule({
                   className={`p-3 bg-white dark:bg-zinc-900 border rounded-xl flex items-center justify-between shadow-xs transition-all ${
                     isSelected 
                       ? "border-emerald-500 ring-1 ring-emerald-500/20" 
-                      : "border-zinc-150 dark:border-zinc-850 hover:border-emerald-200 dark:hover:border-emerald-900/30"
+                      : "border-zinc-100 dark:border-zinc-800 hover:border-emerald-200 dark:hover:border-emerald-900/30"
                   }`}
                 >
                   <div className="flex gap-3 items-center min-w-0">
@@ -630,7 +630,7 @@ export function CaisseModule({
                   </div>
 
                   {/* Quantity selector */}
-                  <div className="flex items-center gap-1 bg-zinc-50 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-150 dark:border-zinc-800">
+                  <div className="flex items-center gap-1 bg-zinc-50 dark:bg-zinc-950 p-1 rounded-lg border border-zinc-100 dark:border-zinc-800">
                     <button
                       onClick={() => updateQuantity(prod.id, -1)}
                       disabled={!isSelected}
@@ -658,7 +658,7 @@ export function CaisseModule({
 
       {/* 2. Customer & Checkout Summary */}
       <div className="space-y-4">
-        <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-5">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-5">
           <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-widest flex items-center gap-2">
               <ShoppingBag className="w-4 h-4 text-emerald-600" /> Panier Caisse
@@ -771,7 +771,7 @@ export function CaisseModule({
                   <button
                     type="button"
                     onClick={() => setAmountPaid(totalAmount)}
-                    className="px-2 py-2 bg-emerald-150 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 rounded-lg text-[9px] font-bold"
+                    className="px-2 py-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-200 rounded-lg text-[9px] font-bold"
                   >
                     Payé
                   </button>
@@ -786,7 +786,7 @@ export function CaisseModule({
 
             {/* Credit Limit Exceeded Automatic Alert Panel */}
             {customerType !== "ANONYME" && creditLimitExceeded && selectedBuyerDetails && (
-              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/20 border border-rose-150 dark:border-rose-900/30 rounded-xl space-y-2.5 animate-fade-in text-xs">
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-xl space-y-2.5 animate-fade-in text-xs">
                 <div className="flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   <div>

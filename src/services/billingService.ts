@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
-import { supabase, uploadToSupabaseStorage } from "../supabase";
+import { isFirebaseConfigured } from "../firebase";
+import { uploadToCloudflare } from "../cloudflare";
 
 // Définition des types pour la facture
 export interface LigneFacture {
@@ -23,7 +24,7 @@ export interface FactureData {
 }
 
 /**
- * Service pour la génération et l'enregistrement des factures via Supabase
+ * Service pour la génération et l'enregistrement des factures via Firebase/Cloudflare R2
  */
 export const billingService = {
   /**
@@ -37,7 +38,7 @@ export const billingService = {
   },
 
   /**
-   * Génère le PDF de la facture, l'enregistre et l'uploade vers Supabase Storage
+   * Génère le PDF de la facture, l'enregistre et l'uploade vers Cloudflare R2 (MonBucket/factures)
    */
   async genererEtEnregistrerFacture(data: FactureData): Promise<string> {
     try {
@@ -133,23 +134,23 @@ export const billingService = {
         console.warn("Auto save PDF browser notice:", saveError);
       }
 
-      // 4. Upload Supabase Storage (MonBucket)
+      // 4. Upload Cloudflare R2 (MonBucket)
       let urlPDF: string | null = null;
       const storagePath = `factures/${data.vendeurId || "sales"}/${numeroFacture}.pdf`;
-      const storageBucket = "MonBucket";
+      const folder = "MonBucket";
 
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          const res = await uploadToSupabaseStorage(storageBucket, storagePath, pdfBlob, "application/pdf");
-          if (res?.publicUrl) {
-            urlPDF = res.publicUrl;
+          const publicUrl = await uploadToCloudflare(folder, storagePath, pdfBlob, "application/pdf");
+          if (publicUrl) {
+            urlPDF = publicUrl;
           }
         } catch (stErr) {
-          console.warn("Erreur upload facture Supabase Storage:", stErr);
+          console.warn("Erreur upload facture Cloudflare R2:", stErr);
         }
       }
 
-      // 5. PDF téléversé dans Supabase Storage
+      // 5. PDF téléversé dans Cloudflare R2
       return urlPDF || URL.createObjectURL(pdfBlob);
     } catch (error) {
       console.error("Erreur lors de la génération de la facture:", error);

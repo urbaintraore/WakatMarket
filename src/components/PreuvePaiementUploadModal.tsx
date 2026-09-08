@@ -185,7 +185,7 @@ export function PreuvePaiementUploadModal({
         className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-6 text-left"
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-zinc-150 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-850/50">
+        <div className="p-4 sm:p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400">
               <Smartphone className="w-5 h-5" />
@@ -249,7 +249,7 @@ export function PreuvePaiementUploadModal({
               {paymentNumbers.map((num, idx) => (
                 <div
                   key={idx}
-                  className="p-3 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-750 rounded-xl flex items-center justify-between hover:border-amber-400 dark:hover:border-amber-600 transition"
+                  className="p-3 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-800 rounded-xl flex items-center justify-between hover:border-amber-400 dark:hover:border-amber-600 transition"
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-amber-500/10 dark:bg-amber-400/10 flex items-center justify-center font-bold text-xs text-amber-700 dark:text-amber-400">
@@ -273,7 +273,7 @@ export function PreuvePaiementUploadModal({
                   <button
                     type="button"
                     onClick={() => handleCopy(num.numero, idx)}
-                    className="px-2.5 py-1.5 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 border border-zinc-200 dark:border-zinc-650 rounded-lg text-[11px] font-semibold text-zinc-700 dark:text-zinc-200 flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                    className="px-2.5 py-1.5 bg-white dark:bg-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-600 border border-zinc-200 dark:border-zinc-700 rounded-lg text-[11px] font-semibold text-zinc-700 dark:text-zinc-200 flex items-center gap-1 cursor-pointer transition shadow-2xs"
                   >
                     {copiedIndex === idx ? (
                       <>
@@ -309,7 +309,7 @@ export function PreuvePaiementUploadModal({
                     ? "border-amber-500 bg-amber-50/50 dark:bg-amber-950/20"
                     : previewUrl
                       ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/10"
-                      : "border-zinc-200 dark:border-zinc-750 hover:border-zinc-300 dark:hover:border-zinc-650 bg-zinc-50/50 dark:bg-zinc-850/40"
+                      : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/40"
                 }`}
               >
                 <input
@@ -353,11 +353,11 @@ export function PreuvePaiementUploadModal({
             </div>
 
             {/* Actions */}
-            <div className="pt-3 border-t border-zinc-150 dark:border-zinc-800 flex justify-end gap-3">
+            <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 rounded-xl font-bold text-sm transition cursor-pointer"
+                className="px-4 py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl font-bold text-sm transition cursor-pointer"
               >
                 Fermer
               </button>

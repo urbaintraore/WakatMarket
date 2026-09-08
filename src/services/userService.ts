@@ -1,6 +1,19 @@
-import { supabase, isNetworkError } from "../supabase";
-import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou } from "../types";
+import {
+  isFirebaseConfigured,
+  firebaseConfigError,
+  isNetworkError,
+  firestoreUpsert,
+  firestoreGetById,
+  firestoreGetWhere,
+  firestoreGetAll,
+  firestoreGetLimitOrdered,
+  firestoreUpdate,
+  firestoreDelete,
+  firestoreSubscribe
+} from "../firebase";
+import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou, isRootAdminEmail } from "../types";
 import { profileToDb } from "./dbMappers";
+import { db } from "../data";
 
 export interface UserProfileData {
   uid: string;
@@ -31,19 +44,53 @@ export interface UserProfileData {
 }
 
 // Alias for seamless backward compatibility across views
-export type SupabaseUser = UserProfileData;
+export type FirebaseUser = UserProfileData;
+
+function normalizeRow(row: any): UserProfileData | null {
+  if (!row || !row.id) return null;
+  let normRole = normalizeUserRole(row.role);
+  if (isRootAdminEmail(row.email)) {
+    normRole = UserRole.ADMIN;
+  } else if (isBonkoungou(row.email, row.nom, row.prenom)) {
+    normRole = UserRole.SEMI_WHOLESALER;
+  }
+  const fullName = [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
+
+  return {
+    uid: row.id,
+    id: row.id,
+    nom: row.nom || fullName,
+    prénom: row.prenom || "",
+    email: row.email || "",
+    téléphone: row.telephone || "",
+    phone: row.telephone || "",
+    rôle: normRole,
+    role: normRole,
+    dateCréation: row.created_at || new Date().toISOString(),
+    statut: "ACTIF",
+    companyName: row.company_name || fullName,
+    nomDEntreprise: fullName,
+    address: row.address || "",
+    ville: row.ville || "",
+    quartier: row.quartier || "",
+    pays: row.pays || "Burkina Faso",
+    logoUrl: row.avatar || "",
+    balance: 0,
+    creditLimit: Number(row.limite_credit || 0)
+  };
+}
 
 export const userService = {
   /**
-   * Créer ou mettre à jour un profil dans PostgreSQL (table profiles)
+   * Créer ou mettre à jour un profil dans Firestore (collection 'profiles')
    */
   async createUser(user: UserProfileData): Promise<void> {
-    if (!supabase) {
-      throw new Error("Supabase n'est pas initialisé.");
+    if (!isFirebaseConfigured()) {
+      throw new Error(`Firebase n'est pas initialisé. ${firebaseConfigError || ""}`);
     }
 
     let normRole = normalizeUserRole(user.rôle || user.role);
-    if (user.email === "urbain.traore@yahoo.fr" || user.email === "urbain.traoreurb@gmail.com") {
+    if (isRootAdminEmail(user.email)) {
       normRole = UserRole.ADMIN;
     } else if (isBonkoungou(user.email, user.companyName || user.nomDEntreprise, user.nom || user.prénom)) {
       normRole = UserRole.SEMI_WHOLESALER;
@@ -65,119 +112,34 @@ export const userService = {
       creditLimit: user.creditLimit || (user as any).limite_credit || 0,
     });
 
+    // Champs timing Firestore
+    if (!profileRecord.created_at) profileRecord.created_at = user.dateCréation || new Date().toISOString();
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-
-      console.log("[AUTH SESSION]", session ? "EXISTS" : "NONE");
-      console.log("[AUTH USER]", authUser?.id || "NONE");
-      console.log("[PROFILE TARGET ID]", user.uid);
-      console.log("[CURRENT USER ID]", authUser?.id || "NONE");
-
-      if (!session) {
-        console.warn("[AUTH NOTICE] Pas de session Supabase active - Ecriture directe profiles ignorée.");
-        return;
+      await firestoreUpsert("profiles", profileRecord);
+    } catch (err: any) {
+      if (!isNetworkError(err)) {
+        console.warn("[profiles WRITE ERROR] Erreur écriture profiles Firestore:", err);
       }
-
-      const { error } = await supabase.from("profiles").upsert(profileRecord);
-      if (error) {
-        const is403 = error.status === 403 || error.code === "42501" || error.message?.toLowerCase().includes("permission") || error.message?.toLowerCase().includes("row-level security");
-        if (is403) {
-          console.error("[CRITICAL HTTP 403 / RLS ERROR] Erreur d'écriture (upsert) sur la table 'profiles':", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            hasSession: !!session,
-            targetUid: user.uid,
-            authUid: authUser?.id || "NONE",
-            isSelfUpdate: authUser?.id === user.uid,
-            diagnostic: authUser?.id === user.uid
-              ? "L'utilisateur essaie de mettre à jour son propre profil mais est bloqué par la politique RLS. Vérifiez les règles RLS pour autoriser les écritures par le propriétaire."
-              : "L'utilisateur authentifié essaie de créer ou modifier un profil tiers qui ne lui appartient pas, ce qui est bloqué par la sécurité RLS."
-          });
-        } else {
-          console.warn("[profiles WRITE ERROR] Erreur écriture profiles Supabase:", error);
-        }
-      }
-    } catch (err) {
-      console.warn("Notice: Exception lors de l'enregistrement du profil Supabase:", err);
     }
   },
 
   /**
-   * Récupérer un profil utilisateur par son ID depuis PostgreSQL
+   * Récupérer un profil utilisateur par son ID depuis Firestore
    */
   async getUser(uid: string): Promise<UserProfileData | null> {
-    if (!supabase || !uid) return null;
+    if (!isFirebaseConfigured() || !uid) return null;
 
     try {
-      let { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", uid)
-        .maybeSingle();
-
-      if (error && (error.code === "PGRST303" || error.message?.includes("JWT issued at future"))) {
-        console.warn("[JWT SKEW RECOVERY] PGRST303 détecté lors de la lecture du profil. Attente de synchronisation...");
-        await new Promise((res) => setTimeout(res, 1500));
-        const retryResult = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", uid)
-          .maybeSingle();
-        data = retryResult.data;
-        error = retryResult.error;
-      }
-
-      if (error) {
-        if (error.code === "PGRST303" || error.message?.includes("JWT issued at future")) {
-          console.warn("Notice: Token JWT décalé pour le profil Supabase (PGRST303), utilisation du mode hors-ligne.");
-        } else if (isNetworkError(error)) {
-          console.warn("[userService] Réseau Supabase indisponible pour getUser (mode hors-ligne).");
-        } else {
-          console.error("Erreur lecture profil Supabase:", error);
-        }
-        return null;
-      }
-
-      if (!data) return null;
-
-      let normRole = normalizeUserRole(data.role);
-      if (data.email === "urbain.traore@yahoo.fr" || data.email === "urbain.traoreurb@gmail.com") {
-        normRole = UserRole.ADMIN;
-      } else if (isBonkoungou(data.email, data.nom, data.prenom)) {
-        normRole = UserRole.SEMI_WHOLESALER;
-      }
-
-      const fullName = [data.nom, data.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
-
-      const userProfile: UserProfileData = {
-        uid: data.id,
-        id: data.id,
-        nom: data.nom || fullName,
-        prénom: data.prenom || "",
-        email: data.email || "",
-        téléphone: data.telephone || "",
-        phone: data.telephone || "",
-        rôle: normRole,
-        role: normRole,
-        dateCréation: data.created_at || new Date().toISOString(),
-        statut: "ACTIF",
-        companyName: fullName,
-        nomDEntreprise: fullName,
-        address: data.address || "",
-        ville: data.ville || "",
-        quartier: data.quartier || "",
-        pays: data.pays || "Burkina Faso",
-        logoUrl: data.avatar || "",
-        balance: 0,
-        creditLimit: Number(data.limite_credit || 0)
-      };
-
-      return userProfile;
+      const row = await firestoreGetById("profiles", uid);
+      if (!row) return null;
+      return normalizeRow(row);
     } catch (e) {
-      console.error("Exception dans getUser:", e);
+      if (isNetworkError(e)) {
+        console.warn("[userService] Réseau Firestore indisponible pour getUser (mode hors-ligne).");
+      } else {
+        console.error("Exception dans getUser:", e);
+      }
       return null;
     }
   },
@@ -186,38 +148,33 @@ export const userService = {
    * Récupérer un utilisateur par email
    */
   async getUserByEmail(email: string): Promise<UserProfileData | null> {
-    if (!supabase || !email) return null;
+    if (!isFirebaseConfigured() || !email) return null;
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .ilike("email", email.trim())
-        .maybeSingle();
-
-      if (error || !data) return null;
-      return this.getUser(data.id);
+      const rows = await firestoreGetWhere("profiles", "email", "==", email.trim().toLowerCase());
+      if (!rows || rows.length === 0) return null;
+      return normalizeRow(rows[0]);
     } catch (e) {
+      if (isNetworkError(e)) return null;
       console.error("Exception dans getUserByEmail:", e);
       return null;
     }
   },
 
   /**
-   * Récupérer un utilisateur par numéro de téléphone dans la table profiles
+   * Récupérer un utilisateur par numéro de téléphone (filtrage local si besoin)
    */
   async getUserByPhone(phone: string): Promise<UserProfileData | null> {
-    if (!supabase || !phone) return null;
+    if (!isFirebaseConfigured() || !phone) return null;
     const cleanPhone = phone.replace(/\s+/g, "").trim();
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .ilike("telephone", `%${cleanPhone}%`)
-        .maybeSingle();
-
-      if (error || !data) return null;
-      return this.getUser(data.id);
+      const rows = await firestoreGetAll("profiles");
+      const found = rows
+        .map(normalizeRow)
+        .filter((p): p is UserProfileData => !!p)
+        .find((p) => p.téléphone && p.téléphone.replace(/\s+/g, "").includes(cleanPhone));
+      return found || null;
     } catch (e) {
+      if (isNetworkError(e)) return null;
       console.error("Exception dans getUserByPhone:", e);
       return null;
     }
@@ -227,14 +184,13 @@ export const userService = {
    * Mettre à jour des champs d'un profil
    */
   async updateUser(uid: string, fields: Partial<UserProfileData>): Promise<void> {
-    if (!supabase || !uid) return;
+    if (!isFirebaseConfigured() || !uid) return;
 
     const updates: Record<string, any> = {};
 
     if (fields.nom !== undefined) updates.nom = fields.nom;
     if (fields.prénom !== undefined) updates.prenom = fields.prénom;
     
-    // Clean and update telephone, supporting both native types and direct db columns, strictly avoiding obsolete fields
     if (fields.téléphone !== undefined || fields.phone !== undefined || (fields as any).telephone !== undefined) {
       updates.telephone = fields.téléphone || fields.phone || (fields as any).telephone;
     }
@@ -245,60 +201,23 @@ export const userService = {
     if (fields.quartier !== undefined) updates.quartier = fields.quartier;
     if (fields.pays !== undefined) updates.pays = fields.pays;
     
-    // Clean and update avatar, strictly avoiding obsolete image mappings
     if (fields.logoUrl !== undefined || (fields as any).avatar !== undefined) {
       updates.avatar = fields.logoUrl || (fields as any).avatar;
     }
     
-    // Clean and update limite_credit, strictly avoiding obsolete fields like creditLimit/credit_limit
     if (fields.creditLimit !== undefined || (fields as any).limite_credit !== undefined) {
       updates.limite_credit = fields.creditLimit !== undefined ? fields.creditLimit : (fields as any).limite_credit;
     }
 
     if (Object.keys(updates).length === 0) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-
-    console.log("[AUTH SESSION]", session ? "EXISTS" : "NONE");
-    console.log("[AUTH USER]", authUser?.id || "NONE");
-    console.log("[PROFILE TARGET ID]", uid);
-    console.log("[CURRENT USER ID]", authUser?.id || "NONE");
-
-    if (!session) {
-      console.warn("[AUTH NOTICE] Pas de session Supabase active - Mise à jour du profil ignorée.");
-      return;
-    }
-
-    if (authUser && authUser.id !== uid) {
-      console.warn(`[SECURITY AUDIT] Action sur profil distant: L'utilisateur authentifié (${authUser.id}) modifie le profil target (${uid}).`);
-    }
-
-    if (updates.role) {
-      console.warn(`[SECURITY AUDIT] Modification du rôle demandée pour le profil ${uid} : ${updates.role}`);
-    }
-
-    const { error } = await supabase.from("profiles").update(updates).eq("id", uid);
-    if (error) {
-      const is403 = error.status === 403 || error.code === "42501" || error.message?.toLowerCase().includes("permission") || error.message?.toLowerCase().includes("row-level security");
-      if (is403) {
-        console.error("[CRITICAL HTTP 403 / RLS ERROR] Erreur de mise à jour (update) sur la table 'profiles':", {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          hasSession: !!session,
-          targetUid: uid,
-          authUid: authUser?.id || "NONE",
-          isSelfUpdate: authUser?.id === uid,
-          diagnostic: authUser?.id === uid
-            ? "L'utilisateur essaie de mettre à jour son propre profil mais est bloqué par la politique RLS. Vérifiez les règles RLS pour autoriser l'action 'UPDATE' par le propriétaire."
-            : "L'utilisateur authentifié essaie de modifier un profil tiers qui ne lui appartient pas, ce qui est bloqué par la sécurité RLS."
-        });
-      } else {
-        console.error("Erreur de mise à jour du profil Supabase:", error);
+    try {
+      await firestoreUpdate("profiles", uid, updates);
+    } catch (err) {
+      if (!isNetworkError(err)) {
+        console.error("Erreur de mise à jour du profil Firestore:", err);
       }
-      throw error;
+      throw err;
     }
   },
 
@@ -306,69 +225,23 @@ export const userService = {
    * Supprimer un profil
    */
   async deleteUser(uid: string): Promise<void> {
-    if (!supabase || !uid) return;
-    const { error } = await supabase.from("profiles").delete().eq("id", uid);
-    if (error) {
-      console.error("Erreur suppression profil Supabase:", error);
-      throw error;
-    }
+    if (!isFirebaseConfigured() || !uid) return;
+    await firestoreDelete("profiles", uid);
   },
 
   /**
-   * Récupérer tous les utilisateurs enregistrés dans PostgreSQL
+   * Récupérer tous les utilisateurs enregistrés dans Firestore
    */
   async getAllUsers(): Promise<UserProfileData[]> {
-    if (!supabase) return [];
+    if (!isFirebaseConfigured()) return [];
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        if (isNetworkError(error)) {
-          console.warn("[userService] Réseau Supabase indisponible pour getAllUsers (mode hors-ligne actif).");
-        } else {
-          console.error("Erreur récupération profiles Supabase:", error);
-        }
-        return [];
-      }
-
-      return (data || []).map((row: any) => {
-        let normRole = normalizeUserRole(row.role);
-        if (row.email === "urbain.traore@yahoo.fr" || row.email === "urbain.traoreurb@gmail.com") {
-          normRole = UserRole.ADMIN;
-        } else if (isBonkoungou(row.email, row.nom, row.prenom)) {
-          normRole = UserRole.SEMI_WHOLESALER;
-        }
-        const fullName = [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
-
-        return {
-          uid: row.id,
-          id: row.id,
-          nom: row.nom || fullName,
-          prénom: row.prenom || "",
-          email: row.email || "",
-          téléphone: row.telephone || "",
-          phone: row.telephone || "",
-          rôle: normRole,
-          role: normRole,
-          dateCréation: row.created_at,
-          statut: "ACTIF",
-          companyName: fullName,
-          nomDEntreprise: fullName,
-          address: row.address || "",
-          ville: row.ville || "",
-          quartier: row.quartier || "",
-          pays: row.pays || "Burkina Faso",
-          logoUrl: row.avatar || "",
-          balance: 0,
-          creditLimit: Number(row.limite_credit || 0)
-        };
-      });
+      const rows = await firestoreGetLimitOrdered("profiles", "created_at", 500);
+      return rows
+        .map(normalizeRow)
+        .filter((p): p is UserProfileData => !!p);
     } catch (e) {
       if (isNetworkError(e)) {
-        console.warn("[userService] Exception réseau getAllUsers (mode hors-ligne):", (e as any)?.message || e);
+        console.warn("[userService] Réseau Firestore indisponible pour getAllUsers (mode hors-ligne actif).");
       } else {
         console.error("Exception dans getAllUsers:", e);
       }
@@ -377,80 +250,67 @@ export const userService = {
   },
 
   /**
-   * Recherche optimisée des utilisateurs / partenaires au niveau de la base de données.
-   * Utilise d'abord une RPC de recherche optimisée si disponible,
-   * sinon bascule sur une requête Supabase directe filtrée avec indexes.
+   * Recherche locale (cache + Firestore) — Firestore ne gère pas la recherche floue en base.
    */
   async searchUsers(queryText: string, role?: string, limit: number = 20): Promise<UserProfileData[]> {
-    if (!supabase) return [];
     const q = queryText.trim();
     if (!q || q.length < 3) return [];
 
     try {
-      // Étape A: Essayer la fonction de recherche PostgreSQL (RPC) optimisée
-      const { data: rpcData, error: rpcError } = await supabase.rpc("search_profiles_optimized", {
-        search_query: q,
-        filter_role: role || null,
-        max_results: limit
-      });
-
-      let rawRows: any[] = [];
-
-      if (!rpcError && rpcData) {
-        rawRows = rpcData;
-      } else {
-        // En cas d'erreur ou si la RPC n'existe pas, faire un repli robuste sur le filtrage direct en base
-        console.log("[userService] Repli sur requête directe Supabase indexée...");
-        let baseQuery = supabase.from("profiles").select("*");
-        
-        if (role) {
-          baseQuery = baseQuery.eq("role", role);
-        }
-        
-        // Recherche multi-colonne en base de données
-        const ilikeQuery = `%${q}%`;
-        baseQuery = baseQuery.or(`nom.ilike.${ilikeQuery},prenom.ilike.${ilikeQuery},email.ilike.${ilikeQuery},telephone.ilike.${ilikeQuery}`);
-        
-        const { data: tableData, error: tableError } = await baseQuery.limit(limit);
-        if (tableError) {
-          console.error("[userService] Erreur de recherche directe profiles:", tableError);
-          return [];
-        }
-        rawRows = tableData || [];
+      let remote: UserProfileData[] = [];
+      try {
+        remote = await this.getAllUsers();
+      } catch {
+        remote = [];
       }
 
-      return rawRows.map((row: any) => {
-        let normRole = normalizeUserRole(row.role);
-        if (row.email === "urbain.traore@yahoo.fr" || row.email === "urbain.traoreurb@gmail.com") {
-          normRole = UserRole.ADMIN;
-        } else if (isBonkoungou(row.email, row.nom, row.prenom)) {
-          normRole = UserRole.SEMI_WHOLESALER;
-        }
-        const fullName = [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur";
+      const local = db.getUsers().map((u) => ({
+        uid: u.id,
+        id: u.id,
+        nom: u.name?.split(" ")[0] || u.companyName || "Utilisateur",
+        prénom: u.name?.split(" ").slice(1).join(" ") || "",
+        email: u.email || "",
+        téléphone: u.phone || "",
+        phone: u.phone || "",
+        rôle: normalizeUserRole(u.role),
+        role: normalizeUserRole(u.role),
+        dateCréation: undefined,
+        statut: "ACTIF",
+        companyName: u.companyName || u.name || "Entreprise"
+      }) as UserProfileData);
 
-        return {
-          uid: row.id,
-          id: row.id,
-          nom: row.nom || fullName,
-          prénom: row.prenom || "",
-          email: row.email || "",
-          téléphone: row.telephone || "",
-          phone: row.telephone || "",
-          rôle: normRole,
-          role: normRole,
-          dateCréation: row.created_at,
-          statut: "ACTIF",
-          companyName: fullName,
-          nomDEntreprise: fullName,
-          address: row.address || "",
-          ville: row.ville || "",
-          quartier: row.quartier || "",
-          pays: row.pays || "Burkina Faso",
-          logoUrl: row.avatar || "",
-          balance: 0,
-          creditLimit: Number(row.limite_credit || 0)
-        };
+      const map = new Map<string, UserProfileData>();
+      remote.forEach((u) => u.uid && map.set(u.uid, u));
+      local.forEach((u) => u.uid && map.set(u.uid, u));
+
+      const needle = q.toLowerCase();
+      const scored: { user: UserProfileData; score: number }[] = [];
+
+      Array.from(map.values()).forEach((u) => {
+        if (role && u.rôle !== role && u.role !== role) return;
+
+        const fields = [
+          u.nom || "",
+          u.prénom || "",
+          u.companyName || "",
+          u.nomDEntreprise || "",
+          u.email || "",
+          u.téléphone || u.phone || ""
+        ].map((f) => f.toLowerCase());
+
+        let score = -1;
+        fields.forEach((f) => {
+          if (!f) return;
+          if (f === needle) score = Math.max(score, 100);
+          else if (f.startsWith(needle)) score = Math.max(score, 80);
+          else if (f.includes(needle)) score = Math.max(score, 60);
+        });
+
+        if (score > 0) scored.push({ user: u, score });
       });
+
+      scored.sort((a, b) => b.score - a.score || (a.user.email || "").localeCompare(b.user.email || ""));
+      return scored.slice(0, limit).map((s) => s.user);
     } catch (e) {
       console.error("Exception dans searchUsers:", e);
       return [];
@@ -458,29 +318,45 @@ export const userService = {
   },
 
   /**
-   * Abonnement temps réel aux changements de profils
+   * Abonnement temps réel aux changements de profils (Firestore onSnapshot)
    */
   subscribeToUsers(callback: (users: UserProfileData[]) => void): () => void {
-    if (!supabase) return () => {};
+    if (!isFirebaseConfigured()) return () => {};
 
-    // Initial fetch
-    this.getAllUsers().then(callback);
+    const unsubscribe = firestoreSubscribe("profiles", (rows) => {
+      callback(
+        rows
+          .map(normalizeRow)
+          .filter((p): p is UserProfileData => !!p)
+      );
+    });
 
-    const uniqueId = Math.random().toString(36).substring(7);
-    const channel = supabase
-      .channel(`public:profiles:${uniqueId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles" },
-        () => {
-          this.getAllUsers().then(callback);
-        }
-      )
-      .subscribe();
+    // Chargement initial depuis le cache local pour l'UI offline-first
+    try {
+      const local = db.getUsers();
+      if (local && local.length > 0) {
+        callback(
+          local.map((u) => ({
+            uid: u.id,
+            id: u.id,
+            nom: u.name?.split(" ")[0] || u.companyName || "Utilisateur",
+            prénom: u.name?.split(" ").slice(1).join(" ") || "",
+            email: u.email || "",
+            téléphone: u.phone || "",
+            phone: u.phone || "",
+            rôle: normalizeUserRole(u.role),
+            role: normalizeUserRole(u.role),
+            dateCréation: undefined,
+            statut: "ACTIF",
+            companyName: u.companyName || u.name || "Entreprise"
+          })) as UserProfileData[]
+        );
+      }
+    } catch {
+      // ignore cache read
+    }
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return unsubscribe;
   },
 
   /**
@@ -490,4 +366,3 @@ export const userService = {
     return this.subscribeToUsers(callback);
   }
 };
-

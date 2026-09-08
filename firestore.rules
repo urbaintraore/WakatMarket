@@ -1,0 +1,206 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // E-mails administrateurs "racine" (miroir serveur des règles applicatives)
+    function isSpecialAdminEmail() {
+      return isAuthenticated() && (
+        request.auth.token.email == "urbain.traore@yahoo.fr" ||
+        request.auth.token.email == "urbain.traoreurb@gmail.com"
+      );
+    }
+
+    // Flag claims personnalisées posé par les Cloud Functions
+    function hasAdminClaim() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    // Administrateur applicatif : e-mail racine, claim, ou rôle ADMIN dans 'profiles'
+    function isAdmin() {
+      return isAuthenticated() && (
+        hasAdminClaim() ||
+        isSpecialAdminEmail() ||
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == "ADMIN")
+      );
+    }
+
+    function isSameUser(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function belongsToUser(uid) {
+      return isSameUser(uid) || isAdmin();
+    }
+
+    // =========================================================================
+    // PROFILES
+    // =========================================================================
+
+    match /profiles/{uid} {
+      allow read: if isAuthenticated();              // découverte B2B (réseau, recherche)
+      allow create, update: if belongsToUser(uid);   // chacun son profil, admin global
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // PRODUCTS
+    // =========================================================================
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin() ||
+        (request.resource.data.creator_id == request.auth.uid);
+    }
+
+    // =========================================================================
+    // INVENTORY
+    // =========================================================================
+
+    match /inventory/{itemId} {
+      allow read: if isAuthenticated();              // consultation catalogue partenaires
+      allow create, update, delete: if isAdmin() ||
+        (request.resource.data.owner_id == request.auth.uid);
+    }
+
+    // =========================================================================
+    // ORDERS
+    // =========================================================================
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/orders/$(orderId)) &&
+         (get(/databases/$(database)/documents/orders/$(orderId)).data.sender_id == request.auth.uid ||
+          get(/databases/$(database)/documents/orders/$(orderId)).data.receiver_id == request.auth.uid))
+      );
+      allow create: if isAuthenticated() &&
+        (request.resource.data.sender_id == request.auth.uid ||
+         request.resource.data.receiver_id == request.auth.uid ||
+         isAdmin());
+      allow update, delete: if isAdmin() ||
+        (get(/databases/$(database)/documents/orders/$(orderId)).data.sender_id == request.auth.uid ||
+         get(/databases/$(database)/documents/orders/$(orderId)).data.receiver_id == request.auth.uid);
+    }
+
+    // =========================================================================
+    // VENTES
+    // =========================================================================
+
+    match /ventes/{venteId} {
+      allow read, update, delete: if isAuthenticated() && (
+        isAdmin() ||
+        get(/databases/$(database)/documents/ventes/$(venteId)).data.vendeur_id == request.auth.uid ||
+        get(/databases/$(database)/documents/ventes/$(venteId)).data.acheteur_id == request.auth.uid
+      );
+      allow create: if isAuthenticated() &&
+        (request.resource.data.vendeur_id == request.auth.uid ||
+         request.resource.data.acheteur_id == request.auth.uid ||
+         isAdmin());
+    }
+
+    // =========================================================================
+    // RELATIONS (id = uid1_uid2 triés)
+    // =========================================================================
+
+    match /relations/{relationId} {
+      function isParticipant(relId) {
+        return exists(/databases/$(database)/documents/relations/$(relId)) && (
+          get(/databases/$(database)/documents/relations/$(relId)).data.grossiste_id == request.auth.uid ||
+          get(/databases/$(database)/documents/relations/$(relId)).data.client_id == request.auth.uid ||
+          get(/databases/$(database)/documents/relations/$(relId)).data.participants.hasAny([request.auth.uid])
+        );
+      }
+      allow read: if isAuthenticated() && (isParticipant(relationId) || isAdmin());
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        request.resource.data.grossiste_id == request.auth.uid ||
+        request.resource.data.client_id == request.auth.uid
+      );
+      allow update, delete: if isAdmin() || isParticipant(relationId);
+    }
+
+    // =========================================================================
+    // NOTIFICATIONS
+    // =========================================================================
+
+    match /notifications/{notifId} {
+      allow read, update, delete: if isAuthenticated() && (
+        get(/databases/$(database)/documents/notifications/$(notifId)).data.user_id == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() &&
+        (request.resource.data.user_id == request.auth.uid || isAdmin());
+    }
+
+    // =========================================================================
+    // CHAT (conversations + messages)
+    // =========================================================================
+
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.participants.hasAny([request.auth.uid])
+      );
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() &&
+        resource.data.participants.hasAny([request.auth.uid]);
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.sender_id == request.auth.uid ||
+        resource.data.receiver_id == request.auth.uid
+      );
+      allow create: if isAuthenticated() &&
+        (request.resource.data.sender_id == request.auth.uid);
+      allow update, delete: if isAdmin() ||
+        resource.data.sender_id == request.auth.uid;
+    }
+
+    // =========================================================================
+    // FACTURES (écrites uniquement par les Cloud Functions / l'admin)
+    // =========================================================================
+
+    match /factures/{factureId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.vendeurId == request.auth.uid ||
+        resource.data.acheteurId == request.auth.uid
+      );
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // COMPTABILITÉ (résumés mensuels + dépenses)
+    // =========================================================================
+
+    match /comptabilite/{uid}/{document=**} {
+      allow read, write: if belongsToUser(uid);
+    }
+
+    match /comptabilite_depenses/{depenseId} {
+      allow read, create, update, delete: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.user_id == request.auth.uid
+      );
+    }
+
+    // =========================================================================
+    // DÉFAUT : tout refuse
+    // =========================================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

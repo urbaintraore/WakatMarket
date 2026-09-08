@@ -36,7 +36,7 @@ export function getCategoryStyle(categoryName: string) {
   const norm = (categoryName || "Divers").toLowerCase().trim();
   if (norm.includes("aliment") || norm.includes("nourriture") || norm.includes("céréale") || norm.includes("riz") || norm.includes("sucre")) {
     return {
-      icon: "🌾",
+      icon: "",
       color: "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60",
       accent: "text-amber-600 dark:text-amber-400",
       badge: "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300"
@@ -44,7 +44,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("boisson") || norm.includes("eau") || norm.includes("jus") || norm.includes("soda")) {
     return {
-      icon: "🥤",
+      icon: "",
       color: "bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 border-blue-200 dark:border-blue-800/60",
       accent: "text-blue-600 dark:text-blue-400",
       badge: "bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
@@ -52,7 +52,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("électro") || norm.includes("informatique") || norm.includes("téléphone") || norm.includes("tech")) {
     return {
-      icon: "⚡",
+      icon: "",
       color: "bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60",
       accent: "text-indigo-600 dark:text-indigo-400",
       badge: "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300"
@@ -60,7 +60,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("quincaillerie") || norm.includes("outil") || norm.includes("bricolage")) {
     return {
-      icon: "🔧",
+      icon: "",
       color: "bg-orange-50 dark:bg-orange-950/30 text-orange-800 dark:text-orange-300 border-orange-200 dark:border-orange-800/60",
       accent: "text-orange-600 dark:text-orange-400",
       badge: "bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300"
@@ -68,7 +68,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("cosmétique") || norm.includes("beauté") || norm.includes("parfum")) {
     return {
-      icon: "✨",
+      icon: "",
       color: "bg-pink-50 dark:bg-pink-950/30 text-pink-800 dark:text-pink-300 border-pink-200 dark:border-pink-800/60",
       accent: "text-pink-600 dark:text-pink-400",
       badge: "bg-pink-100 dark:bg-pink-900/40 text-pink-800 dark:text-pink-300"
@@ -76,7 +76,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("hygiène") || norm.includes("entretien") || norm.includes("savon") || norm.includes("nettoy")) {
     return {
-      icon: "🧼",
+      icon: "",
       color: "bg-teal-50 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-800/60",
       accent: "text-teal-600 dark:text-teal-400",
       badge: "bg-teal-100 dark:bg-teal-900/40 text-teal-800 dark:text-teal-300"
@@ -84,7 +84,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("vêtement") || norm.includes("mode") || norm.includes("textile") || norm.includes("chaussure")) {
     return {
-      icon: "👗",
+      icon: "",
       color: "bg-purple-50 dark:bg-purple-950/30 text-purple-800 dark:text-purple-300 border-purple-200 dark:border-purple-800/60",
       accent: "text-purple-600 dark:text-purple-400",
       badge: "bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
@@ -92,7 +92,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("santé") || norm.includes("pharma") || norm.includes("médicament")) {
     return {
-      icon: "💊",
+      icon: "",
       color: "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60",
       accent: "text-emerald-600 dark:text-emerald-400",
       badge: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300"
@@ -100,7 +100,7 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("matériau") || norm.includes("construction") || norm.includes("ciment") || norm.includes("fer")) {
     return {
-      icon: "🧱",
+      icon: "",
       color: "bg-stone-50 dark:bg-stone-950/30 text-stone-800 dark:text-stone-300 border-stone-200 dark:border-stone-800/60",
       accent: "text-stone-600 dark:text-stone-400",
       badge: "bg-stone-100 dark:bg-stone-900/40 text-stone-800 dark:text-stone-300"
@@ -108,14 +108,14 @@ export function getCategoryStyle(categoryName: string) {
   }
   if (norm.includes("pièce") || norm.includes("rechange") || norm.includes("auto") || norm.includes("moto")) {
     return {
-      icon: "⚙️",
+      icon: "",
       color: "bg-cyan-50 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800/60",
       accent: "text-cyan-600 dark:text-cyan-400",
       badge: "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-800 dark:text-cyan-300"
     };
   }
   return {
-    icon: "📦",
+    icon: "",
     color: "bg-zinc-50 dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700",
     accent: "text-emerald-600 dark:text-emerald-400",
     badge: "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
@@ -399,19 +399,19 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
 
         {/* Global Key Metrics summary */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
-          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800">
             <span className="text-[10px] uppercase font-bold text-zinc-400">Total Références</span>
             <p className="text-base font-extrabold text-zinc-900 dark:text-white mt-0.5">
               {enrichedItems.length} <span className="text-xs font-normal text-zinc-500">articles</span>
             </p>
           </div>
-          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800">
             <span className="text-[10px] uppercase font-bold text-zinc-400">Quantité en Stock</span>
             <p className="text-base font-extrabold text-zinc-900 dark:text-white mt-0.5">
               {totalStockUnits.toLocaleString()} <span className="text-xs font-normal text-zinc-500">unités</span>
             </p>
           </div>
-          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-100 dark:border-zinc-800">
             <span className="text-[10px] uppercase font-bold text-zinc-400">Valeur Marchande</span>
             <p className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 font-mono mt-0.5">
               {formatCFA(totalStockValuation)}
@@ -454,7 +454,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-400 hover:text-zinc-600"
               >
-                ✕
+                
               </button>
             )}
           </div>
@@ -484,11 +484,11 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                 className="px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs font-semibold text-zinc-700 dark:text-zinc-200 cursor-pointer"
               >
                 <option value="none">Tri par défaut</option>
-                <option value="stock_asc">Stock Croissant (Faible ➔ Fort) ↑</option>
-                <option value="stock_desc">Stock Décroissant (Fort ➔ Faible) ↓</option>
+                <option value="stock_asc">Stock Croissant (Faible  Fort) ↑</option>
+                <option value="stock_desc">Stock Décroissant (Fort  Faible) ↓</option>
                 <option value="price_asc">Prix Croissant (Moins cher) ↑</option>
                 <option value="price_desc">Prix Décroissant (Plus cher) ↓</option>
-                <option value="name_asc">Nom alphabétique (A ➔ Z)</option>
+                <option value="name_asc">Nom alphabétique (A  Z)</option>
               </select>
             </div>
 
@@ -544,7 +544,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                 : "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300"
             }`}
           >
-            <span>✨ Toutes les catégories</span>
+            <span> Toutes les catégories</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${selectedCategoryTab === "ALL" ? "bg-emerald-700 text-white" : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300"}`}>
               {enrichedItems.length}
             </span>
@@ -562,7 +562,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer shrink-0 border ${
                   isSelected
                     ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                    : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-750 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700"
+                    : "bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700"
                 }`}
               >
                 <span>{style.icon}</span>
@@ -737,7 +737,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                               loading="lazy"
                               src={prod.image}
                               alt={prod.name}
-                              className="w-13 h-13 rounded-xl object-cover border border-zinc-150 dark:border-zinc-800 shrink-0 bg-zinc-100"
+                              className="w-13 h-13 rounded-xl object-cover border border-zinc-100 dark:border-zinc-800 shrink-0 bg-zinc-100"
                             />
                             <div className="min-w-0 space-y-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
@@ -994,7 +994,7 @@ export const StockCategoryOrganizer: React.FC<StockCategoryOrganizerProps> = ({
                       loading="lazy"
                       src={prod.image}
                       alt={prod.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-zinc-150 dark:border-zinc-800 shrink-0 bg-zinc-100"
+                      className="w-12 h-12 rounded-xl object-cover border border-zinc-100 dark:border-zinc-800 shrink-0 bg-zinc-100"
                     />
                     <div className="min-w-0">
                       <p className="font-bold text-xs text-zinc-950 dark:text-white truncate">

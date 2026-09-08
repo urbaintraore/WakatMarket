@@ -1,17 +1,28 @@
 import { Connection, Notification, UserProfile, UserRole, InventoryItem, Product, Order } from "../types";
-import { supabase } from "../supabase";
 import { db } from "../data";
 import { syncService } from "./syncService";
 import { offlineStorage } from "./offlineStorage";
+import {
+  firestoreDelete,
+  firestoreGetAll,
+  firestoreGetById,
+  firestoreGetWhere,
+  firestoreSubscribe,
+  firestoreSubscribeWhere,
+  firestoreUpdate,
+  firestoreUpsert,
+  isFirebaseConfigured
+} from "../firebase";
+import { userService } from "./userService";
 
-export async function ensureUserExistsInSupabase(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
-  if (!supabase || !user?.id) return;
+export async function ensureUserExistsInFirestore(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
+  if (!isFirebaseConfigured() || !user?.id) return;
   try {
     const fullName = (user.name || user.companyName || "Utilisateur").trim();
     const parts = fullName.split(" ");
     const nom = parts[0] || fullName;
     const prenom = parts.slice(1).join(" ") || "";
-    await supabase.from("profiles").upsert({
+    await firestoreUpsert("profiles", {
       id: user.id,
       email: user.email || `${user.id}@wakatmarket.com`,
       nom: nom,
@@ -22,9 +33,9 @@ export async function ensureUserExistsInSupabase(user: { id: string; name?: stri
       statut: "ACTIVE",
       pays: "Burkina Faso",
       ville: "Ouagadougou"
-    }, { onConflict: "id" });
+    });
   } catch (e) {
-    console.warn("[ConnectionService] Notice ensureUserExistsInSupabase:", e);
+    console.warn("[ConnectionService] Notice ensureUserExistsInFirestore:", e);
   }
 }
 
@@ -39,15 +50,11 @@ export async function ensureUsersExistLocally(userIds: string[]): Promise<void> 
   const missingIds = cleanIds.filter(id => !currentUsers.some(u => u.id === id));
   if (missingIds.length === 0) return;
 
-  if (supabase) {
+  if (isFirebaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .in("id", missingIds);
-
-      if (!error && data && data.length > 0) {
-        const fetchedUsers: UserProfile[] = data.map((row: any) => {
+      const rows = (await Promise.all(missingIds.map(id => firestoreGetById("profiles", id)))).filter(Boolean);
+      if (rows.length > 0) {
+        const fetchedUsers: UserProfile[] = rows.map((row: any) => {
           const prenom = (row.prenom || "").trim();
           const nom = (row.nom || "").trim();
           const fullName = [prenom, nom].filter(Boolean).join(" ").trim() || row.name || (row.email ? row.email.split("@")[0] : "") || "Partenaire";
@@ -201,41 +208,40 @@ export const connectionService = {
         throw new Error("Veuillez saisir un identifiant, un email ou un nom d'entreprise valide.");
       }
 
-      // A. Chercher dans Supabase profiles
-      if (supabase) {
-        try {
-          console.log("[ConnectionService] Querying Supabase 'profiles' table for identifier:", cleanIdentifiant);
-          const { data: users, error: searchError } = await supabase
-            .from("profiles")
-            .select("*")
-            .or(`email.ilike.${cleanIdentifiant},telephone.ilike.${cleanIdentifiant},id.eq.${cleanIdentifiant}`);
-
-          if (searchError) {
-            console.warn("[ConnectionService] Supabase profile search returned error:");
-            console.warn("[ConnectionService] Error Code:", searchError.code);
-            console.warn("[ConnectionService] Error Message:", searchError.message);
-            console.warn("[ConnectionService] Error Details:", searchError.details);
-            console.warn("[ConnectionService] Error Hint:", searchError.hint);
-          } else if (users && users.length > 0) {
-            const row = users[0];
-            destinataireUser = {
-              id: row.id,
-              name: [row.nom, row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur",
-              companyName: row.company_name || row.nom,
-              role: (row.role || UserRole.SEMI_WHOLESALER) as UserRole,
-              email: row.email,
-              phone: row.telephone
-            };
-            console.log("[ConnectionService] Found destinataire in Supabase 'profiles':", destinataireUser);
-          } else {
-            console.log("[ConnectionService] No user matched in Supabase 'profiles' table.");
+      // A. Chercher dans Firestore profiles (recherche locale + id exact)
+      try {
+        console.log("[ConnectionService] Searching Firebase 'profiles' for identifier:", cleanIdentifiant);
+        const matches: any[] = [];
+        const direct = await firestoreGetById("profiles", cleanIdentifiant);
+        if (direct) matches.push(direct);
+        if (matches.length === 0) {
+          try {
+            const searched = await userService.searchUsers(cleanIdentifiant, undefined, 5);
+            if (searched && searched.length > 0) matches.push(...searched);
+          } catch (e) {
+            console.warn("[ConnectionService] Local profile search exception:", e);
           }
-        } catch (e) {
-          console.warn("[ConnectionService] Supabase profile search exception:", e);
         }
+
+        if (matches.length > 0) {
+          const row = matches[0];
+          destinataireUser = {
+            id: row.id || row.uid,
+            name: [row.nom, row.prénom || row.prenom].filter(Boolean).join(" ").trim() || "Utilisateur",
+            companyName: row.companyName || row.company_name || row.nom,
+            role: (row.role || row.rôle || UserRole.SEMI_WHOLESALER) as UserRole,
+            email: row.email,
+            phone: row.phone || row.téléphone || row.telephone
+          };
+          console.log("[ConnectionService] Found destinataire in Firebase 'profiles':", destinataireUser);
+        } else {
+          console.log("[ConnectionService] No user matched in Firebase 'profiles' collection.");
+        }
+      } catch (e) {
+        console.warn("[ConnectionService] Firebase profile search exception:", e);
       }
 
-      // B. Si non trouvé dans Supabase, chercher dans la base locale
+      // B. Si non trouvé dans Firestore, chercher dans la base locale
       if (!destinataireUser) {
         console.log("[ConnectionService] Searching in local DB (db.getUsers)...");
         const localUsers = db.getUsers();
@@ -284,9 +290,9 @@ export const connectionService = {
       senderProfile = { ...localSender, ...demandeur };
     }
 
-    if (supabase && demandeur?.id) {
+    if (isFirebaseConfigured() && demandeur?.id) {
       try {
-        const { data: sData } = await supabase.from("profiles").select("*").eq("id", demandeur.id).maybeSingle();
+        const sData = await firestoreGetById("profiles", demandeur.id);
         if (sData) {
           senderProfile = {
             ...senderProfile,
@@ -298,7 +304,7 @@ export const connectionService = {
           };
         }
       } catch (err) {
-        console.warn("[ConnectionService] Error fetching sender profile from Supabase:", err);
+        console.warn("[ConnectionService] Error fetching sender profile from Firestore:", err);
       }
     }
 
@@ -415,14 +421,14 @@ export const connectionService = {
       window.dispatchEvent(new CustomEvent("wakat_users_updated"));
     }
 
-    // Ensure both sender and receiver profiles exist in Supabase so foreign key constraints succeed
-    if (supabase) {
-      await ensureUserExistsInSupabase(senderProfile);
-      await ensureUserExistsInSupabase(destinataireUser);
+    // Ensure both sender and receiver profiles exist in Firestore
+    if (isFirebaseConfigured()) {
+      await ensureUserExistsInFirestore(senderProfile);
+      await ensureUserExistsInFirestore(destinataireUser);
     }
 
-    // E. Synchronisation Supabase avec logs ultra détaillés du payload et codes d'erreur
-    if (supabase) {
+    // E. Synchronisation Firebase (Firestore) avec logs du payload
+    if (isFirebaseConfigured()) {
       const payloadSent: Record<string, any> = {
         id: relationId,
         grossiste_id: demandeur.id,
@@ -430,28 +436,13 @@ export const connectionService = {
         statut: "PENDING"
       };
 
-      console.log(`[Pipeline Partenariat - Étape 6/7] Synchronisation Supabase 'relations' payload:`, payloadSent);
+      console.log(`[Pipeline Partenariat - Étape 6/7] Synchronisation Firestore 'relations' payload:`, payloadSent);
 
       try {
-        const { data: relData, error: relError } = await supabase
-          .from("relations")
-          .upsert(payloadSent)
-          .select();
+        await firestoreUpsert("relations", payloadSent);
+        console.log("[ConnectionService] Firestore UPSERT into 'relations' SUCCESSFUL!");
 
-        if (relError) {
-          console.error("-----------------------------------------------------------------");
-          console.error("[ConnectionService] Supabase UPSERT into 'relations' FAILED!");
-          console.error("[ConnectionService] Error Code:", relError.code);
-          console.error("[ConnectionService] Error Message:", relError.message);
-          console.error("[ConnectionService] Error Details:", relError.details);
-          console.error("[ConnectionService] Error Hint:", relError.hint);
-          console.error("[ConnectionService] Full Payload that caused failure:", payloadSent);
-          console.error("-----------------------------------------------------------------");
-        } else {
-          console.log("[ConnectionService] Supabase UPSERT into 'relations' SUCCESSFUL! Response data:", relData);
-        }
-
-        // Notification Supabase pour le destinataire
+        // Notification Firestore pour le destinataire
         const notifPayload: Record<string, any> = {
           id: newNotif.id,
           user_id: destinataireUser.id,
@@ -467,35 +458,31 @@ export const connectionService = {
           },
           read: false
         };
-        console.log("[ConnectionService] Sending payload to Supabase 'notifications' table:", notifPayload);
+        console.log("[ConnectionService] Sending payload to Firestore 'notifications' collection:", notifPayload);
 
-        const { data: notifData, error: notifError } = await supabase
-          .from("notifications")
-          .insert(notifPayload)
-          .select();
-
-        if (notifError) {
-          console.warn("[ConnectionService] Supabase INSERT with metadata into 'notifications' failed, attempting standard format...", notifError);
+        try {
+          await firestoreUpsert("notifications", notifPayload);
+          console.log("[ConnectionService] Firestore INSERT into 'notifications' SUCCESSFUL!");
+        } catch (notifError) {
+          console.warn("[ConnectionService] Firestore INSERT with metadata into 'notifications' failed, attempting standard format...", notifError);
           try {
-            await supabase.from("notifications").insert({
+            await firestoreUpsert("notifications", {
               id: newNotif.id,
               user_id: destinataireUser.id,
               title: newNotif.title,
               message: newNotif.message,
               read: false
             });
-            console.log("[ConnectionService] Standard Supabase notification inserted successfully!");
+            console.log("[ConnectionService] Standard Firestore notification inserted successfully!");
           } catch (retryErr) {
             console.error("[ConnectionService] Fallback notification insert exception:", retryErr);
           }
-        } else {
-          console.log("[ConnectionService] Supabase INSERT into 'notifications' SUCCESSFUL! Response:", notifData);
         }
       } catch (sbErr) {
-        console.error("[ConnectionService] Exception thrown during Supabase partner addition sync:", sbErr);
+        console.error("[ConnectionService] Exception thrown during Firebase partner addition sync:", sbErr);
       }
     } else {
-      console.log("[ConnectionService] Supabase client is not initialized. Using local storage mode only.");
+      console.log("[ConnectionService] Firebase client is not initialized. Using local storage mode only.");
     }
 
     // F. Enfiler dans la SyncQueue pour garantir la réplication bidirectionnelle
@@ -570,7 +557,7 @@ export const connectionService = {
   /**
    * Diagnostic check that specifically validates if a relationship between two users is marked as 'active'
    * (in the `statut` column) before the messaging UI allows a message to be sent.
-   * Performs check against the real Supabase schema (`grossiste_id`, `client_id`, `statut`).
+   * Performs check against the real Firestore schema (`grossiste_id`, `client_id`, `statut`).
    */
   async validateRelationshipActive(userAId: string, userBId: string): Promise<{
     isActive: boolean;
@@ -594,18 +581,17 @@ export const connectionService = {
       return { isActive: true, statut: "ACTIF", grossisteId: userAId, clientId: userBId, details: "Auto-discussion autorisée." };
     }
 
-    // 1. Check against real Supabase schema 'relations' with columns grossiste_id, client_id, statut
-    if (supabase) {
+    // 1. Check against Firestore collection 'relations' with fields grossiste_id, client_id, statut
+    if (isFirebaseConfigured()) {
       try {
-        console.log(`[ConnectionService Diagnostic Check] Querying Supabase 'relations' table for grossiste_id/client_id = ${userAId} or ${userBId}`);
-        const { data, error } = await supabase
-          .from("relations")
-          .select("id, grossiste_id, client_id, statut, created_at")
-          .or(`grossiste_id.eq.${userAId},client_id.eq.${userAId}`);
+        console.log(`[ConnectionService Diagnostic Check] Querying Firestore 'relations' for grossiste_id/client_id = ${userAId} or ${userBId}`);
+        const [asGrossiste, asClient] = await Promise.all([
+          firestoreGetWhere("relations", "grossiste_id", "==", userAId),
+          firestoreGetWhere("relations", "client_id", "==", userAId)
+        ]);
+        const data = [...asGrossiste, ...asClient];
 
-        if (error) {
-          console.warn("[ConnectionService Diagnostic Check] Supabase query error:", error.message, error.code, error.details);
-        } else if (data && data.length > 0) {
+        if (data.length > 0) {
           const match = data.find(
             (r: any) =>
               (r.grossiste_id === userAId && r.client_id === userBId) ||
@@ -615,7 +601,7 @@ export const connectionService = {
           if (match) {
             const rawStatut = String(match.statut || "").toUpperCase();
             const isActif = rawStatut === "ACTIF" || rawStatut === "ACTIVE";
-            console.log(`[ConnectionService Diagnostic Check] Supabase relation row found! ID: ${match.id}, grossiste_id: ${match.grossiste_id}, client_id: ${match.client_id}, statut: '${match.statut}' (isActive=${isActif})`);
+            console.log(`[ConnectionService Diagnostic Check] Firestore relation row found! ID: ${match.id}, grossiste_id: ${match.grossiste_id}, client_id: ${match.client_id}, statut: '${match.statut}' (isActive=${isActif})`);
 
             return {
               isActive: isActif,
@@ -624,15 +610,15 @@ export const connectionService = {
               clientId: match.client_id,
               relationId: match.id,
               details: isActif
-                ? `Relation B2B active vérifiée dans Supabase entre ${match.grossiste_id} et ${match.client_id}.`
+                ? `Relation B2B active vérifiée dans Firestore entre ${match.grossiste_id} et ${match.client_id}.`
                 : `Relation B2B trouvée mais le statut 'statut' est '${match.statut}'.`
             };
           } else {
-            console.log(`[ConnectionService Diagnostic Check] No direct relation match found in Supabase results for pair (${userAId}, ${userBId}).`);
+            console.log(`[ConnectionService Diagnostic Check] No direct relation match found in Firestore results for pair (${userAId}, ${userBId}).`);
           }
         }
       } catch (sbErr) {
-        console.warn("[ConnectionService Diagnostic Check] Exception querying Supabase relations table:", sbErr);
+        console.warn("[ConnectionService Diagnostic Check] Exception querying Firestore relations collection:", sbErr);
       }
     }
 
@@ -748,13 +734,14 @@ export const connectionService = {
       });
       db.saveNotifications(newNotifs);
 
-      // 3. Supabase cleanup
-      if (supabase && expiredIds.length > 0) {
+      // 3. Firestore cleanup
+      if (isFirebaseConfigured() && expiredIds.length > 0) {
         try {
-          await supabase.from("relations").delete().in("id", expiredIds);
-          // Also insert notifications in Supabase
+          await Promise.all(expiredIds.map(id => firestoreDelete("relations", id)));
+          // Also insert notifications in Firestore
           for (const exp of expiredDetails) {
-            await supabase.from("notifications").insert({
+            await firestoreUpsert("notifications", {
+              id: `notif_exp_${Date.now()}_${exp.senderId}_${Math.random().toString(36).substring(7)}`,
               user_id: exp.senderId,
               title: "Demande de partenariat expirée",
               message: `Votre demande de partenariat envoyée à ${exp.partnerName} il y a ${exp.daysOld} jours a expiré et a été automatiquement archivée.`,
@@ -764,7 +751,7 @@ export const connectionService = {
             });
           }
         } catch (sbErr) {
-          console.warn("[ConnectionService] Supabase delete expired relations error:", sbErr);
+          console.warn("[ConnectionService] Firestore delete expired relations error:", sbErr);
         }
       }
 
@@ -775,7 +762,7 @@ export const connectionService = {
         window.dispatchEvent(new CustomEvent("wakat_notifications_updated"));
       }
 
-      console.log(`[ConnectionService] 🧹 ${expiredDetails.length} demande(s) de partenariat expirée(s) nettoyée(s) avec succès.`);
+      console.log(`[ConnectionService]  ${expiredDetails.length} demande(s) de partenariat expirée(s) nettoyée(s) avec succès.`);
     }
 
     return {
@@ -889,13 +876,13 @@ export const connectionService = {
 
     let summaryMessage = "";
     if (canDeliver) {
-      summaryMessage = `Diagnostic ✅ : Livraison possible et recommandée.\n• Partenariat B2B : Actif et confirmé\n• Stocks Fournisseur : ${availableProductCount} référence(s) disponible(s) (${totalStockUnits} unités en stock). Tous les articles commandés sont disponibles.`;
+      summaryMessage = `Diagnostic  : Livraison possible et recommandée.\n• Partenariat B2B : Actif et confirmé\n• Stocks Fournisseur : ${availableProductCount} référence(s) disponible(s) (${totalStockUnits} unités en stock). Tous les articles commandés sont disponibles.`;
     } else if (!relCheck.isActive && !hasStock) {
-      summaryMessage = `Diagnostic ❌ : Double blocage !\n• Partenariat B2B : ${relCheck.statut} (non confirmé)\n• Stocks Fournisseur : ${itemsSummary}\nVeuillez réparer le partenariat et vérifier l'approvisionnement avec le fournisseur.`;
+      summaryMessage = `Diagnostic  : Double blocage !\n• Partenariat B2B : ${relCheck.statut} (non confirmé)\n• Stocks Fournisseur : ${itemsSummary}\nVeuillez réparer le partenariat et vérifier l'approvisionnement avec le fournisseur.`;
     } else if (!relCheck.isActive) {
-      summaryMessage = `Diagnostic ⚠️ : Problème de partenariat (${relCheck.statut}) !\nLe fournisseur a du stock disponible (${totalStockUnits} unités), mais la relation de partenariat B2B n'est pas active. Veuillez activer ou réparer le partenariat.`;
+      summaryMessage = `Diagnostic  : Problème de partenariat (${relCheck.statut}) !\nLe fournisseur a du stock disponible (${totalStockUnits} unités), mais la relation de partenariat B2B n'est pas active. Veuillez activer ou réparer le partenariat.`;
     } else {
-      summaryMessage = `Diagnostic ⚠️ : Problème de stock fournisseur !\nLe partenariat B2B est actif, mais le fournisseur est en rupture de stock (${itemsSummary}). Évitez de lancer la livraison avant réapprovisionnement.`;
+      summaryMessage = `Diagnostic  : Problème de stock fournisseur !\nLe partenariat B2B est actif, mais le fournisseur est en rupture de stock (${itemsSummary}). Évitez de lancer la livraison avant réapprovisionnement.`;
     }
 
     return {
@@ -919,21 +906,17 @@ export const connectionService = {
     };
   },
 
-  async getRelationStatusFromSupabase(
+  async getRelationStatusFromFirestore(
     relationId?: string,
     userAId?: string,
     userBId?: string
   ): Promise<"en_attente" | "active" | "refusee" | "inconnu"> {
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
         if (relationId) {
-          const { data, error } = await supabase
-            .from("relations")
-            .select("id, statut, grossiste_id, client_id")
-            .eq("id", relationId)
-            .maybeSingle();
+          const data = await firestoreGetById("relations", relationId);
 
-          if (!error && data) {
+          if (data) {
             const rawStatut = String(data.statut || "").toUpperCase();
             if (rawStatut === "ACTIF" || rawStatut === "ACTIVE") return "active";
             if (rawStatut === "BLOCKED" || rawStatut === "REFUSÉE" || rawStatut === "REFUSEE") return "refusee";
@@ -942,13 +925,17 @@ export const connectionService = {
         }
 
         if (userAId && userBId) {
-          const { data, error } = await supabase
-            .from("relations")
-            .select("id, statut, grossiste_id, client_id")
-            .or(`and(grossiste_id.eq.${userAId},client_id.eq.${userBId}),and(grossiste_id.eq.${userBId},client_id.eq.${userAId})`)
-            .maybeSingle();
+          const [asGrossiste, asClient] = await Promise.all([
+            firestoreGetWhere("relations", "grossiste_id", "==", userAId),
+            firestoreGetWhere("relations", "client_id", "==", userAId)
+          ]);
+          const data = [...asGrossiste, ...asClient].find(
+            (r: any) =>
+              (r.grossiste_id === userAId && r.client_id === userBId) ||
+              (r.grossiste_id === userBId && r.client_id === userAId)
+          );
 
-          if (!error && data) {
+          if (data) {
             const rawStatut = String(data.statut || "").toUpperCase();
             if (rawStatut === "ACTIF" || rawStatut === "ACTIVE") return "active";
             if (rawStatut === "BLOCKED" || rawStatut === "REFUSÉE" || rawStatut === "REFUSEE") return "refusee";
@@ -956,7 +943,7 @@ export const connectionService = {
           }
         }
       } catch (err) {
-        console.warn("[ConnectionService] Notice querying relation status from Supabase:", err);
+        console.warn("[ConnectionService] Notice querying relation status from Firestore:", err);
       }
     }
 
@@ -979,13 +966,13 @@ export const connectionService = {
 
   /**
    * Met à jour explicitement l'objet connexion dans le cache local (db, localStorage, offlineStorage)
-   * et le synchronise avec Supabase avec le statut spécifié (ex: 'active').
+   * et le synchronise avec Firestore avec le statut spécifié (ex: 'active').
    */
   async updateConnection(
     connectionId: string,
     updates: Partial<Connection> | { status?: Connection["status"]; statut?: string; [key: string]: any }
   ): Promise<Connection | null> {
-    console.log(`[ConnectionService.updateConnection] 🔄 [START] Explicitly updating connection #${connectionId} with:`, updates);
+    console.log(`[ConnectionService.updateConnection]  [START] Explicitly updating connection #${connectionId} with:`, updates);
     const currentConns = db.getConnections();
     const nowIso = new Date().toISOString();
     const sId = (updates as any).senderId;
@@ -1031,18 +1018,18 @@ export const connectionService = {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(currentConns));
     }
-    console.log(`[ConnectionService.updateConnection] 💾 Saved ${currentConns.length} connections to memory db & localStorage (Status: ${updatedConn.status})`);
+    console.log(`[ConnectionService.updateConnection]  Saved ${currentConns.length} connections to memory db & localStorage (Status: ${updatedConn.status})`);
 
     // 2. Persist to IndexedDB offlineStorage
     try {
       await offlineStorage.setItems("relations", currentConns);
-      console.log(`[ConnectionService.updateConnection] 📦 IndexedDB offlineStorage updated with connection #${connectionId}`);
+      console.log(`[ConnectionService.updateConnection]  IndexedDB offlineStorage updated with connection #${connectionId}`);
     } catch (e) {
       console.warn("[ConnectionService.updateConnection] Warning saving to offlineStorage:", e);
     }
 
-    // 3. Sync to Supabase
-    if (supabase) {
+    // 3. Sync to Firestore
+    if (isFirebaseConfigured()) {
       try {
         const sbStatut = updatedConn.status === "active" ? "ACTIF" : (updatedConn.status === "refusée" ? "BLOCKED" : "PENDING");
         const upsertPayload: Record<string, any> = {
@@ -1053,14 +1040,10 @@ export const connectionService = {
         if (updatedConn.senderId) upsertPayload.grossiste_id = updatedConn.senderId;
         if (updatedConn.receiverId) upsertPayload.client_id = updatedConn.receiverId;
 
-        const { error: sbErr } = await supabase.from("relations").upsert(upsertPayload);
-        if (sbErr) {
-          console.warn("[ConnectionService.updateConnection] ⚠️ Supabase upsert error:", sbErr.message);
-        } else {
-          console.log(`[ConnectionService.updateConnection] 📡 Supabase relation #${connectionId} successfully synced with statut='${sbStatut}'`);
-        }
+        await firestoreUpsert("relations", upsertPayload);
+        console.log(`[ConnectionService.updateConnection]  Firestore relation #${connectionId} successfully synced with statut='${sbStatut}'`);
       } catch (sbEx) {
-        console.warn("[ConnectionService.updateConnection] Exception syncing to Supabase:", sbEx);
+        console.warn("[ConnectionService.updateConnection] Exception syncing to Firestore:", sbEx);
       }
     }
 
@@ -1080,11 +1063,11 @@ export const connectionService = {
   },
 
   /**
-   * Scanne les relations et répare les incohérences d'état (ex: relation en attente alors que l'un des deux partenaires a validé ou que Supabase/notifications indiquent un accord).
+   * Scanne les relations et répare les incohérences d'état (ex: relation en attente alors que l'un des deux partenaires a validé ou que Firestore/notifications indiquent un accord).
    * Force la synchronisation de l'état 'active' entre le sender et le receiver pour garantir l'intégrité des statuts de partenariat.
    */
   async repairPendingConnections(userId?: string): Promise<{ scanned: number; repaired: number; repairedConnections: Connection[] }> {
-    console.log(`[ConnectionService.repairPendingConnections] 🛠️ [START] Scanning and repairing pending relationship inconsistencies... (targetUser: ${userId || 'ALL'})`);
+    console.log(`[ConnectionService.repairPendingConnections]  [START] Scanning and repairing pending relationship inconsistencies... (targetUser: ${userId || 'ALL'})`);
     const allConns = db.getConnections();
     const allNotifs = db.getNotifications();
     const repairedList: Connection[] = [];
@@ -1096,13 +1079,18 @@ export const connectionService = {
     };
 
     let sbRelationsMap = new Map<string, any>();
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        let query = supabase.from("relations").select("*");
+        let sbData: any[] = [];
         if (userId) {
-          query = query.or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
+          const [asGrossiste, asClient] = await Promise.all([
+            firestoreGetWhere("relations", "grossiste_id", "==", userId),
+            firestoreGetWhere("relations", "client_id", "==", userId)
+          ]);
+          sbData = [...asGrossiste, ...asClient];
+        } else {
+          sbData = await firestoreGetAll("relations");
         }
-        const { data: sbData } = await query;
         if (sbData && Array.isArray(sbData)) {
           sbData.forEach((row: any) => {
             sbRelationsMap.set(row.id, row);
@@ -1137,9 +1125,9 @@ export const connectionService = {
 
     allNotifs.forEach(scanNotif);
 
-    if (supabase && userId) {
+    if (isFirebaseConfigured() && userId) {
       try {
-        const { data: sbNotifs } = await supabase.from("notifications").select("*").eq("user_id", userId);
+        const sbNotifs = await firestoreGetWhere("notifications", "user_id", "==", userId);
         if (sbNotifs && Array.isArray(sbNotifs)) {
           sbNotifs.forEach(scanNotif);
         }
@@ -1162,7 +1150,7 @@ export const connectionService = {
       const isDivergent = (c.status === "en_attente" || (c.status as string) === "pending") && (isSbActive || hasAcceptedNotif);
 
       if (isDivergent) {
-        console.log(`[ConnectionService.repairPendingConnections] 🔧 Repaired divergent connection #${c.id} (Sender: ${c.senderId}, Receiver: ${c.receiverId}): FORCED ACTIVE (Reason: ${isSbActive ? 'Supabase was ACTIF' : 'Accepted notification found'})`);
+        console.log(`[ConnectionService.repairPendingConnections]  Repaired divergent connection #${c.id} (Sender: ${c.senderId}, Receiver: ${c.receiverId}): FORCED ACTIVE (Reason: ${isSbActive ? 'Firestore was ACTIF' : 'Accepted notification found'})`);
         hasChanges = true;
         const fixed: Connection = {
           ...c,
@@ -1185,11 +1173,11 @@ export const connectionService = {
         await offlineStorage.setItems("relations", repairedConns);
       } catch (e) {}
 
-      // Update Supabase for repaired items
-      if (supabase && repairedList.length > 0) {
+      // Update Firestore for repaired items
+      if (isFirebaseConfigured() && repairedList.length > 0) {
         for (const rep of repairedList) {
           try {
-            await supabase.from("relations").upsert({
+            await firestoreUpsert("relations", {
               id: rep.id,
               grossiste_id: rep.senderId,
               client_id: rep.receiverId,
@@ -1198,7 +1186,7 @@ export const connectionService = {
             });
             const pairKey = [rep.senderId, rep.receiverId].sort().join("_");
             if (rep.id !== pairKey) {
-              await supabase.from("relations").upsert({
+              await firestoreUpsert("relations", {
                 id: pairKey,
                 grossiste_id: rep.senderId,
                 client_id: rep.receiverId,
@@ -1219,9 +1207,9 @@ export const connectionService = {
         }));
       }
 
-      console.log(`[ConnectionService.repairPendingConnections] 🎉 [DONE] Successfully reconciled and repaired ${repairedList.length} connection(s).`);
+      console.log(`[ConnectionService.repairPendingConnections]  [DONE] Successfully reconciled and repaired ${repairedList.length} connection(s).`);
     } else {
-      console.log(`[ConnectionService.repairPendingConnections] ✅ [CLEAN] All scanned relations (${scanned}) are consistent.`);
+      console.log(`[ConnectionService.repairPendingConnections]  [CLEAN] All scanned relations (${scanned}) are consistent.`);
     }
 
     return {
@@ -1232,7 +1220,7 @@ export const connectionService = {
   },
 
   async acceptConnection(connectionId: string, currentUserId?: string): Promise<void> {
-    console.log(`[ConnectionService.acceptConnection] 🚀 [START] Accepting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
+    console.log(`[ConnectionService.acceptConnection]  [START] Accepting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
     const currentNotifs = db.getNotifications();
 
@@ -1260,10 +1248,13 @@ export const connectionService = {
       }
     }
 
-    // If still missing, query Supabase relations & notifications
-    if ((!senderId || !receiverId) && supabase) {
+    // If still missing, query Firestore relations & notifications
+    if ((!senderId || !receiverId) && isFirebaseConfigured()) {
       try {
-        const { data: relData } = await supabase.from("relations").select("*").or(`id.eq.${connectionId},grossiste_id.eq.${connectionId},client_id.eq.${connectionId}`).maybeSingle();
+        const relData =
+          (await firestoreGetById("relations", connectionId)) ||
+          (await firestoreGetWhere("relations", "grossiste_id", "==", connectionId))[0] ||
+          (await firestoreGetWhere("relations", "client_id", "==", connectionId))[0];
         if (relData) {
           senderId = senderId || relData.grossiste_id;
           receiverId = receiverId || relData.client_id;
@@ -1271,9 +1262,13 @@ export const connectionService = {
       } catch (e) {}
     }
 
-    if (currentUserId && !senderId && supabase) {
+    if (currentUserId && !senderId && isFirebaseConfigured()) {
       try {
-        const { data: relUser } = await supabase.from("relations").select("*").or(`grossiste_id.eq.${currentUserId},client_id.eq.${currentUserId}`).eq("statut", "PENDING").maybeSingle();
+        const relCandidates = [
+          ...(await firestoreGetWhere("relations", "grossiste_id", "==", currentUserId)),
+          ...(await firestoreGetWhere("relations", "client_id", "==", currentUserId))
+        ];
+        const relUser = relCandidates.find((r: any) => String(r.statut || "").toUpperCase() === "PENDING");
         if (relUser) {
           senderId = relUser.grossiste_id === currentUserId ? relUser.client_id : relUser.grossiste_id;
           receiverId = currentUserId;
@@ -1282,7 +1277,7 @@ export const connectionService = {
     }
 
     const canonicalPairKey = (senderId && receiverId) ? [senderId, receiverId].sort().join("_") : connectionId;
-    console.log(`[ConnectionService.acceptConnection] 📌 Resolved IDs: connectionId="${connectionId}", canonicalPairKey="${canonicalPairKey}", senderId="${senderId}", receiverId="${receiverId}"`);
+    console.log(`[ConnectionService.acceptConnection]  Resolved IDs: connectionId="${connectionId}", canonicalPairKey="${canonicalPairKey}", senderId="${senderId}", receiverId="${receiverId}"`);
 
     // Ensure sender and receiver user profiles exist in local DB
     if (senderId || receiverId) {
@@ -1387,36 +1382,34 @@ export const connectionService = {
 
       db.saveNotifications([senderNotif, receiverNotif, ...freshNotifs]);
 
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          await supabase.from("notifications").insert([
-            {
-              id: senderNotif.id,
-              user_id: senderId,
-              title: senderNotif.title,
-              message: senderNotif.message,
-              type: "connexion_acceptee",
-              metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: receiverId },
-              read: false
-            },
-            {
-              id: receiverNotif.id,
-              user_id: receiverId,
-              title: receiverNotif.title,
-              message: receiverNotif.message,
-              type: "connexion_acceptee",
-              metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: senderId },
-              read: true
-            }
-          ]);
+          await firestoreUpsert("notifications", {
+            id: senderNotif.id,
+            user_id: senderId,
+            title: senderNotif.title,
+            message: senderNotif.message,
+            type: "connexion_acceptee",
+            metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: receiverId },
+            read: false
+          });
+          await firestoreUpsert("notifications", {
+            id: receiverNotif.id,
+            user_id: receiverId,
+            title: receiverNotif.title,
+            message: receiverNotif.message,
+            type: "connexion_acceptee",
+            metadata: { related_id: canonicalPairKey, relation_id: canonicalPairKey, sender_id: senderId },
+            read: true
+          });
         } catch (e) {}
       }
     }
 
-    // 4. Update Supabase relations table
-    if (supabase && senderId && receiverId) {
+    // 4. Update Firestore relations collection
+    if (isFirebaseConfigured() && senderId && receiverId) {
       try {
-        await supabase.from("relations").upsert({
+        await firestoreUpsert("relations", {
           id: canonicalPairKey,
           grossiste_id: senderId,
           client_id: receiverId,
@@ -1424,7 +1417,7 @@ export const connectionService = {
           updated_at: nowIso
         });
         if (connectionId !== canonicalPairKey) {
-          await supabase.from("relations").upsert({
+          await firestoreUpsert("relations", {
             id: connectionId,
             grossiste_id: senderId,
             client_id: receiverId,
@@ -1461,11 +1454,11 @@ export const connectionService = {
       } catch (e) {}
     }
 
-    console.log(`[ConnectionService.acceptConnection] 🎉 [DONE] Connection #${connectionId} (${canonicalPairKey}) accepted and active.`);
+    console.log(`[ConnectionService.acceptConnection]  [DONE] Connection #${connectionId} (${canonicalPairKey}) accepted and active.`);
   },
 
   async rejectConnection(connectionId: string, currentUserId?: string): Promise<void> {
-    console.log(`[ConnectionService.rejectConnection] 🛑 [START] Rejecting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
+    console.log(`[ConnectionService.rejectConnection]  [START] Rejecting connection #${connectionId} for user ${currentUserId || 'unknown'}...`);
     const currentConns = db.getConnections();
     const updated = currentConns.map(c => c.id === connectionId ? { ...c, status: "refusée" as const, updatedAt: new Date().toISOString() } : c);
     db.saveConnections(updated);
@@ -1498,10 +1491,10 @@ export const connectionService = {
       };
       db.saveNotifications([rejectNotif, ...updatedNotifs]);
 
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          console.log(`[ConnectionService.rejectConnection] 📡 Inserting reject notification into Supabase for sender ${conn.senderId}...`);
-          await supabase.from("notifications").insert({
+          console.log(`[ConnectionService.rejectConnection]  Inserting reject notification into Firestore for sender ${conn.senderId}...`);
+          await firestoreUpsert("notifications", {
             id: rejectNotif.id,
             user_id: conn.senderId,
             title: rejectNotif.title,
@@ -1511,29 +1504,25 @@ export const connectionService = {
             read: false
           });
         } catch (e) {
-          console.warn("Notice Supabase reject notif:", e);
+          console.warn("Notice Firestore reject notif:", e);
         }
       }
     } else {
       db.saveNotifications(updatedNotifs);
     }
 
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        console.log(`[ConnectionService.rejectConnection] 📡 Updating Supabase 'relations' table to statut='BLOCKED' for id=${connectionId}...`);
-        const { error: blockErr } = await supabase.from("relations").update({ statut: "BLOCKED", updated_at: nowIso }).eq("id", connectionId);
-        if (blockErr) {
-          console.warn("[ConnectionService.rejectConnection] ⚠️ Supabase relation block error:", blockErr.message);
-        } else {
-          console.log(`[ConnectionService.rejectConnection] ✅ Supabase 'relations' status set to BLOCKED.`);
-        }
+        console.log(`[ConnectionService.rejectConnection]  Updating Firestore 'relations' collection to statut='BLOCKED' for id=${connectionId}...`);
+        await firestoreUpdate("relations", connectionId, { statut: "BLOCKED", updated_at: nowIso });
+        console.log(`[ConnectionService.rejectConnection]  Firestore 'relations' status set to BLOCKED.`);
       } catch (e) {
-        console.warn("Notice Supabase reject connection:", e);
+        console.warn("Notice Firestore reject connection:", e);
       }
     }
 
     if (typeof window !== "undefined") {
-      console.log(`[ConnectionService.rejectConnection] 📣 Dispatching window events for rejection...`);
+      console.log(`[ConnectionService.rejectConnection]  Dispatching window events for rejection...`);
       window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
         detail: { connectionId, status: "refusée", action: "reject", timestamp: nowIso }
       }));
@@ -1557,7 +1546,7 @@ export const connectionService = {
       }
     }
 
-    console.log(`[ConnectionService.rejectConnection] 🛑 [DONE] Connection #${connectionId} successfully rejected.`);
+    console.log(`[ConnectionService.rejectConnection]  [DONE] Connection #${connectionId} successfully rejected.`);
   },
 
   async respondToConnectionRequest(
@@ -1568,7 +1557,7 @@ export const connectionService = {
     const connectionId = typeof connOrId === "string" ? connOrId : connOrId.id;
     const isAccept = action === "accept" || action === "accepter" || action === "active";
     
-    console.log(`[ConnectionService.respondToConnectionRequest] 🎯 Received response request: action="${action}" (isAccept=${isAccept}), connectionId="${connectionId}", currentUserId="${currentUserId || 'unknown'}"`);
+    console.log(`[ConnectionService.respondToConnectionRequest]  Received response request: action="${action}" (isAccept=${isAccept}), connectionId="${connectionId}", currentUserId="${currentUserId || 'unknown'}"`);
 
     if (isAccept) {
       await this.acceptConnection(connectionId, currentUserId);
@@ -1577,7 +1566,7 @@ export const connectionService = {
     }
 
     // Explicit manual cache refresh and local synchronization
-    console.log(`[ConnectionService.respondToConnectionRequest] ⚡ Triggering manual cache sync & window event broadcast for App.tsx state synchronization...`);
+    console.log(`[ConnectionService.respondToConnectionRequest]  Triggering manual cache sync & window event broadcast for App.tsx state synchronization...`);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("wakat_connections_updated", {
         detail: { connectionId, action: isAccept ? "accept" : "reject", timestamp: new Date().toISOString() }
@@ -1631,20 +1620,25 @@ export const connectionService = {
       window.dispatchEvent(new CustomEvent("wakat_light_clients_updated"));
     }
 
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        await supabase.from("relations").delete().eq("id", connectionId);
+        await firestoreDelete("relations", connectionId);
       } catch (e) {
-        console.warn("Notice Supabase delete connection by id:", e);
+        console.warn("Notice Firestore delete connection by id:", e);
       }
       if (sId && rId) {
         try {
-          await supabase
-            .from("relations")
-            .delete()
-            .or(`and(grossiste_id.eq.${sId},client_id.eq.${rId}),and(grossiste_id.eq.${rId},client_id.eq.${sId})`);
+          const rels = await firestoreGetAll("relations");
+          await Promise.all(
+            rels
+              .filter((r: any) =>
+                (r.grossiste_id === sId && r.client_id === rId) ||
+                (r.grossiste_id === rId && r.client_id === sId)
+              )
+              .map((r: any) => firestoreDelete("relations", r.id))
+          );
         } catch (e) {
-          console.warn("Notice Supabase delete relation by pair:", e);
+          console.warn("Notice Firestore delete relation by pair:", e);
         }
       }
     }
@@ -1653,7 +1647,7 @@ export const connectionService = {
   subscribeToUserConnections(userId: string, callback: (connections: Connection[]) => void): () => void {
     if (!userId) return () => {};
 
-    console.log(`[ConnectionService.subscribeToUserConnections] 🚀 Subscribing to connections for userId="${userId}"`);
+    console.log(`[ConnectionService.subscribeToUserConnections]  Subscribing to connections for userId="${userId}"`);
 
     const emitConnections = async () => {
       // Auto-cleanup any pending partnership requests older than 30 days
@@ -1672,7 +1666,7 @@ export const connectionService = {
         return c.senderId === userId || c.receiverId === userId;
       });
 
-      console.log(`[ConnectionService.subscribeToUserConnections] 💾 [1/4] Memory DB connections for user ${userId}:`, localConns.length, "item(s)");
+      console.log(`[ConnectionService.subscribeToUserConnections]  [1/4] Memory DB connections for user ${userId}:`, localConns.length, "item(s)");
 
       // Fetch from IndexedDB offlineStorage as fallback/additional cache
       try {
@@ -1684,7 +1678,7 @@ export const connectionService = {
             !deletedPairs.has(`${c.senderId}:${c.receiverId}`) &&
             !deletedPairs.has(`${c.receiverId}:${c.senderId}`)
           );
-          console.log(`[ConnectionService.subscribeToUserConnections] 📦 [2/4] IndexedDB offlineStorage 'relations':`, userOfflineConns.length, "item(s) found for user.");
+          console.log(`[ConnectionService.subscribeToUserConnections]  [2/4] IndexedDB offlineStorage 'relations':`, userOfflineConns.length, "item(s) found for user.");
 
           // Add any connections from offlineStorage missing from memory DB
           userOfflineConns.forEach(c => {
@@ -1694,22 +1688,21 @@ export const connectionService = {
           });
         }
       } catch (e) {
-        console.warn("[ConnectionService.subscribeToUserConnections] ⚠️ Warning reading offlineStorage:", e);
+        console.warn("[ConnectionService.subscribeToUserConnections]  Warning reading offlineStorage:", e);
       }
 
       let mappedSb: Connection[] = [];
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          console.log(`[ConnectionService.subscribeToUserConnections] 📡 [3/4] Fetching connections from Supabase 'relations' table for grossiste_id=${userId} OR client_id=${userId}...`);
-          const { data, error } = await supabase
-            .from("relations")
-            .select("*")
-            .or(`grossiste_id.eq.${userId},client_id.eq.${userId}`);
+          console.log(`[ConnectionService.subscribeToUserConnections]  [3/4] Fetching connections from Firestore 'relations' for grossiste_id=${userId} OR client_id=${userId}...`);
+          const [relsGrossiste, relsClient] = await Promise.all([
+            firestoreGetWhere("relations", "grossiste_id", "==", userId),
+            firestoreGetWhere("relations", "client_id", "==", userId)
+          ]);
+          const data = [...relsGrossiste, ...relsClient];
 
-          if (error) {
-            console.warn(`[ConnectionService.subscribeToUserConnections] ⚠️ Supabase fetch warning:`, error.message);
-          } else if (data && data.length > 0) {
-            console.log(`[ConnectionService.subscribeToUserConnections] ✅ Supabase returned ${data.length} relation row(s) for user ${userId}:`, data);
+          if (data.length > 0) {
+            console.log(`[ConnectionService.subscribeToUserConnections]  Firestore returned ${data.length} relation row(s) for user ${userId}:`, data);
 
             // Auto-fetch any missing partner profiles into local db BEFORE mapping!
             const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
@@ -1750,10 +1743,10 @@ export const connectionService = {
                 };
               });
           } else {
-            console.log(`[ConnectionService.subscribeToUserConnections] ℹ️ Supabase returned 0 relation rows for user ${userId}.`);
+            console.log(`[ConnectionService.subscribeToUserConnections] ℹ Firestore returned 0 relation rows for user ${userId}.`);
           }
         } catch (e) {
-          console.warn("[ConnectionService.subscribeToUserConnections] Notice Supabase fetch connections exception:", e);
+          console.warn("[ConnectionService.subscribeToUserConnections] Notice Firestore fetch connections exception:", e);
         }
       }
 
@@ -1812,7 +1805,7 @@ export const connectionService = {
         return true;
       });
 
-      console.log(`[ConnectionService.subscribeToUserConnections] 🔄 [4/4] Final merged connections count: ${mergedConns.length}. Connections:`, mergedConns);
+      console.log(`[ConnectionService.subscribeToUserConnections]  [4/4] Final merged connections count: ${mergedConns.length}. Connections:`, mergedConns);
 
       // Persist without duplicates
       const allLocal = db.getConnections();
@@ -1825,7 +1818,7 @@ export const connectionService = {
           localStorage.setItem("wakat_erp_v2_connections", JSON.stringify(updatedAll));
         }
         await offlineStorage.setItems("relations", updatedAll);
-        console.log(`[ConnectionService.subscribeToUserConnections] 💾 Successfully persisted ${updatedAll.length} total connections to local DB, localStorage, and IndexedDB offlineStorage.`);
+        console.log(`[ConnectionService.subscribeToUserConnections]  Successfully persisted ${updatedAll.length} total connections to local DB, localStorage, and IndexedDB offlineStorage.`);
       } catch (e) {
         console.warn("[ConnectionService.subscribeToUserConnections] Warning persisting connections:", e);
       }
@@ -1843,25 +1836,15 @@ export const connectionService = {
     }
 
     let channel: any = null;
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        const uniqueId = Math.random().toString(36).substring(7);
-        channel = supabase
-          .channel(`public:relations_conn:${userId}:${uniqueId}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "relations" },
-            async (payload: any) => {
-              console.log(`[ConnectionService:Realtime] ⚡ Real-time 'relations' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
-              // Run emitConnections to sync Supabase, local state, and immediately persist to localStorage
-              await emitConnections();
-            }
-          )
-          .subscribe((status: string) => {
-            console.log(`[ConnectionService:Realtime] 📡 Supabase relations realtime channel status for ${userId}: ${status}`);
-          });
+        channel = firestoreSubscribe("relations", async () => {
+          console.log(`[ConnectionService:Realtime]  Firestore 'relations' snapshot change received for userId=${userId}`);
+          // Run emitConnections to sync Firestore, local state, and immediately persist to localStorage
+          await emitConnections();
+        });
       } catch (e) {
-        console.warn("Notice Supabase channel conn:", e);
+        console.warn("Notice Firestore channel conn:", e);
       }
     }
 
@@ -1869,8 +1852,8 @@ export const connectionService = {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_connections_updated", handleLocalChange);
       }
-      if (supabase && channel) {
-        supabase.removeChannel(channel);
+      if (channel) {
+        channel();
       }
     };
   },
@@ -1899,15 +1882,11 @@ export const connectionService = {
       }));
 
       let mappedSb: any[] = [];
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          const { data, error } = await supabase
-            .from("notifications")
-            .select("*")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false });
-
-          if (!error && data) {
+          const data = await firestoreGetWhere("notifications", "user_id", "==", userId);
+          data.sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+          if (data.length > 0) {
             mappedSb = data.map((row: any) => ({
               id: row.id,
               type: row.type || "demande_connexion",
@@ -1925,7 +1904,7 @@ export const connectionService = {
             }));
           }
         } catch (e) {
-          console.warn("[NotificationService] Notice Supabase fetch notifs:", e);
+          console.warn("[NotificationService] Notice Firestore fetch notifs:", e);
         }
       }
 
@@ -1936,7 +1915,7 @@ export const connectionService = {
       });
 
       const totalList = Array.from(map.values());
-      console.log(`[NotificationService.emitNotifs] Émission de ${totalList.length} notification(s) (${mappedLocal.length} locales, ${mappedSb.length} Supabase) pour l'utilisateur ${userId}`);
+      console.log(`[NotificationService.emitNotifs] Émission de ${totalList.length} notification(s) (${mappedLocal.length} locales, ${mappedSb.length} Firestore) pour l'utilisateur ${userId}`);
       callback(totalList);
     };
 
@@ -1950,24 +1929,14 @@ export const connectionService = {
     }
 
     let channel: any = null;
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        const uniqueId = Math.random().toString(36).substring(7);
-        channel = supabase
-          .channel(`public:notifications:${userId}:${uniqueId}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-            (payload: any) => {
-              console.log(`[NotificationService:Realtime] 📥 Supabase 'notifications' postgres_changes event (${payload.eventType}) received for userId=${userId}:`, payload);
-              emitNotifs();
-            }
-          )
-          .subscribe((status: string) => {
-            console.log(`[NotificationService:Realtime] 📡 Supabase notifications channel status for ${userId}: ${status}`);
-          });
+        channel = firestoreSubscribeWhere("notifications", "user_id", "==", userId, () => {
+          console.log(`[NotificationService:Realtime]  Firestore 'notifications' snapshot change received for userId=${userId}`);
+          emitNotifs();
+        });
       } catch (e) {
-        console.warn("Notice Supabase channel notifs:", e);
+        console.warn("Notice Firestore channel notifs:", e);
       }
     }
 
@@ -1975,8 +1944,8 @@ export const connectionService = {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_notifications_updated", handleLocalNotifChange);
       }
-      if (supabase && channel) {
-        supabase.removeChannel(channel);
+      if (channel) {
+        channel();
       }
     };
   },
@@ -1988,9 +1957,9 @@ export const connectionService = {
     const notifs = db.getNotifications().map(n => n.id === notifId ? { ...n, read: true } : n);
     db.saveNotifications(notifs);
 
-    if (supabase) {
+    if (isFirebaseConfigured()) {
       try {
-        await supabase.from("notifications").update({ read: true }).eq("id", notifId);
+        await firestoreUpdate("notifications", notifId, { read: true });
       } catch (e) {
         console.warn("Notice mark notification read:", e);
       }

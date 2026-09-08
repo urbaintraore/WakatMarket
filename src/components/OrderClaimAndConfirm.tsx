@@ -91,7 +91,7 @@ ${itemsText}
   return (
     <>
       {/* Visual Status Tracker with smooth Framer Motion transitions */}
-      <div className="bg-zinc-50 dark:bg-zinc-950/20 p-4 border border-zinc-150 dark:border-zinc-800 rounded-xl mt-2">
+      <div className="bg-zinc-50 dark:bg-zinc-950/20 p-4 border border-zinc-100 dark:border-zinc-800 rounded-xl mt-2">
         <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-3">Suivi d'expédition en temps réel</p>
         <div className="relative flex items-center justify-between w-full px-2">
           {/* Progress Line Background */}
@@ -122,7 +122,7 @@ ${itemsText}
                   animate={isActive ? { scale: [1, 1.15, 1], shadow: "0 0 8px rgba(16, 185, 129, 0.4)" } : { scale: 1 }}
                   transition={isActive ? { repeat: Infinity, duration: 2, ease: "easeInOut" } : undefined}
                 >
-                  {isCompleted ? "✓" : idx + 1}
+                  {isCompleted ? "" : idx + 1}
                 </motion.div>
                 <span className={`text-[10px] font-semibold mt-1.5 text-center ${isActive ? "text-zinc-900 dark:text-white font-bold" : "text-zinc-400"}`}>
                   {step.label}
@@ -133,7 +133,7 @@ ${itemsText}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 justify-end items-center mt-3 border-t border-zinc-150 dark:border-zinc-800 pt-3">
+      <div className="flex flex-wrap gap-2 justify-end items-center mt-3 border-t border-zinc-100 dark:border-zinc-800 pt-3">
         {/* Mobile Money Payment Proof Action & Badge */}
         {order && (
           <>
@@ -281,7 +281,7 @@ ${itemsText}
                   value={claimText}
                   onChange={(e) => setClaimText(e.target.value)}
                   placeholder="Décrivez le problème avec votre commande..."
-                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-sm h-24 resize-none"
+                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-sm h-24 resize-none"
                 />
               </div>
               

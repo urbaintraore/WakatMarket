@@ -34,6 +34,19 @@ export function isBonkoungou(email?: string, companyName?: string, name?: string
   );
 }
 
+// E-mails administrateurs racine (liste explicite — aucun e-mail « *admin* »
+// auto-promu). Miroir de cloud-functions/common.js (ADMIN_EMAILS).
+export const ROOT_ADMIN_EMAILS = [
+  "urbain.traore@yahoo.fr",
+  "urbain.traoreurb@gmail.com",
+  "maremillogo10@gmail.com",
+];
+
+export function isRootAdminEmail(email?: string | null): boolean {
+  const e = (email || "").toLowerCase().trim();
+  return ROOT_ADMIN_EMAILS.includes(e);
+}
+
 export function normalizeUserRole(inputRole?: string | UserRole | null): UserRole {
   if (!inputRole) return UserRole.CLIENT;
   const raw = String(inputRole).trim().toUpperCase();
@@ -434,7 +447,7 @@ export function isConnectionActive(c: any): boolean {
 }
 
 /* ==========================================================================
-   Supabase PostgreSQL Official Database Models (Source of Truth)
+   Firebase Firestore Official Database Models (Source of Truth)
    ========================================================================== */
 
 export interface ProductDB {

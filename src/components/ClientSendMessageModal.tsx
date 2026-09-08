@@ -44,19 +44,19 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
   // Pre-configured message templates
   const templates = [
     {
-      label: "📩 Rappel Solde / Créance",
+      label: " Rappel Solde / Créance",
       text: `Bonjour ${client.name}, nous vous remercions de votre confiance. Pour rappel, le solde en attente sur votre compte WakatMarket est de ${formatCFA(client.debtAmount || 0)}. Merci de régulariser dès que possible. Cordialement.`
     },
     {
-      label: "📦 Suivi Commande / Livraison",
+      label: " Suivi Commande / Livraison",
       text: `Bonjour ${client.name}, votre commande est en cours de traitement sur WakatMarket. N'hésitez pas à nous contacter pour toute précision sur la livraison.`
     },
     {
-      label: "🤝 Partenariat & Offre Spéciale",
+      label: " Partenariat & Offre Spéciale",
       text: `Bonjour ${client.name}, nous avons sélectionné pour vous de nouveaux produits à tarifs préférentiels sur WakatMarket. Consultez nos offres dès maintenant !`
     },
     {
-      label: "💬 Message Personnalisé",
+      label: " Message Personnalisé",
       text: `Bonjour ${client.name}, `
     }
   ];
@@ -92,7 +92,7 @@ export const ClientSendMessageModal: React.FC<ClientSendMessageModalProps> = ({
             const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, client.id);
             await chatService.sendMessage(convId, currentUser.id, MessageType.TEXT, messageText);
           } catch (e) {
-            console.warn("Supabase chat error, using local fallback:", e);
+            console.warn("Firebase chat error, using local fallback:", e);
           }
         }
         setSuccessMsg(`Message envoyé à ${client.name} sur la plateforme WakatMarket !`);

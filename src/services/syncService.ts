@@ -1,4 +1,10 @@
-import { supabase } from "../supabase";
+import {
+  isFirebaseConfigured,
+  firebaseConfigError,
+  firestoreUpsert,
+  firestoreDelete,
+  firestoreGetLimitOrdered
+} from "../firebase";
 import { offlineStorage } from "./offlineStorage";
 import { db } from "../data";
 import { Connection, UserRole } from "../types";
@@ -124,19 +130,24 @@ class SyncService {
   }
 
   /**
-   * Vérifie la connectivité réelle à Supabase via un appel léger
+   * Vérifie la connectivité réelle à Firestore via une lecture légère
    */
   public async checkRealConnectivity(): Promise<boolean> {
-    if (!supabase) return false;
+    if (!isFirebaseConfigured()) return false;
     try {
-      // Test ping léger sur la table products avec timeout de 5 secondes
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const { error } = await supabase.from("products").select("id").limit(1).abortSignal(controller.signal);
-      clearTimeout(timeoutId);
 
-      this.isOnline = !error || (error && error.code !== "PGRST301" && error.message !== "Failed to fetch");
+      try {
+        await firestoreGetLimitOrdered("products", "created_at", 1);
+        clearTimeout(timeoutId);
+        this.isOnline = true;
+      } catch {
+        clearTimeout(timeoutId);
+        this.isOnline = false;
+        return false;
+      }
+
       return this.isOnline;
     } catch {
       this.isOnline = false;
@@ -274,8 +285,11 @@ class SyncService {
           const success = await this.executeOperation(op);
 
           if (success) {
-            console.log(`[SYNC SUCCESS] Opération ${op.id} synchronisée avec succès avec Supabase.`);
+            console.log(`[SYNC SUCCESS] Opération ${op.id} synchronisée avec succès avec Firestore.`);
             completedOpIds.add(op.id);
+            if (op.operation !== "DELETE") {
+              this.notifyBackend(op);
+            }
             this.queue = this.queue.filter((item) => item.id !== op.id);
             await offlineStorage.removeItem("sync_queue", op.id);
             hasProgress = true;
@@ -302,11 +316,11 @@ class SyncService {
   }
 
   /**
-   * Exécution d'une opération atomique vers Supabase selon le schéma officiel
+   * Exécution d'une opération atomique vers Firestore selon le schéma officiel
    */
   private async executeOperation(op: SyncOperation): Promise<boolean> {
-    if (!supabase) {
-      op.lastError = { message: "Supabase non initialisé", timestamp: new Date().toISOString() };
+    if (!isFirebaseConfigured()) {
+      op.lastError = { message: `Firebase non initialisé. ${firebaseConfigError || ""}`, timestamp: new Date().toISOString() };
       return false;
     }
 
@@ -346,106 +360,86 @@ class SyncService {
     }
   }
 
-  // --- Synchroniseurs par table Supabase via dbMappers ---
+  // --- Synchroniseurs par collection Firestore via dbMappers ---
 
   private async syncProduct(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
     if (operation === "DELETE") {
-      const { error } = await supabase.from("products").delete().eq("id", op.entityId);
-      if (error) throw error;
+      await firestoreDelete("products", op.entityId);
       return true;
     }
 
     const record = productToDb(payload);
-    const { error } = await supabase.from("products").upsert(record);
-    if (error) throw error;
+    await firestoreUpsert("products", record);
     return true;
   }
 
   private async syncInventory(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
     if (operation === "DELETE") {
-      const { error } = await supabase.from("inventory").delete().eq("id", op.entityId);
-      if (error) throw error;
+      await firestoreDelete("inventory", op.entityId);
       return true;
     }
 
     const record = inventoryToDb(payload);
-    const { error } = await supabase.from("inventory").upsert(record);
-    if (error) throw error;
+    await firestoreUpsert("inventory", record);
     return true;
   }
 
   private async syncOrder(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
     if (operation === "DELETE") {
-      const { error } = await supabase.from("orders").delete().eq("id", op.entityId);
-      if (error) throw error;
+      await firestoreDelete("orders", op.entityId);
       return true;
     }
 
     const record = orderToDb(payload);
-    const { error } = await supabase.from("orders").upsert(record);
-    if (error) throw error;
+    await firestoreUpsert("orders", record);
     return true;
   }
 
   private async syncVente(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
     if (operation === "DELETE") {
-      const { error } = await supabase.from("ventes").delete().eq("id", op.entityId);
-      if (error) throw error;
+      await firestoreDelete("ventes", op.entityId);
       return true;
     }
 
     const record = venteToDb(payload);
-    const { error } = await supabase.from("ventes").upsert(record);
-    if (error) throw error;
+    await firestoreUpsert("ventes", record);
     return true;
   }
 
   private async syncProfile(op: SyncOperation): Promise<boolean> {
     const { payload } = op;
     const record = profileToDb(payload);
-    const { error } = await supabase.from("profiles").upsert(record);
-    if (error) throw error;
+    await firestoreUpsert("profiles", record);
     return true;
   }
 
   private async syncRelation(op: SyncOperation): Promise<boolean> {
     const { operation, payload } = op;
     if (operation === "DELETE") {
-      const { error } = await supabase.from("relations").delete().eq("id", op.entityId);
-      if (error) {
-        console.error("[Relations Supabase Error]", {
-          operation: "syncRelation (DELETE)",
-          entityId: op.entityId,
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
-        throw error;
-      }
+      await firestoreDelete("relations", op.entityId);
       return true;
     }
 
     const record = relationToDb(payload);
-    const { error } = await supabase.from("relations").upsert(record);
-    if (error) {
-      console.error("[Relations Supabase Error]", {
+    try {
+      await firestoreUpsert("relations", record);
+    } catch (error: any) {
+      console.error("[Relations Firestore Error]", {
         operation: "syncRelation (UPSERT)",
         entityId: op.entityId,
         payloadSent: record,
         code: error.code,
         message: error.message,
-        details: error.details,
-        hint: error.hint
+        details: error.details
       });
       throw error;
     }
 
-    // Bidirectional local state update after Supabase confirmation
+    // Bidirectional local state update after Firestore confirmation
     try {
       const relationId = op.entityId || record.id;
       const grossisteId = record.grossiste_id;
@@ -494,6 +488,55 @@ class SyncService {
   }
 
   /**
+   * Détermine les appels backend (Render) à émettre après l'upsert Firestore,
+   * pour émuler les triggers Cloud Functions (vérifications + notifications).
+   * Le serveur est idempotent (flags server_confirmed / preuve_notifie / compta).
+   */
+  private apiCallsFor(op: SyncOperation): { path: string; body?: any }[] {
+    const id = encodeURIComponent(op.entityId);
+    switch (op.entity) {
+      case "order":
+        return [
+          { path: `/api/orders/${id}/process` },
+          { path: `/api/paiements/${id}/preuve` }
+        ];
+      case "vente":
+        return [{ path: `/api/comptabilite/ventes/${id}/process` }];
+      case "relation":
+        return [{ path: `/api/relations/${id}/process` }];
+      case "profile":
+        return [{ path: `/api/admin/users/${id}/claims` }];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Appels backend "best effort" après synchronisation Firestore réussie :
+   * les échecs sont journalisés mais n'entravent jamais la file d'attente.
+   */
+  private async notifyBackend(op: SyncOperation): Promise<void> {
+    try {
+      const api = (await import("./apiService")).default;
+      const calls = this.apiCallsFor(op);
+      for (const call of calls) {
+        try {
+          const result = await api.post(call.path, call.body || {});
+          if (result) {
+            console.log(`[SYNC BACKEND] POST ${call.path} OK`);
+          } else {
+            console.warn(`[SYNC BACKEND] POST ${call.path} ignoré (backend non configuré ou hors-ligne).`);
+          }
+        } catch (e) {
+          console.warn(`[SYNC BACKEND] POST ${call.path} échoué :`, e);
+        }
+      }
+    } catch (e) {
+      console.warn("[SYNC BACKEND] Module API indisponible :", e);
+    }
+  }
+
+  /**
    * Compatibility alias for legacy queue calls
    */
   public async addToQueue(type: string, payload: any): Promise<SyncOperation> {
@@ -508,4 +551,3 @@ class SyncService {
 }
 
 export const syncService = new SyncService();
-

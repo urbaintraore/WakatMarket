@@ -101,7 +101,7 @@ export default function BarcodeScanner({ onScanSuccess, products, onClose }: Bar
   return (
     <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden max-w-md w-full mx-auto" id="barcode-scanner-widget">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-850 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
+      <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900/50">
         <div className="flex items-center gap-2">
           <Scan className="w-5 h-5 text-emerald-600 animate-pulse" />
           <h3 className="font-semibold text-zinc-950 dark:text-white text-base">
@@ -163,7 +163,7 @@ export default function BarcodeScanner({ onScanSuccess, products, onClose }: Bar
         {activeTab === "camera" && (
           <div className="space-y-4">
             {/* Viewfinder Frame */}
-            <div className="relative aspect-video rounded-xl overflow-hidden bg-black flex items-center justify-center border border-zinc-200 dark:border-zinc-850 shadow-inner">
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-black flex items-center justify-center border border-zinc-200 dark:border-zinc-800 shadow-inner">
               {isScanning && !scanResult && (
                 <>
                   {/* Laser Red Line */}
@@ -225,7 +225,7 @@ export default function BarcodeScanner({ onScanSuccess, products, onClose }: Bar
                     key={p.id}
                     onClick={() => handleSimulatedScan(p)}
                     disabled={!isScanning}
-                    className="flex items-center gap-2 p-2 border border-zinc-150 dark:border-zinc-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-zinc-800 hover:border-emerald-200 text-left transition"
+                    className="flex items-center gap-2 p-2 border border-zinc-100 dark:border-zinc-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-zinc-800 hover:border-emerald-200 text-left transition"
                   >
                     <img
                       src={p.image}
@@ -261,7 +261,7 @@ export default function BarcodeScanner({ onScanSuccess, products, onClose }: Bar
                     name="code"
                     required
                     placeholder="Entrer le code de 13 chiffres..."
-                    className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-lg text-xs text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-lg text-xs text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                   />
                   <button
                     type="submit"
@@ -273,11 +273,11 @@ export default function BarcodeScanner({ onScanSuccess, products, onClose }: Bar
               </div>
             </form>
 
-            <div className="bg-zinc-50 dark:bg-zinc-850 p-4 rounded-xl border border-zinc-100 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400 space-y-2">
+            <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded-xl border border-zinc-100 dark:border-zinc-800 text-[11px] text-zinc-500 dark:text-zinc-400 space-y-2">
               <p className="font-semibold text-zinc-700 dark:text-zinc-300">
                 Codes enregistrés à tester :
               </p>
-              <div className="divide-y divide-zinc-150 dark:divide-zinc-800">
+              <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
                 {products.map((p) => (
                   <div
                     key={p.id}

@@ -5,21 +5,20 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
-  Users, Shield, ShieldCheck, Compass, Landmark, Truck, ShoppingCart, ShoppingBag, 
-  Settings, KeyRound, Sparkles, RefreshCw, BarChart2, MessageSquare, 
-  Scan, Bell, LogIn, LogOut, Sun, Moon, Info, HelpCircle, AlertCircle, 
-  Smartphone, Mail, Lock, PhoneCall, Laptop, Globe, Heart, MapPin, UserCog,
-  UserCheck, UserX, WifiOff, Presentation, LayoutGrid, X, Clock, Loader2, Trash2, Scale, Cloud, Menu
+  Users, Shield, ShieldCheck, Landmark, Truck, ShoppingCart, ShoppingBag, 
+  Settings, Sparkles, RefreshCw, BarChart2, MessageSquare, 
+  Scan, Bell, LogOut, Sun, Moon, HelpCircle, AlertCircle, 
+  Smartphone, Mail, Lock, PhoneCall, Globe, Heart, MapPin, UserCog,
+  UserCheck, UserX, WifiOff, LayoutGrid, X, Clock, Loader2, Trash2, Scale, Cloud, Menu, Zap, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, MessageType, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole, isBonkoungou } from "./types";
+import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, MessageType, AIRecommendation, LightClient, StockMovement, DebtPayment, Connection, isConnectionActive, normalizeUserRole, isBonkoungou, isRootAdminEmail } from "./types";
 import {
-  db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice, DEFAULT_PRODUCTS
+  db, getGeoHierarchy, estimateShipping, triggerAIAnalysis, formatCFA, generateOTP, calculateApplicablePrice
 } from "./data";
 import { useAuth } from "./hooks/useAuth";
-import { authService, formatSupabaseAuthError } from "./services/authService";
-import { userService, SupabaseUser } from "./services/userService";
+import { userService, FirebaseUser } from "./services/userService";
 import { inventoryService } from "./services/inventoryService";
 import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
@@ -29,8 +28,7 @@ import { connectionService } from "./services/connectionService";
 import { chatService } from "./services/chatService";
 import { syncService } from "./services/syncService";
 import { offlineStorage } from "./services/offlineStorage";
-import { supabase, supabaseConfigError, isNetworkError } from "./supabase";
-import { isAIStudioOrDevEnvironment } from "./utils/env";
+import { firebaseConfigError, isFirebaseConfigured, isNetworkError, firestoreGetAll, firestoreDelete } from "./firebase";
 
 import { ProfileEditModal } from "./components/ProfileEditModal";
 import { ProductDetailModal } from "./components/ProductDetailModal";
@@ -52,7 +50,6 @@ import BarcodeScanner from "./components/BarcodeScanner";
 import AICopilot from "./components/AICopilot";
 import ReportsModule from "./components/ReportsModule";
 import ChatModule from "./components/ChatModule";
-import PitchDeck from "./components/PitchDeck";
 import SupportModal from "./components/SupportModal";
 import { PWAInstallModal } from "./components/PWAInstallModal";
 import { PaiementsAValiderModule } from "./components/PaiementsAValiderModule";
@@ -61,6 +58,8 @@ import { NotificationBell } from "./components/NotificationBell";
 import { QuickActionsBar } from "./components/QuickActionsBar";
 import { B2BProductComparator } from "./components/B2BProductComparator";
 import { AddressAutocomplete } from "./components/AddressAutocomplete";
+import LandingPage from "./components/LandingPage";
+import { AuthScreen } from "./components/AuthScreen";
 import { WidgetGrid, WidgetCard, OrderWidgetCard } from "./components/WidgetGrid";
 export { WidgetGrid, WidgetCard, OrderWidgetCard };
 export type { WidgetGridProps } from "./components/WidgetGrid";
@@ -146,32 +145,37 @@ export default function App() {
   }, [autoSystemTheme]);
 
   const {
-    supabaseUser,
+    firebaseUser,
     dbUser,
-    loginWithEmail,
-    registerWithEmail,
-    sendPasswordReset,
-    requestPhoneOTP,
-    verifyPhoneOTP,
-    logout: supabaseLogout,
+    logout,
     loading: authLoading,
-    confirmationResult,
-    error: authError,
     updateProfile
   } = useAuth();
 
   const [isRealUserAuthenticated, setIsRealUserAuthenticated] = useState(false);
   const [showDiagnostic, setShowDiagnostic] = useState(false);
-  const [supabasePermissionError, setSupabasePermissionError] = useState<{ message: string; path?: string; rawError?: string } | null>(null);
+  const [firestorePermissionError, setFirestorePermissionError] = useState<{ message: string; path?: string; rawError?: string } | null>(null);
 
   useEffect(() => {
     const handlePermissionError = (e: any) => {
       if (e.detail) {
-        setSupabasePermissionError(e.detail);
+        setFirestorePermissionError(e.detail);
       }
     };
-    window.addEventListener("wakat_supabase_permission_error", handlePermissionError);
-    return () => window.removeEventListener("wakat_supabase_permission_error", handlePermissionError);
+    window.addEventListener("wakat_firestore_permission_error", handlePermissionError);
+
+    // Programmatic openers used by shared components (chat / comparator) now that
+    // the header toggles have been moved into the sidebar.
+    const openChat = () => setShowChat((v) => !v);
+    const openComparator = () => setShowComparator((v) => !v);
+    window.addEventListener("wakat:open-chat", openChat);
+    window.addEventListener("wakat:open-comparator", openComparator);
+
+    return () => {
+      window.removeEventListener("wakat_firestore_permission_error", handlePermissionError);
+      window.removeEventListener("wakat:open-chat", openChat);
+      window.removeEventListener("wakat:open-comparator", openComparator);
+    };
   }, []);
 
   useEffect(() => {
@@ -270,16 +274,8 @@ export default function App() {
   const [syncQueue, setSyncQueue] = useState<any[]>(() => db.getSyncQueue());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Active User session simulation
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    if (!isAIStudioOrDevEnvironment()) {
-      return null;
-    }
-    const list = db.getUsers();
-    const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
-    const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
-    return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
-  });
+  // Active User session (récupérée via l'auth ou une session Firebase restaurée)
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (currentUser?.id && typeof localStorage !== "undefined") {
@@ -288,10 +284,10 @@ export default function App() {
   }, [currentUser?.id]);
 
   useEffect(() => {
-    setIsRealUserAuthenticated(!!supabaseUser && !!dbUser);
-  }, [supabaseUser, dbUser]);
+    setIsRealUserAuthenticated(!!firebaseUser && !!dbUser);
+  }, [firebaseUser, dbUser]);
 
-  // Supabase Sync for users
+  // Firebase Sync for users
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -317,7 +313,7 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Supabase Sync for products
+  // Firebase Sync for products
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -331,7 +327,7 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Supabase Sync for inventory
+  // Firebase Sync for inventory
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -409,7 +405,7 @@ export default function App() {
     }
   }, [currentUser?.id]);
 
-  // Supabase Sync for orders
+  // Firebase Sync for orders
   useEffect(() => {
     
     if (isRealUserAuthenticated) {
@@ -433,11 +429,11 @@ export default function App() {
     }
   }, [isRealUserAuthenticated]);
 
-  // Sync currentUser with real Supabase user
+  // Sync currentUser with real Firebase user
   useEffect(() => {
     if (isRealUserAuthenticated && dbUser) {
       const normEmail = dbUser.email ? dbUser.email.toLowerCase().trim() : "";
-      const determinedRole = (normEmail === "urbain.traore@yahoo.fr" || normEmail === "urbain.traoreurb@gmail.com")
+      const determinedRole = isRootAdminEmail(normEmail)
         ? UserRole.ADMIN
         : normalizeUserRole(dbUser.rôle || dbUser.role || UserRole.CLIENT);
 
@@ -459,39 +455,10 @@ export default function App() {
 
   // UI state managers
   const [initialLoadingTimeout, setInitialLoadingTimeout] = useState(false);
-  const [isAuthScreen, setIsAuthScreen] = useState(() => {
-    if (!isAIStudioOrDevEnvironment()) {
-      return true;
-    }
-    const list = db.getUsers();
-    const hasUser = list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
-    return !hasUser;
-  });
-  const [authStep, setAuthStep] = useState<"login" | "otp" | "reset">("login");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPhone, setAuthPhone] = useState("");
-  const [authOTP, setAuthOTP] = useState("");
-  const [sentOTP, setSentOTP] = useState("");
-
-  // UI states for Auth form
-  const [fbAuthMode, setFbAuthMode] = useState<"signin" | "signup" | "phone" | "reset">("signin");
-  const [fbEmail, setFbEmail] = useState("");
-  const [fbPassword, setFbPassword] = useState("");
-  const [fbNom, setFbNom] = useState("");
-  const [fbPrénom, setFbPrénom] = useState("");
-  const [fbTéléphone, setFbTéléphone] = useState("");
-  const [fbRôle, setFbRôle] = useState<UserRole>(UserRole.CLIENT);
-  const [fbOtpCode, setFbOtpCode] = useState("");
-  const [fbPersist, setFbPersist] = useState(true);
-  const [fbMsg, setFbMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  // Geographical location states for company registration
-  const [fbPays, setFbPays] = useState("");
-  const [fbVille, setFbVille] = useState("");
-  const [fbQuartier, setFbQuartier] = useState("");
-  const [fbLatitude, setFbLatitude] = useState<number | undefined>(undefined);
-  const [fbLongitude, setFbLongitude] = useState<number | undefined>(undefined);
-  const [geoLoading, setGeoLoading] = useState(false);
+  // Whether the user has explicitly chosen to enter the platform (landing gate).
+  // The landing page is shown first to redirect every actor towards his own space.
+  const [enteredApp, setEnteredApp] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Deduplicate helper
   const deduplicate = <T extends { id: string }>(arr: T[]): T[] => {
@@ -556,19 +523,19 @@ export default function App() {
     return Array.from(map.values()).filter(u => (u.status as any) !== "DELETED");
   };
 
-  // Synchronize Supabase User profile to Active ERP Session
+  // Synchronize Firebase User profile to Active ERP Session
   useEffect(() => {
-    if (supabaseUser) {
+    if (firebaseUser) {
       const profileSource = dbUser || {
-        uid: supabaseUser.uid,
-        id: supabaseUser.uid,
-        nom: supabaseUser.displayName || supabaseUser.email?.split("@")[0] || "Utilisateur",
+        uid: firebaseUser.uid,
+        id: firebaseUser.uid,
+        nom: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Utilisateur",
         prénom: "",
-        email: supabaseUser.email || "",
-        téléphone: supabaseUser.phoneNumber || "",
-        phone: supabaseUser.phoneNumber || "",
-        rôle: (supabaseUser.email === "urbain.traore@yahoo.fr" || supabaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
-        role: (supabaseUser.email === "urbain.traore@yahoo.fr" || supabaseUser.email === "urbain.traoreurb@gmail.com") ? UserRole.ADMIN : UserRole.CLIENT,
+        email: firebaseUser.email || "",
+        téléphone: firebaseUser.phoneNumber || "",
+        phone: firebaseUser.phoneNumber || "",
+        rôle: isRootAdminEmail(firebaseUser.email) ? UserRole.ADMIN : UserRole.CLIENT,
+        role: isRootAdminEmail(firebaseUser.email) ? UserRole.ADMIN : UserRole.CLIENT,
         statut: "ACTIF"
       };
 
@@ -579,7 +546,7 @@ export default function App() {
         name: `${profileSource.prénom || ""} ${profileSource.nom || ""}`.trim() || profileSource.email?.split("@")[0] || "Utilisateur",
         email: profileSource.email,
         phone: profileSource.téléphone || profileSource.phone,
-        role: (profileSource.email === "urbain.traore@yahoo.fr" || profileSource.email === "urbain.traoreurb@gmail.com") 
+        role: isRootAdminEmail(profileSource.email)
           ? UserRole.ADMIN 
           : normalizeUserRole(profileSource.rôle || profileSource.role || UserRole.CLIENT),
         status: (profileSource.statut as any) || "ACTIVE",
@@ -588,7 +555,7 @@ export default function App() {
         sector: profileSource.quartier,
         latitude: profileSource.latitude,
         longitude: profileSource.longitude,
-        avatar: supabaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+        avatar: firebaseUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
         balance: existingUser?.balance || 0,
         companyName: profileSource.companyName || existingUser?.companyName || `${profileSource.nom || "Entreprise"} Entreprise`,
         address: profileSource.ville && profileSource.quartier ? `${profileSource.quartier}, ${profileSource.ville}` : "Non spécifié"
@@ -603,28 +570,23 @@ export default function App() {
       
       setCurrentUser(activeProfile);
       setIsRealUserAuthenticated(true);
-      setIsAuthScreen(false);
     } else {
       setIsRealUserAuthenticated(false);
-      if (isAIStudioOrDevEnvironment()) {
-        // Maintenir ou restaurer un profil démo actif uniquement en environnement AI Studio / Dev
-        setCurrentUser((prev) => {
-          if (prev) return prev;
-          const list = db.getUsers();
-          const savedUserId = typeof localStorage !== "undefined" ? localStorage.getItem("wakat_active_user_id") : null;
-          const foundSaved = savedUserId ? list.find(u => u.id === savedUserId) : null;
-          return foundSaved || list.find((u) => u.role === UserRole.ADMIN) || list[0] || null;
-        });
-        setIsAuthScreen(false);
-      } else {
-        // En production (hors AI Studio) : Bloquer l'accès démo et forcer la mire de connexion
-        setCurrentUser(null);
-        setIsAuthScreen(true);
-      }
+      // Pas de session Firebase active : aucun accès sans authentification (tous environnements).
+      // L'écran AuthScreen est le seul moyen d'entrer dans l'application.
+      setCurrentUser(null);
     }
-  }, [supabaseUser, dbUser]);
+  }, [firebaseUser, dbUser]);
 
-  // Synchroniser tous les autres utilisateurs réels depuis Supabase et le stockage local
+  // Dès qu'un profil actif est disponible (session restaurée, login ou choix de rôle),
+  // on bascule de la landing page vers l'espace applicatif correspondant à son rôle.
+  useEffect(() => {
+    if (currentUser) {
+      setEnteredApp(true);
+    }
+  }, [currentUser]);
+
+  // Synchroniser tous les autres utilisateurs réels depuis Firebase et le stockage local
   useEffect(() => {
     let active = true;
     const fetchRealUsers = async () => {
@@ -736,20 +698,12 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [supabaseUser, dbUser]);
-
-  // Display auth error messages in helper state
-  useEffect(() => {
-    if (authError) {
-      setFbMsg({ type: "error", text: authError });
-    }
-  }, [authError]);
+  }, [firebaseUser, dbUser]);
 
   const [showScanner, setShowScanner] = useState(false);
   const [showAICopilot, setShowAICopilot] = useState(false);
   const [showReports, setShowReports] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [showPitchDeck, setShowPitchDeck] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showMobileToolsMenu, setShowMobileToolsMenu] = useState(false);
 
@@ -836,18 +790,18 @@ export default function App() {
     };
     const handleConnectionsUpdated = (e?: any) => {
       const allConns = db.getConnections();
-      console.log(`[App.tsx:handleConnectionsUpdated] 🔄 Event received (${e?.type || 'manual'}), checking consistency across ${allConns.length} stored connection(s)...`, e?.detail);
+      console.log(`[App.tsx:handleConnectionsUpdated]  Event received (${e?.type || 'manual'}), checking consistency across ${allConns.length} stored connection(s)...`, e?.detail);
       
       if (currentUser) {
         const userConns = allConns.filter(c => c.senderId === currentUser.id || c.receiverId === currentUser.id);
         const activeConns = userConns.filter(c => c.status === "active" || (c as any).statut === "ACTIF");
         const pendingConns = userConns.filter(c => c.status === "en_attente" || (c.status as string) === "pending");
         
-        console.log(`[App.tsx:handleConnectionsUpdated] ✅ Consistency verified for user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName}): ${activeConns.length} ACTIVE partnership(s), ${pendingConns.length} pending request(s).`);
+        console.log(`[App.tsx:handleConnectionsUpdated]  Consistency verified for user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName}): ${activeConns.length} ACTIVE partnership(s), ${pendingConns.length} pending request(s).`);
         activeConns.forEach(c => {
           const partnerId = c.senderId === currentUser.id ? c.receiverId : c.senderId;
           const partnerName = c.senderId === currentUser.id ? c.receiverName : c.senderName;
-          console.log(`  - 🤝 ACTIVE Partner: #${c.id} with partner "${partnerName || partnerId}" (Sender=${c.senderId}, Receiver=${c.receiverId}, Status=${c.status})`);
+          console.log(`  -  ACTIVE Partner: #${c.id} with partner "${partnerName || partnerId}" (Sender=${c.senderId}, Receiver=${c.receiverId}, Status=${c.status})`);
         });
 
         setConnections(userConns);
@@ -869,7 +823,7 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
-      console.log(`[App.tsx] 🔔 Subscribing to notifications and connections for active user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName})`);
+      console.log(`[App.tsx]  Subscribing to notifications and connections for active user ID="${currentUser.id}" (${currentUser.name || currentUser.companyName})`);
       
       // Auto-repair any pending relationship inconsistencies
       connectionService.repairPendingConnections(currentUser.id).catch(err => {
@@ -877,14 +831,14 @@ export default function App() {
       });
 
       const unsubConns = connectionService.subscribeToUserConnections(currentUser.id, (freshConns) => {
-        console.log(`[App.tsx:subscribeToUserConnections] 🔗 Real-time connections update received for user ${currentUser.id}. Total active/pending connections: ${freshConns.length}`, freshConns);
+        console.log(`[App.tsx:subscribeToUserConnections]  Real-time connections update received for user ${currentUser.id}. Total active/pending connections: ${freshConns.length}`, freshConns);
         const verifiedActive = freshConns.filter(c => c.status === "active" || (c as any).statut === "ACTIF");
-        console.log(`[App.tsx:subscribeToUserConnections] ✅ Verified active connections count: ${verifiedActive.length}`);
+        console.log(`[App.tsx:subscribeToUserConnections]  Verified active connections count: ${verifiedActive.length}`);
         setConnections(freshConns);
       });
       
       const unsubNotifs = connectionService.subscribeToUserNotifications(currentUser.id, (notifs) => {
-        console.log(`[App.tsx:subscribeToUserNotifications] 📬 Real-time notifications update received for user ${currentUser.id}. Total notifications: ${notifs.length}`, notifs);
+        console.log(`[App.tsx:subscribeToUserNotifications]  Real-time notifications update received for user ${currentUser.id}. Total notifications: ${notifs.length}`, notifs);
         // Find truly NEW unread notifications that we haven't toasted yet
         const newUnread = notifs.filter(n => !n.read && !knownNotificationIds.current.has(n.id));
         
@@ -902,7 +856,7 @@ export default function App() {
       });
 
       return () => {
-        console.log(`[App.tsx] 🔕 Unsubscribing from connections and notifications for user ${currentUser.id}`);
+        console.log(`[App.tsx]  Unsubscribing from connections and notifications for user ${currentUser.id}`);
         unsubConns();
         unsubNotifs();
       };
@@ -911,20 +865,20 @@ export default function App() {
 
   // Cleanup orphaned connections on initialization
   const cleanupOrphanedConnections = async () => {
-    console.log("[App.tsx] 🧹 Executing cleanupOrphanedConnections at initialization...");
+    console.log("[App.tsx]  Executing cleanupOrphanedConnections at initialization...");
     try {
       const localConns = db.getConnections();
       const allUsers = db.getUsers();
       const validUserIds = new Set(allUsers.map(u => u.id));
 
-      if (supabase) {
+      if (isFirebaseConfigured()) {
         try {
-          const { data: sbProfiles } = await supabase.from("profiles").select("id");
-          if (sbProfiles && Array.isArray(sbProfiles)) {
-            sbProfiles.forEach((p: any) => validUserIds.add(p.id));
+          const fbProfiles = await firestoreGetAll("profiles");
+          if (fbProfiles && Array.isArray(fbProfiles)) {
+            fbProfiles.forEach((p: any) => validUserIds.add(p.id));
           }
         } catch (e) {
-          console.warn("[cleanupOrphanedConnections] Could not query Supabase profiles:", e);
+          console.warn("[cleanupOrphanedConnections] Could not query Firestore profiles:", e);
         }
       }
 
@@ -945,7 +899,7 @@ export default function App() {
       });
 
       if (orphanedIds.length > 0) {
-        console.log(`[cleanupOrphanedConnections] 🗑️ Found ${orphanedIds.length} orphaned active/pending connection(s) to remove:`, orphanedIds);
+        console.log(`[cleanupOrphanedConnections]  Found ${orphanedIds.length} orphaned active/pending connection(s) to remove:`, orphanedIds);
         const cleaned = localConns.filter(c => !orphanedIds.includes(c.id));
         db.saveConnections(cleaned);
         if (typeof localStorage !== "undefined") {
@@ -955,16 +909,16 @@ export default function App() {
         if (currentUser) {
           setConnections(cleaned.filter(c => c.senderId === currentUser.id || c.receiverId === currentUser.id));
         }
-        if (supabase) {
+        if (isFirebaseConfigured()) {
           try {
-            await supabase.from("relations").delete().in("id", orphanedIds);
-            console.log("[cleanupOrphanedConnections] Deleted orphaned relations from Supabase.");
+            await Promise.all(orphanedIds.map(id => firestoreDelete("relations", id)));
+            console.log("[cleanupOrphanedConnections] Deleted orphaned relations from Firestore.");
           } catch (e) {
-            console.warn("[cleanupOrphanedConnections] Supabase orphan deletion warning:", e);
+            console.warn("[cleanupOrphanedConnections] Firestore orphan deletion warning:", e);
           }
         }
       } else {
-        console.log("[cleanupOrphanedConnections] ✅ No orphaned connections found.");
+        console.log("[cleanupOrphanedConnections]  No orphaned connections found.");
       }
     } catch (err) {
       console.error("[cleanupOrphanedConnections] Error during cleanup:", err);
@@ -987,8 +941,8 @@ export default function App() {
     setUsers(list);
     db.saveUsers(list);
     
-    // If authenticated, also update Supabase users list or handle individual deletions
-    // Note: handleDeleteUser will handle specific Supabase deletions
+    // If authenticated, also update Firebase users list or handle individual deletions
+    // Note: handleDeleteUser will handle specific Firebase deletions
   };
 
   const syncProducts = (list: Product[]) => {
@@ -1122,145 +1076,6 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Auth Operations
-  const handleRequestOTP = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authPhone) return;
-    const generated = generateOTP();
-    setSentOTP(generated);
-    // Real SMS would go here
-    setAuthStep("otp");
-  };
-
-  const handleValidateOTP = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (authOTP === sentOTP) {
-      // Look up user by phone
-      const matched = users.find((u) => u.phone.replace(/\s+/g, "") === authPhone.replace(/\s+/g, ""));
-      if (matched) {
-        setCurrentUser(matched);
-        setIsAuthScreen(false);
-        addNotification(`Authentification réussie pour ${matched.name}`);
-      } else {
-        alert("Aucun compte associé à ce numéro de téléphone. Simulation d'inscription en cours.");
-        // Auto sign in as standard client
-        const newClient: UserProfile = {
-          id: `client-${Date.now()}`,
-          name: "Nouveau Client SMS",
-          email: "",
-          phone: authPhone,
-          role: UserRole.CLIENT,
-          status: "ACTIVE",
-          country: "Sénégal",
-          region: "Dakar",
-          avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-          balance: 0
-        };
-        syncUsers([...users, newClient]);
-        setCurrentUser(newClient);
-        setIsAuthScreen(false);
-      }
-    } else {
-      alert("Code OTP incorrect.");
-    }
-  };
-
-  // Production Supabase Auth Handlers
-  const handleFbLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFbMsg(null);
-    try {
-      await loginWithEmail(fbEmail, fbPassword);
-      setFbMsg({ type: "success", text: "Connexion réussie !" });
-      setIsAuthScreen(false);
-    } catch (err: any) {
-      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur lors de la connexion.") });
-    }
-  };
-
-  const handleFbSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFbMsg(null);
-    if (!fbNom || !fbPrénom || !fbTéléphone) {
-      setFbMsg({ type: "error", text: "Veuillez remplir tous les champs du profil." });
-      return;
-    }
-
-    // Check if the role requires business geographical location
-    const requiresGeo = [
-      UserRole.MANUFACTURER,
-      UserRole.WHOLESALER,
-      UserRole.SEMI_WHOLESALER,
-      UserRole.RETAILER
-    ].includes(fbRôle);
-
-    if (requiresGeo && (!fbPays.trim() || !fbVille.trim() || !fbQuartier.trim())) {
-      setFbMsg({
-        type: "error",
-        text: "Pour un Fabricant, Grossiste, Demi-Grossiste ou Détaillant, veuillez renseigner la situation géographique de l'entreprise (Pays, Ville, Quartier)."
-      });
-      return;
-    }
-
-    try {
-      await registerWithEmail(
-        fbEmail,
-        fbPassword,
-        fbNom,
-        fbPrénom,
-        fbTéléphone,
-        fbRôle,
-        requiresGeo ? fbPays : undefined,
-        requiresGeo ? fbVille : undefined,
-        requiresGeo ? fbQuartier : undefined,
-        requiresGeo ? fbLatitude : undefined,
-        requiresGeo ? fbLongitude : undefined
-      );
-      setFbMsg({ type: "success", text: "Inscription réussie ! Votre compte est opérationnel." });
-      setIsAuthScreen(false);
-    } catch (err: any) {
-      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur lors de l'inscription.") });
-    }
-  };
-
-  const handleFbResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFbMsg(null);
-    try {
-      await sendPasswordReset(fbEmail);
-      setFbMsg({ type: "success", text: "E-mail de réinitialisation envoyé avec succès !" });
-    } catch (err: any) {
-      setFbMsg({ type: "error", text: formatSupabaseAuthError(err.message || "Erreur d'envoi de l'e-mail.") });
-    }
-  };
-
-  const handleFbRequestPhoneOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFbMsg(null);
-    if (!fbTéléphone) {
-      setFbMsg({ type: "error", text: "Veuillez spécifier votre numéro de téléphone." });
-      return;
-    }
-    try {
-      await requestPhoneOTP(fbTéléphone, "recaptcha-container");
-      setFbMsg({ type: "success", text: "Code de vérification envoyé !" });
-    } catch (err: any) {
-      setFbMsg({ type: "error", text: err.message || "Erreur lors de l'envoi de l'OTP." });
-    }
-  };
-
-  const handleFbVerifyPhoneOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFbMsg(null);
-    try {
-      await verifyPhoneOTP(fbOtpCode, fbNom || "Utilisateur", fbPrénom || "Supabase", fbEmail, fbRôle);
-      setFbMsg({ type: "success", text: "Vérification OTP réussie !" });
-      setIsAuthScreen(false);
-    } catch (err: any) {
-      setFbMsg({ type: "error", text: err.message || "Erreur lors de la vérification OTP." });
-    }
-  };
-
   // ERP Operations
   const handleToggleUserStatus = (userId: string) => {
     const updated = users.map((u) => {
@@ -1303,7 +1118,7 @@ export default function App() {
       
       await userService.updateUser(userId, fbUpdate);
     } catch (err) {
-      console.error("Erreur mise à jour Supabase par admin:", err);
+      console.error("Erreur mise à jour Firebase par admin:", err);
     }
   };
 
@@ -1318,14 +1133,14 @@ export default function App() {
     });
     syncUsers(updated);
 
-    // Supabase Update
+    // Firebase Update
     try {
       const fbProfile = await userService.getUser(userId);
       if (fbProfile) {
         await userService.updateUser(userId, { rôle: newRole });
       }
     } catch (err) {
-      console.error("Erreur mise à jour Supabase du rôle:", err);
+      console.error("Erreur mise à jour Firebase du rôle:", err);
     }
   };
 
@@ -1423,14 +1238,14 @@ export default function App() {
           const filteredLocal = currentLocalUsers.filter(u => !idsToDelete.includes(u.id));
           db.saveUsers(filteredLocal);
  
-          // 3. Update Supabase if authenticated
+          // 3. Update Firebase if authenticated
           {
             for (const u of usersToDelete) {
               try {
                 await userService.deleteUser(u.id);
-                console.log(`[Cleanup] Deleted from Supabase: ${u.id}`);
+                console.log(`[Cleanup] Deleted from Firebase: ${u.id}`);
               } catch (e) {
-                console.error(`[Cleanup] Error deleting user ${u.id} from Supabase:`, e);
+                console.error(`[Cleanup] Error deleting user ${u.id} from Firebase:`, e);
               }
             }
           }
@@ -1476,7 +1291,7 @@ export default function App() {
     );
 
     if (buyingPrice > 0 && minSellingPrice < buyingPrice) {
-      const errorMsg = `❌ Validation Échouée : Le prix de vente (${formatCFA(minSellingPrice)}) ne peut pas être inférieur au prix d'achat (${formatCFA(buyingPrice)}). Vente à perte interdite.`;
+      const errorMsg = ` Validation Échouée : Le prix de vente (${formatCFA(minSellingPrice)}) ne peut pas être inférieur au prix d'achat (${formatCFA(buyingPrice)}). Vente à perte interdite.`;
       addNotification(errorMsg);
       alert(`[Avertissement Vente à Perte]\n\nLe prix de vente le plus bas (${formatCFA(minSellingPrice)}) est inférieur au prix d'achat (${formatCFA(buyingPrice)}).\n\nLa création du produit est annulée pour préserver vos marges.`);
       return;
@@ -1681,10 +1496,10 @@ export default function App() {
         if (item.id === targetItem.id) {
           if (stock === 0) {
             const prod = products.find((p) => p.id === item.productId);
-            addNotification(`🚨 RUPTURE CRITIQUE : ${prod?.name} est épuisé !`);
+            addNotification(` RUPTURE CRITIQUE : ${prod?.name} est épuisé !`);
           } else if (stock <= item.threshold) {
             const prod = products.find((p) => p.id === item.productId);
-            addNotification(`⚠️ Stock d'alerte franchi : ${prod?.name} (${stock} restants)`);
+            addNotification(` Stock d'alerte franchi : ${prod?.name} (${stock} restants)`);
           }
           const delta = stock - item.stock;
           if (delta !== 0) {
@@ -2534,7 +2349,7 @@ export default function App() {
     }
   }, [authLoading]);
 
-  // Filter data - filter out demo mock data when Supabase active session is detected
+  // Filter data - filter out demo mock data when Firebase active session is detected
   const displayUsers = useMemo(() => deduplicateUsers(isRealUserAuthenticated
     ? users.filter(u => {
         if (!currentUser) return false;
@@ -2689,32 +2504,69 @@ export default function App() {
     );
   }
 
+  // ----------------------------------------------------------------------
+  // Portail d'entrée : landing page affichée avant tout autre écran pour
+  // rediriger chaque acteur vers son espace dédié. Toute sélection de rôle
+  // ou action "Se connecter" mène systématiquement à l'écran d'authentification.
+  // ----------------------------------------------------------------------
+  const handleLandingSelectRole = () => setEnteredApp(true);
+  const handleOpenAuthFromLanding = () => setEnteredApp(true);
+
+  if (!enteredApp) {
+    return (
+      <LandingPage
+        onSelectRole={handleLandingSelectRole}
+        onOpenAuth={handleOpenAuthFromLanding}
+      />
+    );
+  }
+
+  // Ecran d'authentification dédié (plein écran, sans header/sidebar) — tous environnements confondus
+  if (!currentUser) {
+    if (authLoading) {
+      return (
+        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
+              <Shield className="w-7 h-7 text-white" />
+            </div>
+            <div className="w-8 h-8 border-[3px] border-emerald-200 dark:border-emerald-900 border-t-emerald-600 rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">Restauration de votre session...</p>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <AuthScreen onAuthenticated={() => {}} />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans text-zinc-900 dark:text-zinc-100 flex flex-col transition duration-300">
       {/* Global Configuration Errors */}
-      {supabaseConfigError && (
+      {firebaseConfigError && (
         <div className="bg-rose-600 text-white px-4 py-2.5 text-[11px] font-bold flex items-center justify-center gap-2 shadow-lg z-50 text-center leading-normal">
           <AlertCircle className="w-4 h-4 shrink-0 animate-pulse text-rose-100" />
           <span>
-            Attention: Supabase n'est pas configuré correctement. L'envoi et la synchronisation de vos médias (produits, factures, chat) seront impossibles. <span className="underline opacity-90">Détail : {supabaseConfigError}</span>
+            Attention: Firebase n'est pas configuré correctement. L'envoi et la synchronisation de vos médias (produits, factures, chat) seront impossibles. <span className="underline opacity-90">Détail : {firebaseConfigError}</span>
           </span>
         </div>
       )}
 
-      {/* Global Supabase Permission Error Banner */}
-      {supabasePermissionError && (
+      {/* Global Firestore Permission Error Banner */}
+      {firestorePermissionError && (
         <div className="bg-amber-600 text-white px-4 py-2.5 text-[11px] font-bold flex items-center justify-between gap-2 shadow-lg z-50 leading-normal">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 animate-pulse text-amber-100" />
             <span>
-              <strong>Accès Supabase refusé :</strong> {supabasePermissionError.message}
-              {supabasePermissionError.path && (
-                <span className="opacity-90 ml-1">(Collection / Document : <code>{supabasePermissionError.path}</code>)</span>
+              <strong>Accès Firestore refusé :</strong> {firestorePermissionError.message}
+              {firestorePermissionError.path && (
+                <span className="opacity-90 ml-1">(Collection / Document : <code>{firestorePermissionError.path}</code>)</span>
               )}
             </span>
           </div>
           <button 
-            onClick={() => setSupabasePermissionError(null)} 
+            onClick={() => setFirestorePermissionError(null)} 
             className="px-2 py-0.5 bg-black/20 hover:bg-black/30 rounded text-[10px] text-white shrink-0 ml-2"
           >
             Fermer
@@ -2723,7 +2575,7 @@ export default function App() {
       )}
 
       {/* Premium Header App Bar */}
-      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-150 dark:border-zinc-800 sticky top-0 z-40 transition-colors relative">
+      <header className="bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 sticky top-0 z-40 transition-colors relative">
         {/* Real-time Sync Progress Bar */}
         {(syncStatus.isSyncing || syncStatus.pendingCount > 0) && (
           <div className="absolute top-0 left-0 right-0 h-1 bg-zinc-100 dark:bg-zinc-800 overflow-hidden pointer-events-none z-50">
@@ -2744,10 +2596,17 @@ export default function App() {
           </div>
         )}
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           
-          {/* Logo Brand */}
+          {/* Groupe gauche (logo cliquable + indicateur de synchro) */}
           <div className="flex items-center gap-3">
+          {/* Logo Brand — clic pour revenir au landing page */}
+          <button
+            type="button"
+            onClick={() => setEnteredApp(false)}
+            title="Retour à l'accueil WakatMarket"
+            className="flex items-center gap-3 text-left transition cursor-pointer hover:opacity-80"
+          >
             <div className="w-11 h-11 bg-white dark:bg-zinc-800 rounded-xl p-0.5 border border-emerald-500/30 shadow-md shadow-emerald-500/10 flex items-center justify-center overflow-hidden">
               <img
                 src={wakatLogo}
@@ -2765,12 +2624,13 @@ export default function App() {
               </h1>
               <p className="text-[9.5px] text-zinc-500 font-medium">Distribution & Logistique Intelligente d'Afrique</p>
             </div>
+          </button>
 
             {/* Real-time Sync Successful Indicator */}
-            <div className="hidden md:flex flex-col items-start gap-0.5 border-l border-zinc-150 dark:border-zinc-800 pl-3">
+            <div className="hidden md:flex flex-col items-start gap-0.5 border-l border-zinc-100 dark:border-zinc-800 pl-3">
               <span className="text-[8px] uppercase tracking-wider font-bold text-zinc-400 dark:text-zinc-500">Données</span>
               <div 
-                className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-150 dark:border-emerald-900/50 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
+                className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-900/50 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
                 title="Toutes les données locales sont synchronisées et sécurisées hors-ligne. Cliquez pour forcer la synchronisation."
                 onClick={() => syncService.triggerSync()}
               >
@@ -2793,92 +2653,7 @@ export default function App() {
               <span className="text-xs font-bold hidden sm:inline">Menu</span>
             </button>
 
-            {/* Quick Support & FAQ IA shortcut in Header */}
-            <button
-              onClick={() => setShowSupportModal(true)}
-              className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition shadow-2xs"
-              title="Centre de Support & Guide IA"
-              id="header-support-btn"
-            >
-              <HelpCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="hidden md:inline">Support & IA</span>
-            </button>
-
-            {/* Mobile Money Payments validation for merchants */}
-            {currentUser && currentUser.role !== "Admin" && currentUser.role !== "Client Final" && currentUser.role !== "Chauffeur / Livreur" && (
-              <button
-                onClick={() => setShowPaiementsAValider(!showPaiementsAValider)}
-                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                  showPaiementsAValider
-                    ? "bg-amber-600 text-white border-transparent"
-                    : "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-300 hover:bg-amber-100"
-                }`}
-                id="header-paiements-toggle"
-                title="Validation des paiements Mobile Money"
-              >
-                <Smartphone className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span className="hidden xl:inline">Paiements</span>
-              </button>
-            )}
-
-            {/* Pitch Deck */}
-            <button
-              onClick={() => {
-                setShowPitchDeck(!showPitchDeck);
-                setShowScanner(false);
-                setShowAICopilot(false);
-                setShowReports(false);
-                setShowChat(false);
-                setShowComparator(false);
-              }}
-              className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                showPitchDeck
-                  ? "bg-amber-600 text-white border-transparent"
-                  : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-              }`}
-              id="header-pitchdeck-toggle"
-              title="Présentation Stratégique Pitch Deck"
-            >
-              <Presentation className="w-4 h-4 text-amber-500 animate-pulse" />
-              <span className="hidden xl:inline">Pitch Deck</span>
-            </button>
-
-            {/* B2B Product Comparator */}
-            {currentUser && (
-              <button
-                onClick={() => {
-                  setShowComparator(!showComparator);
-                  setShowPitchDeck(false);
-                }}
-                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                  showComparator
-                    ? "bg-emerald-600 text-white border-transparent"
-                    : "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100"
-                }`}
-                id="header-comparator-toggle"
-                title="Comparateur de Prix & Stocks B2B Multi-Fournisseurs"
-              >
-                <Scale className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <span className="hidden lg:inline">Comparateur B2B</span>
-              </button>
-            )}
-
-            {/* Direct Messaging */}
-            {currentUser && (
-              <button
-                onClick={() => setShowChat(!showChat)}
-                className={`p-2 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition cursor-pointer ${
-                  showChat
-                    ? "bg-blue-600 text-white border-transparent"
-                    : "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50"
-                }`}
-                id="header-chat-toggle"
-                title="Messagerie B2B Directe"
-              >
-                <MessageSquare className="w-4 h-4 text-blue-500" />
-                <span className="hidden lg:inline">Messagerie</span>
-              </button>
-            )}
+            {/* User-tool navigation now lives in the sidebar (Support, Paiements, Pitch Deck, Comparateur, Messagerie) */}
 
             {/* Notifications Alert Bell */}
             <div className="relative flex items-center gap-1.5">
@@ -2898,7 +2673,7 @@ export default function App() {
               )}
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 relative cursor-pointer"
+                className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 relative cursor-pointer"
                 id="notifications-bell-btn"
                 title="Notifications Système"
               >
@@ -2930,7 +2705,7 @@ export default function App() {
                     onClick={() => pushNotificationService.requestPermission()}
                     className="w-full text-left px-3 py-2 bg-emerald-50/80 dark:bg-emerald-950/40 hover:bg-emerald-100/80 border-b border-emerald-200 dark:border-emerald-800/60 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 flex items-center justify-between transition cursor-pointer"
                   >
-                    <span>🔔 Alertes Push Vendeurs (Stock & Paiement)</span>
+                    <span className="inline-flex items-center gap-1"><Bell className="w-3 h-3" /> Alertes Push Vendeurs (Stock & Paiement)</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                       pushNotificationService.getPermissionStatus() === "granted"
                         ? "bg-emerald-600 text-white"
@@ -2980,14 +2755,14 @@ export default function App() {
                             {isConnNotif && (
                               <div className="mt-2">
                                 {isAlreadyActive && (
-                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded-lg border border-emerald-150">
+                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded-lg border border-emerald-100">
                                     <UserCheck className="w-3 h-3" />
                                     <span>Partenariat actif & confirmé</span>
                                   </div>
                                 )}
 
                                 {isAlreadyRejected && (
-                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-1 rounded-lg border border-rose-150">
+                                  <div className="flex items-center gap-1.5 text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-1 rounded-lg border border-rose-100">
                                     <UserX className="w-3 h-3" />
                                     <span>Demande de partenariat refusée</span>
                                   </div>
@@ -3029,7 +2804,7 @@ export default function App() {
                                         </button>
                                       </div>
                                     ) : (
-                                      <div className="text-[9px] font-medium text-zinc-500 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-150 rounded-lg px-2 py-1">
+                                      <div className="text-[9px] font-medium text-zinc-500 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-100 rounded-lg px-2 py-1">
                                         Demande de partenariat en attente de validation
                                       </div>
                                     )}
@@ -3108,39 +2883,31 @@ export default function App() {
                 if (autoSystemTheme) setAutoSystemTheme(false);
                 setDarkMode(!darkMode);
               }}
-              className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-150 dark:border-zinc-750 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 cursor-pointer"
+              className="p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition text-zinc-600 dark:text-zinc-300 cursor-pointer"
               id="theme-toggle-btn"
               title="Basculer Mode Clair / Sombre"
             >
               {darkMode ? <Sun className="w-4.5 h-4.5" /> : <Moon className="w-4.5 h-4.5" />}
             </button>
 
-            {/* Auth button */}
+            {/* Déconnexion : ferme la session et ramène au landing page */}
             <button
               onClick={async () => {
-                if (isRealUserAuthenticated) {
-                  await supabaseLogout();
-                  setFbMsg({ type: "success", text: "Déconnecté de la session." });
-                  setCurrentUser(null);
-                  localStorage.removeItem("wakat_active_user_id");
-                  setIsAuthScreen(true);
-                } else if (currentUser) {
-                  setCurrentUser(null);
-                  localStorage.removeItem("wakat_active_user_id");
-                  setIsAuthScreen(true);
-                  setFbMsg({ type: "success", text: "Déconnecté de la session." });
-                } else {
-                  if (!isAIStudioOrDevEnvironment() && !currentUser) {
-                    setIsAuthScreen(true);
-                  } else {
-                    setIsAuthScreen(!isAuthScreen);
-                  }
+                try {
+                  if (isRealUserAuthenticated) await logout();
+                } catch (err) {
+                  console.error("Erreur lors de la déconnexion:", err);
                 }
+                setCurrentUser(null);
+                localStorage.removeItem("wakat_active_user_id");
+                setEnteredApp(false);
+                addNotification("Session fermée avec succès. À bientôt !");
               }}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              className="px-3.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-rose-200 dark:border-rose-900/50"
               id="auth-toggle-btn"
+              title="Se déconnecter"
             >
-              <LogIn className="w-4 h-4" /> {isRealUserAuthenticated || currentUser ? "Déconnexion" : "Connexion"}
+              <LogOut className="w-4 h-4" /> Déconnexion
             </button>
           </div>
         </div>
@@ -3218,14 +2985,6 @@ export default function App() {
                     </button>
                   )}
 
-                  <button
-                    onClick={() => { setShowPitchDeck(!showPitchDeck); setIsMobileDrawerOpen(false); }}
-                    className="w-full px-3 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-200 text-xs font-bold flex items-center gap-2.5 transition cursor-pointer"
-                  >
-                    <Presentation className="w-4 h-4 text-amber-500" />
-                    <span>Présentation Pitch Deck</span>
-                  </button>
-
                   {currentUser && (
                     <button
                       onClick={() => { setShowComparator(!showComparator); setIsMobileDrawerOpen(false); }}
@@ -3270,47 +3029,6 @@ export default function App() {
                     <span>Rapports & Analytics</span>
                   </button>
                 </div>
-
-                {isAIStudioOrDevEnvironment() && (
-                  <div className="pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-                      Changer de Rôle (Démo) :
-                    </p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[
-                        { label: "Admin", role: UserRole.ADMIN },
-                        { label: "Grossiste", role: UserRole.WHOLESALER },
-                        { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
-                        { label: "Détaillant", role: UserRole.RETAILER },
-                        { label: "Fabricant", role: UserRole.MANUFACTURER },
-                        { label: "Livreur", role: UserRole.DRIVER_R2C },
-                        { label: "Client", role: UserRole.CLIENT }
-                      ].map((btn) => (
-                        <button
-                          key={btn.role}
-                          type="button"
-                          onClick={() => {
-                            const list = db.getUsers();
-                            const found = list.find((u) => u.role === btn.role) || list[0];
-                            if (found) {
-                              setCurrentUser(found);
-                              localStorage.setItem("wakat_active_user_id", found.id);
-                            }
-                            setIsAuthScreen(false);
-                            setIsMobileDrawerOpen(false);
-                          }}
-                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition text-left cursor-pointer ${
-                            currentUser?.role === btn.role
-                              ? "bg-emerald-600 text-white"
-                              : "bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                          }`}
-                        >
-                          {btn.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </motion.div>
           </div>
@@ -3320,7 +3038,7 @@ export default function App() {
       {/* Offline Banner */}
       {!isOnline && (
         <div className="bg-amber-100 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <WifiOff className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
             <div>
               <h3 className="text-sm font-bold text-amber-800 dark:text-amber-200">Mode Hors-Ligne Actif</h3>
@@ -3333,419 +3051,8 @@ export default function App() {
       )}
 
       {/* Main ERP Canvas Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-6 lg:space-y-8">
         
-        {isAuthScreen ? (
-          <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 max-w-lg mx-auto space-y-4 shadow-xl">
-            <div className="flex justify-between items-center pb-3 border-b border-zinc-100 dark:border-zinc-800">
-              <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-emerald-600" /> WakatMarket - Portail de Connexion
-              </h4>
-              {(isAIStudioOrDevEnvironment() || currentUser) && (
-                <button 
-                  onClick={() => {
-                    if (!currentUser && isAIStudioOrDevEnvironment()) {
-                      const list = db.getUsers();
-                      const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
-                      if (defaultUser) setCurrentUser(defaultUser);
-                    }
-                    if (currentUser || isAIStudioOrDevEnvironment()) {
-                      setIsAuthScreen(false);
-                    }
-                  }} 
-                  className="text-zinc-500 hover:text-zinc-950 dark:hover:text-white font-bold cursor-pointer text-sm p-1"
-                  title="Fermer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Config Info Banner */}
-            <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/10 p-3.5 rounded-xl text-[10px] text-zinc-600 dark:text-zinc-300 space-y-1">
-              <p className="font-bold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider mb-1">⚡ Supabase & Authentification Sécurisée</p>
-              <div><span className="font-semibold text-zinc-400">Base de données & Auth :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">Supabase / Auth Service</span></div>
-              <div><span className="font-semibold text-zinc-400">Stockage de fichiers (Buckets) :</span> <span className="font-mono text-zinc-800 dark:text-zinc-200">MonBucket & Chat</span></div>
-              <div><span className="font-semibold text-zinc-400">Statut :</span> <span className="font-medium text-emerald-600 dark:text-emerald-400">Opérationnel</span></div>
-            </div>
-
-            {/* Error/Success Feedbacks */}
-            {fbMsg && (
-              <div className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${fbMsg.type === "success" ? "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 border border-emerald-500/10" : "bg-rose-50 dark:bg-rose-950/20 text-rose-600 border border-rose-500/10"}`}>
-                <Info className="w-4 h-4 shrink-0" />
-                <span className="leading-tight">{fbMsg.text}</span>
-              </div>
-            )}
-
-            {/* Main Tabs switcher */}
-            <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl text-xs font-semibold">
-              <button
-                onClick={() => { setFbAuthMode("signin"); setFbMsg(null); }}
-                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${fbAuthMode === "signin" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
-              >
-                Connexion
-              </button>
-              <button
-                onClick={() => { setFbAuthMode("signup"); setFbMsg(null); }}
-                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${fbAuthMode === "signup" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
-              >
-                Inscription
-              </button>
-              <button
-                onClick={() => { setFbAuthMode("phone"); setFbMsg(null); }}
-                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${fbAuthMode === "phone" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
-              >
-                OTP Téléphone
-              </button>
-              <button
-                onClick={() => { setFbAuthMode("reset"); setFbMsg(null); }}
-                className={`flex-1 py-1.5 rounded-lg transition cursor-pointer ${fbAuthMode === "reset" ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
-              >
-                RàP
-              </button>
-            </div>
-
-            {/* Email/Password Login Mode */}
-            {fbAuthMode === "signin" && (
-              <div className="space-y-5">
-                <form onSubmit={handleFbLogin} className="space-y-4 text-xs">
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">E-mail de connexion</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="Saisir votre adresse e-mail..."
-                      value={fbEmail}
-                      onChange={(e) => setFbEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Mot de passe</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="Saisir le mot de passe..."
-                      value={fbPassword}
-                      onChange={(e) => setFbPassword(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="fb-persist"
-                      checked={fbPersist}
-                      onChange={(e) => {
-                        setFbPersist(e.target.checked);
-                        authService.configureSessionPersistence(e.target.checked);
-                      }}
-                      className="rounded border-zinc-300 dark:border-zinc-700 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
-                    />
-                    <label htmlFor="fb-persist" className="text-[11px] text-zinc-500 dark:text-zinc-400 cursor-pointer selection:bg-transparent">
-                      Se souvenir de moi sur cet appareil (Persistance locale)
-                    </label>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-                  >
-                    {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-                    Se connecter à WakatMarket
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* Email/Password Signup Mode */}
-            {fbAuthMode === "signup" && (
-              <form onSubmit={handleFbSignUp} className="space-y-3.5 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Prénom</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Jean"
-                      value={fbPrénom}
-                      onChange={(e) => setFbPrénom(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Nom</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ouédraogo"
-                      value={fbNom}
-                      onChange={(e) => setFbNom(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Adresse e-mail d'inscription</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="Saisir votre adresse e-mail d'inscription..."
-                    value={fbEmail}
-                    onChange={(e) => setFbEmail(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Téléphone</label>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="+226 70 00 00 00"
-                      value={fbTéléphone}
-                      onChange={(e) => setFbTéléphone(e.target.value)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Rôle plateforme</label>
-                     <select
-                      value={fbRôle}
-                      onChange={(e) => setFbRôle(e.target.value as UserRole)}
-                      className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-bold text-emerald-600"
-                    >
-                      <option value={UserRole.CLIENT}>Client (B2C Market)</option>
-                      <option value={UserRole.RETAILER}>Détaillant (POS Boutique)</option>
-                      <option value={UserRole.SEMI_WHOLESALER}>Demi-Grossiste (Vente Hybride)</option>
-                      <option value={UserRole.WHOLESALER}>Grossiste (Procurement B2B)</option>
-                      <option value={UserRole.MANUFACTURER}>Fabricant (Usine B2B)</option>
-                      <option value={UserRole.DRIVER_R2C}>Livreur Détaillant➔Client</option>
-                      <option value={UserRole.DRIVER_W2R}>Livreur Grossiste➔Détaillant</option>
-                      <option value={UserRole.DRIVER_W2SG}>Livreur Grossiste➔Demi-Grossiste</option>
-                      <option value={UserRole.DRIVER_SG2R}>Livreur Demi-Grossiste➔Détaillant</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Conditional Geographic fields for Business Roles */}
-                {[
-                  UserRole.MANUFACTURER,
-                  UserRole.WHOLESALER,
-                  UserRole.SEMI_WHOLESALER,
-                  UserRole.RETAILER,
-                  UserRole.CLIENT,
-                  UserRole.DRIVER_R2C,
-                  UserRole.DRIVER_W2R,
-                  UserRole.DRIVER_W2SG,
-                  UserRole.DRIVER_SG2R
-                ].includes(fbRôle) && (
-                  <div className="space-y-3 p-3 bg-zinc-50 dark:bg-zinc-850/50 rounded-xl border border-zinc-200 dark:border-zinc-800">
-                    <p className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">📍 Situation géographique & Adresse</p>
-                    
-                    <div>
-                      <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px] font-semibold">
-                        Recherche rapide d'adresse / Localisation (Auto-complétion)
-                      </label>
-                      <AddressAutocomplete
-                        value={fbQuartier ? `${fbQuartier}, ${fbVille} (${fbPays})` : ""}
-                        onChange={(val) => {
-                          setFbQuartier(val);
-                        }}
-                        onSelectSuggestion={(sug) => {
-                          setFbPays(sug.country);
-                          setFbVille(sug.city);
-                          if (sug.neighborhood) {
-                            setFbQuartier(sug.neighborhood);
-                          }
-                          if (sug.latitude && sug.longitude) {
-                            setFbLatitude(sug.latitude);
-                            setFbLongitude(sug.longitude);
-                          }
-                        }}
-                        users={users}
-                        placeholder="Ex: Tapez Ouaga 2000, Médina Dakar, Hamdallaye Bamako..."
-                        id="register-address-autocomplete"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px]">Pays</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Burkina Faso"
-                          value={fbPays}
-                          onChange={(e) => setFbPays(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-lg text-[11px]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px]">Ville</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Ouagadougou"
-                          value={fbVille}
-                          onChange={(e) => setFbVille(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-lg text-[11px]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-zinc-600 dark:text-zinc-400 mb-1 text-[10px]">Quartier</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Ouaga 2000"
-                          value={fbQuartier}
-                          onChange={(e) => setFbQuartier(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-lg text-[11px]"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 items-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setGeoLoading(true);
-                          if (navigator.geolocation) {
-                            navigator.geolocation.getCurrentPosition(
-                              (pos) => {
-                                setFbLatitude(pos.coords.latitude);
-                                setFbLongitude(pos.coords.longitude);
-                                setGeoLoading(false);
-                                setFbMsg({ type: "success", text: `Coordonnées GPS récupérées : Lat ${pos.coords.latitude.toFixed(4)}, Lng ${pos.coords.longitude.toFixed(4)}` });
-                              },
-                              (err) => {
-                                setGeoLoading(false);
-                                setFbMsg({ type: "error", text: "Impossible de récupérer votre position GPS actuelle." });
-                              }
-                            );
-                          } else {
-                            setGeoLoading(false);
-                            setFbMsg({ type: "error", text: "La géolocalisation n'est pas supportée par votre navigateur." });
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-zinc-200 dark:bg-zinc-750 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        {geoLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
-                        Détecter les coordonnées GPS (Optionnel)
-                      </button>
-                      {fbLatitude !== undefined && fbLongitude !== undefined && (
-                        <span className="text-[10px] text-zinc-500 font-mono">
-                          📍 {fbLatitude.toFixed(4)}, {fbLongitude.toFixed(4)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative">
-                  <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Mot de passe</label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    placeholder="Saisir un mot de passe fort..."
-                    value={fbPassword}
-                    onChange={(e) => setFbPassword(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-850 text-white py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                >
-                  {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                  Créer mon compte
-                </button>
-              </form>
-            )}
-
-            {/* Direct Access & Demo Switcher - Uniquement accessible en environnement AI Studio / Dev */}
-            {isAIStudioOrDevEnvironment() && (
-              <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800 space-y-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!currentUser) {
-                      const list = db.getUsers();
-                      const defaultUser = list.find((u) => u.role === UserRole.ADMIN) || list[0];
-                      if (defaultUser) setCurrentUser(defaultUser);
-                    }
-                    setIsAuthScreen(false);
-                  }}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20"
-                >
-                  <Compass className="w-4 h-4 text-emerald-100" />
-                  Accéder directement au Tableau de Bord ERP (Mode Démo)
-                </button>
-
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5 text-center">
-                    Tester un rôle spécifique (1 Clic) :
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 justify-center">
-                    {[
-                      { label: "Admin", role: UserRole.ADMIN },
-                      { label: "Grossiste", role: UserRole.WHOLESALER },
-                      { label: "Demi-Gros", role: UserRole.SEMI_WHOLESALER },
-                      { label: "Détaillant", role: UserRole.RETAILER },
-                      { label: "Fabricant", role: UserRole.MANUFACTURER },
-                      { label: "Livreur", role: UserRole.DRIVER_R2C },
-                      { label: "Client", role: UserRole.CLIENT }
-                    ].map((btn) => (
-                      <button
-                        key={btn.role}
-                        type="button"
-                        onClick={() => {
-                          const list = db.getUsers();
-                          const found = list.find((u) => u.role === btn.role) || list[0];
-                          if (found) {
-                            setCurrentUser(found);
-                            localStorage.setItem("wakat_active_user_id", found.id);
-                          }
-                          setIsAuthScreen(false);
-                        }}
-                        className="px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-[10px] font-semibold transition cursor-pointer"
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Option to Disconnect User if signed in */}
-            {supabaseUser && (
-              <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px]">
-                <span className="text-zinc-500 font-medium">Connecté: <strong className="text-emerald-600">{supabaseUser.email || supabaseUser.phoneNumber}</strong></span>
-                <button
-                  onClick={async () => {
-                    await supabaseLogout();
-                    setCurrentUser(null);
-                    localStorage.removeItem("wakat_active_user_id");
-                    setIsAuthScreen(true);
-                    setFbMsg({ type: "success", text: "Session fermée avec succès." });
-                  }}
-                  className="text-rose-500 hover:text-rose-600 font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" /> Se déconnecter
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
             {/* Centralized Quick Actions Bar (Support, PWA Install, Sync, AI, Scanner, Reports) */}
             <QuickActionsBar
               syncStatus={syncStatus}
@@ -3838,17 +3145,6 @@ export default function App() {
                 </motion.div>
               )}
 
-              {showPitchDeck && (
-                <motion.div
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="relative z-30 mb-8"
-                >
-                  <PitchDeck onClose={() => setShowPitchDeck(false)} />
-                </motion.div>
-              )}
-
               {showPaiementsAValider && currentUser && (
                 <motion.div
                   initial={{ opacity: 0, y: -20 }}
@@ -3857,7 +3153,7 @@ export default function App() {
                   className="relative z-30 mb-8"
                 >
                   <div className="bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xl">
-                    <div className="flex justify-between items-center mb-6 pb-3 border-b border-zinc-150 dark:border-zinc-800">
+                    <div className="flex justify-between items-center mb-6 pb-3 border-b border-zinc-100 dark:border-zinc-800">
                       <div>
                         <h3 className="font-extrabold text-base text-zinc-900 dark:text-white flex items-center gap-2">
                           <Smartphone className="w-5 h-5 text-amber-500" />
@@ -3927,11 +3223,91 @@ export default function App() {
                 />
               )}
             </AnimatePresence>
-          </>
-        )}
+
+        {/* Dashboard Layout: persistent sidebar (desktop) + main content */}
+        <div className="flex items-start gap-5">
+          {/* Desktop Sidebar Navigation */}
+          <aside className={`hidden md:flex flex-col shrink-0 sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/85 backdrop-blur shadow-sm transition-all duration-200 ${sidebarCollapsed ? "w-16 items-center px-2 py-3" : "w-64 p-3"}`}>
+            <button
+              onClick={() => setSidebarCollapsed(s => !s)}
+              title={sidebarCollapsed ? "Déplier la barre latérale" : "Replier la barre latérale"}
+              className={`mb-2 grid place-items-center w-7 h-7 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer ${sidebarCollapsed ? "" : "ml-auto"}`}
+            >
+              {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
+
+            {currentUser && (
+              <div className={`${sidebarCollapsed ? "pb-3 mb-2 border-b border-zinc-100 dark:border-zinc-800" : "px-2 pb-3 mb-2 border-b border-zinc-100 dark:border-zinc-800"}`}>
+                <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2.5"}`}>
+                  <div className="relative shrink-0">
+                    {currentUser.avatar ? (
+                      <img src={currentUser.avatar} alt={currentUser.name} referrerPolicy="no-referrer"
+                        className="w-10 h-10 rounded-xl object-cover border border-zinc-200 dark:border-zinc-700" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl grid place-items-center bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                        <Zap className="w-5 h-5" />
+                      </div>
+                    )}
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-white dark:border-zinc-900" />
+                  </div>
+                  {!sidebarCollapsed && (
+                    <div className="min-w-0">
+                      <p className="text-xs font-extrabold text-zinc-900 dark:text-white truncate">{currentUser.companyName || currentUser.name}</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 truncate">{currentUser.role}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!sidebarCollapsed && <p className="px-2 text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1.5">Espace de travail</p>}
+            <nav className="space-y-1 w-full">
+              <button title="Support & Guide IA" onClick={() => { setShowSupportModal(true); }} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300 transition cursor-pointer`}>
+                <HelpCircle className="w-4 h-4 text-emerald-600 shrink-0" /> {!sidebarCollapsed && "Support & Guide IA"}
+              </button>
+              {currentUser && currentUser.role !== "Admin" && currentUser.role !== "Client Final" && currentUser.role !== "Chauffeur / Livreur" && (
+                <button title="Validation Paiements" onClick={() => setShowPaiementsAValider(!showPaiementsAValider)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold transition cursor-pointer ${showPaiementsAValider ? "bg-amber-600 text-white" : "text-zinc-700 dark:text-zinc-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700"}`}>
+                  <Smartphone className="w-4 h-4 text-amber-500 shrink-0" /> {!sidebarCollapsed && "Validation Paiements"}
+                </button>
+              )}
+              <button title="Messagerie B2B" onClick={() => setShowChat(!showChat)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold transition cursor-pointer ${showChat ? "bg-blue-600 text-white" : "text-zinc-700 dark:text-zinc-200 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:text-blue-700"}`}>
+                <MessageSquare className="w-4 h-4 text-blue-500 shrink-0" /> {!sidebarCollapsed && "Messagerie B2B"}
+              </button>
+              <button title="Comparateur B2B" onClick={() => setShowComparator(!showComparator)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold transition cursor-pointer ${showComparator ? "bg-emerald-600 text-white" : "text-zinc-700 dark:text-zinc-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700"}`}>
+                <Scale className="w-4 h-4 text-emerald-600 shrink-0" /> {!sidebarCollapsed && "Comparateur B2B"}
+              </button>
+              <button title="Scanner" onClick={() => setShowScanner(!showScanner)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer`}>
+                <Scan className="w-4 h-4 text-emerald-600 shrink-0" /> {!sidebarCollapsed && "Scanner"}
+              </button>
+              <button title="Copilote IA" onClick={() => setShowAICopilot(!showAICopilot)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold transition cursor-pointer ${showAICopilot ? "bg-indigo-600 text-white" : "text-zinc-700 dark:text-zinc-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-700"}`}>
+                <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" /> {!sidebarCollapsed && "Copilote IA"}
+              </button>
+              <button title="Rapports & Analytics" onClick={() => setShowReports(!showReports)} className={`w-full flex items-center ${sidebarCollapsed ? "justify-center px-0" : "px-3 gap-2.5"} py-2 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer`}>
+                <BarChart2 className="w-4 h-4 text-emerald-600 shrink-0" /> {!sidebarCollapsed && "Rapports & Analytics"}
+              </button>
+            </nav>
+
+            {/* Sidebar status footer */}
+            {!sidebarCollapsed && (
+              <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+                <div className={`flex items-center gap-2 px-2 py-1.5 rounded-xl text-[10px] font-bold ${isOnline ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"}`}>
+                  <span className={`w-2 h-2 rounded-full ${isOnline ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+                  {isOnline ? "En ligne · Synchronisé" : "Mode hors-ligne actif"}
+                </div>
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 text-[10px] font-bold text-zinc-600 dark:text-zinc-300">
+                  <RefreshCw className={`w-3 h-3 ${syncStatus.isSyncing ? "animate-spin text-emerald-500" : "text-zinc-400"}`} />
+                  {syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount} modification(s) en attente` : "Toutes les données sont à jour"}
+                </div>
+                <p className="px-2 text-[9px] font-semibold text-zinc-400 dark:text-zinc-600">WakatMarket ERP · Édition Afrique de l'Ouest</p>
+              </div>
+            )}
+          </aside>
+
+          {/* Main content column */}
+          <div className="flex-1 min-w-0 space-y-5">
 
         {/* Geographical Country Filter Dropdown Bar */}
-        <section className="mb-4">
+        <section className="mb-0">
           <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded-xl shrink-0">
@@ -3960,10 +3336,10 @@ export default function App() {
                   onChange={(e) => setSelectedCountryFilter(e.target.value)}
                   className="w-full pl-9 pr-8 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer appearance-none"
                 >
-                  <option value="ALL">🌍 Tous les pays (Afrique de l'Ouest)</option>
+                  <option value="ALL">Tous les pays (Afrique de l'Ouest)</option>
                   {availableCountries.map((c, idx) => (
                     <option key={`country_${c}_${idx}`} value={c}>
-                      📍 {c}
+                       {c}
                     </option>
                   ))}
                 </select>
@@ -3985,7 +3361,7 @@ export default function App() {
         </section>
 
         {/* Core Role Dashboard Injector */}
-        <section className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xs transition-colors">
+        <section className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-4 sm:p-6 shadow-xs transition-colors">
           {showDiagnostic ? (
             <DiagnosticModule onBack={() => setShowDiagnostic(false)} />
           ) : currentUser ? (
@@ -4154,6 +3530,9 @@ export default function App() {
           ) : null}
         </section>
 
+          </div>
+        </div>
+
         {/* Product Detail Modal with Recharts 30-Day Price History */}
         {viewingProductDetail && (
           <ProductDetailModal
@@ -4317,7 +3696,7 @@ export default function App() {
 
       {/* Modern, elegant, clean Africanized ERP Footer */}
       <footer className="bg-zinc-900 text-zinc-400 border-t border-zinc-800 py-8 px-4 mt-12 transition-colors">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
           <div className="text-center md:text-left">
             <p className="font-bold text-white flex items-center justify-center md:justify-start gap-1">
               WakatMarket d'Afrique de l'Ouest
@@ -4332,7 +3711,7 @@ export default function App() {
                 onClick={() => setShowOnboarding(true)}
                 className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 transition cursor-pointer flex items-center gap-1.5 bg-emerald-950/60 border border-emerald-800 px-3 py-1.5 rounded-xl"
               >
-                <span>🚀 Visite Guidée (Onboarding)</span>
+                <span className="inline-flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Visite Guidée (Onboarding)</span>
               </button>
             )}
             <button

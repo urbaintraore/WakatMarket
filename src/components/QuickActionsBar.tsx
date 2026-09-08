@@ -74,7 +74,7 @@ export function QuickActionsBar({
       id="quick-actions-bar"
     >
       {/* Top Bar Header */}
-      <div className="p-3.5 sm:p-4 bg-zinc-50/80 dark:bg-zinc-850/60 border-b border-zinc-150 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="p-3.5 sm:p-4 bg-zinc-50/80 dark:bg-zinc-800/60 border-b border-zinc-100 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/20 shadow-xs">
             <SlidersHorizontal className="w-4 h-4" />
@@ -131,7 +131,7 @@ export function QuickActionsBar({
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
               
-              {/* 1. Synchro OK / Statut Réseau & Supabase */}
+              {/* 1. Synchro OK / Statut Réseau & Firebase */}
               <div
                 className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all ${
                   !syncStatus.isOnline
@@ -182,7 +182,7 @@ export function QuickActionsBar({
                       ? "Envoi des données vers le Cloud..."
                       : syncStatus.failedCount > 0
                       ? `${syncStatus.failedCount} échec(s) à renvoyer.`
-                      : "Base locale alignée avec Supabase."}
+                      : "Base locale alignée avec Firebase."}
                   </p>
                 </div>
                 <button

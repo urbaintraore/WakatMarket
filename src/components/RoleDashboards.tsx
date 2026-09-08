@@ -7,7 +7,7 @@ import {
   Users, Shield, Landmark, MapPin, Truck, ShoppingCart, ShoppingBag, 
   Settings, UserCheck, UserX, ToggleLeft, ToggleRight, Plus, Tag, 
   BarChart, Sparkles, Check, Play, Map, Navigation, CheckCircle, 
-  Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff,
+  Camera, PenTool, Star, AlertCircle, RefreshCw, Layers, Bell, Eye, EyeOff, Clock,
   Upload, Link as LinkIcon, Trash2, Cloud, CloudOff, AlertTriangle, BookOpen, Calculator, History, Search, Filter, MoreVertical, LayoutGrid, List, TrendingUp, TrendingDown, DollarSign, Box, Briefcase, User, Store, Factory, CreditCard, ExternalLink, Download, Printer, Share2, MessageSquare, Send, Zap, Lock, Unlock, FileText, X, Package, Save, Wallet, Calendar, Archive
 } from "lucide-react";
 import { UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, ChatMessage, StockMovement, LightClient, DebtPayment, Connection, isConnectionActive, isBonkoungou } from "../types";
@@ -67,56 +67,32 @@ export function DashboardTabBar({
   accentColor = "emerald"
 }: DashboardTabBarProps) {
   const [navLayoutMode, setNavLayoutMode] = useState<"tabbed" | "sidebar">("tabbed");
-  const getActiveStyles = () => {
-    switch (accentColor) {
-      case "orange":
-        return "bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md font-bold scale-[1.01] border-orange-600";
-      case "amber":
-        return "bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-md font-bold scale-[1.01] border-amber-600";
-      case "indigo":
-        return "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-bold scale-[1.01] border-indigo-600";
-      case "blue":
-        return "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md font-bold scale-[1.01] border-blue-600";
-      default:
-        return "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-bold scale-[1.01] border-emerald-600";
-    }
-  };
-  const getIconInactiveColor = () => {
-    switch (accentColor) {
-      case "orange": return "text-orange-600 dark:text-orange-400";
-      case "amber": return "text-amber-600 dark:text-amber-400";
-      case "indigo": return "text-indigo-600 dark:text-indigo-400";
-      case "blue": return "text-blue-600 dark:text-blue-400";
-      default: return "text-emerald-600 dark:text-emerald-400";
-    }
-  };
-  const activeTabItem = tabs.find(t => t.id === activeTab) || tabs[0];
+  const activeColors = ACTIVE_TAB_STYLES[accentColor] || ACTIVE_TAB_STYLES.emerald;
+  const inactiveIconColor = INACTIVE_ICON_STYLES[accentColor] || INACTIVE_ICON_STYLES.emerald;
+  const activeTabItem = tabs.find((t) => t.id === activeTab) || tabs[0];
   return (
-    <div className="sticky top-2 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-3 transition-all duration-200">
+    <div className="sticky top-2 z-30 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-xl border border-zinc-200/80 dark:border-zinc-800 rounded-2xl shadow-sm p-3.5 sm:p-4 space-y-3 transition-colors">
       {/* Header with Title, Active Tab Badge, Layout Switcher and Sync Status */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-150 dark:border-zinc-800/80 pb-3">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className={`w-2.5 h-2.5 rounded-full animate-pulse ${
-            accentColor === "orange" ? "bg-orange-500" : accentColor === "amber" ? "bg-amber-500" : "bg-emerald-500"
-          }`} />
-          <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-            {title}
-          </h3>
-          {activeTabItem && (
-            <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-zinc-100 dark:bg-zinc-800 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Menu: <strong className="font-extrabold">{activeTabItem.label}</strong>
-            </span>
-          )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+          <span className={`w-2 h-2 rounded-full ${activeColors.dot} shrink-0`} />
+          <div className="min-w-0">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-100 leading-tight truncate">
+              {title}
+            </h3>
+            <p className="text-[10px] font-medium text-zinc-400 dark:text-zinc-500 truncate">
+              {activeTabItem ? activeTabItem.label : "Tableau de bord"}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* Layout Mode Toggle: Tabbed Horizontal vs Sidebar Panel */}
-          <div className="flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-xl text-[11px] font-semibold border border-zinc-200 dark:border-zinc-750">
+          <div className="hidden sm:flex bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-xl text-[11px] font-semibold border border-zinc-200 dark:border-zinc-700/80">
             <button
               onClick={() => setNavLayoutMode("tabbed")}
               className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                 navLayoutMode === "tabbed"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-2xs font-bold"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-bold"
                   : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
               }`}
               title="Barre d'onglets horizontale"
@@ -128,7 +104,7 @@ export function DashboardTabBar({
               onClick={() => setNavLayoutMode("sidebar")}
               className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
                 navLayoutMode === "sidebar"
-                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-2xs font-bold"
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm font-bold"
                   : "text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
               }`}
               title="Grille / Sidebar complète"
@@ -142,31 +118,32 @@ export function DashboardTabBar({
           )}
         </div>
       </div>
-      {/* Tabs rendering - NO text truncation, full length visibility */}
+      {/* Tabs rendering - full length visibility, horizontally scrollable */}
       {navLayoutMode === "tabbed" ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] pb-0.5 -mx-0.5 px-0.5">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
+            const iconColor = inactiveIconColor;
             return (
               <button
                 key={tab.id}
                 onClick={() => onSelectTab(tab.id)}
-                className={`px-3.5 py-2.5 text-xs sm:text-sm font-bold rounded-xl flex items-center gap-2.5 transition-all duration-150 cursor-pointer border whitespace-nowrap min-w-max shrink-0 ${
+                className={`shrink-0 px-3.5 py-2.5 text-xs sm:text-[13px] font-bold rounded-xl flex items-center gap-2 transition-all duration-150 cursor-pointer border ${
                   isActive
-                    ? getActiveStyles()
-                    : "bg-zinc-100/90 dark:bg-zinc-800/90 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/90 dark:hover:bg-zinc-750 hover:text-zinc-900 dark:hover:text-white border-zinc-200/80 dark:border-zinc-700/80"
+                    ? activeColors.active
+                    : "bg-transparent text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/80 hover:text-zinc-900 dark:hover:text-zinc-100 border-transparent"
                 }`}
               >
-                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : getIconInactiveColor()}`} />
-                <span className="whitespace-nowrap font-bold">{tab.label}</span>
+                <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : iconColor}`} />
+                <span className="whitespace-nowrap">{tab.label}</span>
                 {tab.badge !== undefined && tab.badge !== null && tab.badge !== 0 && (
-                  <span className={`px-2 py-0.5 text-[10px] font-extrabold rounded-full shrink-0 ${
+                  <span className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-full shrink-0 ${
                     isActive
-                      ? "bg-white text-zinc-900 shadow-2xs"
+                      ? "bg-white/25 text-white"
                       : tab.highlight
                       ? "bg-rose-500 text-white animate-pulse"
-                      : "bg-emerald-600 text-white"
+                      : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
                   }`}>
                     {tab.badge}
                   </span>
@@ -180,27 +157,28 @@ export function DashboardTabBar({
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
+            const iconColor = inactiveIconColor;
             return (
               <button
                 key={tab.id}
                 onClick={() => onSelectTab(tab.id)}
-                className={`w-full px-4 py-3 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-between gap-3 transition-all duration-150 cursor-pointer border shadow-2xs ${
+                className={`w-full px-4 py-3 text-xs sm:text-sm font-bold rounded-xl flex items-center justify-between gap-3 transition-all duration-150 cursor-pointer border ${
                   isActive
-                    ? getActiveStyles()
-                    : "bg-zinc-50 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-750"
+                    ? activeColors.active
+                    : "bg-zinc-50 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-700 border-zinc-200 dark:border-zinc-700/70"
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Icon className={`w-4.5 h-4.5 shrink-0 ${isActive ? "text-white" : getIconInactiveColor()}`} />
-                  <span className="whitespace-nowrap font-bold text-left">{tab.label}</span>
+                  <Icon className={`w-4.5 h-4.5 shrink-0 ${isActive ? "text-white" : iconColor}`} />
+                  <span className="whitespace-nowrap text-left">{tab.label}</span>
                 </div>
                 {tab.badge !== undefined && tab.badge !== null && tab.badge !== 0 && (
                   <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full shrink-0 ${
                     isActive
-                      ? "bg-white text-zinc-900 shadow-2xs"
+                      ? "bg-white/25 text-white"
                       : tab.highlight
                       ? "bg-rose-500 text-white animate-pulse"
-                      : "bg-emerald-600 text-white"
+                      : "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200"
                   }`}>
                     {tab.badge}
                   </span>
@@ -210,6 +188,166 @@ export function DashboardTabBar({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+const ACTIVE_TAB_STYLES: Record<string, { active: string; dot: string; icon: string }> = {
+  orange: {
+    active: "bg-gradient-to-r from-orange-600 to-amber-600 text-white shadow-md shadow-orange-600/20 border-orange-600",
+    dot: "bg-orange-500",
+    icon: "orange",
+  },
+  amber: {
+    active: "bg-gradient-to-r from-amber-600 to-yellow-600 text-white shadow-md shadow-amber-600/20 border-amber-600",
+    dot: "bg-amber-500",
+    icon: "amber",
+  },
+  indigo: {
+    active: "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-600/20 border-indigo-600",
+    dot: "bg-indigo-500",
+    icon: "indigo",
+  },
+  blue: {
+    active: "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-blue-600/20 border-blue-600",
+    dot: "bg-blue-500",
+    icon: "blue",
+  },
+  emerald: {
+    active: "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/20 border-emerald-600",
+    dot: "bg-emerald-500",
+    icon: "emerald",
+  },
+};
+
+const INACTIVE_ICON_STYLES: Record<string, string> = {
+  orange: "text-orange-500 dark:text-orange-400",
+  amber: "text-amber-500 dark:text-amber-400",
+  indigo: "text-indigo-500 dark:text-indigo-400",
+  blue: "text-blue-500 dark:text-blue-400",
+  emerald: "text-emerald-500 dark:text-emerald-400",
+};
+// ----------------------------------------------------------------------
+// Modern Dashboard Shell: Hero header + reusable KPI cards
+// ----------------------------------------------------------------------
+export type KpiTone = "emerald" | "amber" | "rose" | "sky" | "indigo" | "violet" | "orange" | "teal" | "purple" | "slate";
+
+interface KpiCardProps {
+  key?: React.Key;
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone?: KpiTone;
+  hint?: string;
+}
+
+const KPI_CARD_STYLES: Record<KpiTone, { iconBg: string; iconColor: string; valueColor: string }> = {
+  emerald: { iconBg: "bg-emerald-50 dark:bg-emerald-950/40", iconColor: "text-emerald-600 dark:text-emerald-400", valueColor: "text-zinc-900 dark:text-white" },
+  amber:   { iconBg: "bg-amber-50 dark:bg-amber-950/40",     iconColor: "text-amber-600 dark:text-amber-400",     valueColor: "text-zinc-900 dark:text-white" },
+  rose:    { iconBg: "bg-rose-50 dark:bg-rose-950/40",       iconColor: "text-rose-600 dark:text-rose-400",       valueColor: "text-zinc-900 dark:text-white" },
+  sky:     { iconBg: "bg-sky-50 dark:bg-sky-950/40",         iconColor: "text-sky-600 dark:text-sky-400",         valueColor: "text-zinc-900 dark:text-white" },
+  indigo:  { iconBg: "bg-indigo-50 dark:bg-indigo-950/40",   iconColor: "text-indigo-600 dark:text-indigo-400",   valueColor: "text-zinc-900 dark:text-white" },
+  violet:  { iconBg: "bg-violet-50 dark:bg-violet-950/40",   iconColor: "text-violet-600 dark:text-violet-400",   valueColor: "text-zinc-900 dark:text-white" },
+  orange:  { iconBg: "bg-orange-50 dark:bg-orange-950/40",   iconColor: "text-orange-600 dark:text-orange-400",   valueColor: "text-zinc-900 dark:text-white" },
+  teal:    { iconBg: "bg-teal-50 dark:bg-teal-950/40",       iconColor: "text-teal-600 dark:text-teal-400",       valueColor: "text-zinc-900 dark:text-white" },
+  purple:  { iconBg: "bg-purple-50 dark:bg-purple-950/40",   iconColor: "text-purple-600 dark:text-purple-400",   valueColor: "text-zinc-900 dark:text-white" },
+  slate:   { iconBg: "bg-zinc-100 dark:bg-zinc-800",         iconColor: "text-zinc-500 dark:text-zinc-400",       valueColor: "text-zinc-900 dark:text-white" },
+};
+
+export function KpiCard({ label, value, icon: Icon, tone = "emerald", hint }: KpiCardProps) {
+  const s = KPI_CARD_STYLES[tone] || KPI_CARD_STYLES.emerald;
+  return (
+    <div className="group bg-white dark:bg-zinc-900/80 backdrop-blur border border-zinc-200/80 dark:border-zinc-800 rounded-2xl p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className={`w-9 h-9 rounded-xl grid place-items-center ${s.iconBg}`}>
+          <Icon className={`w-4.5 h-4.5 ${s.iconColor}`} />
+        </span>
+        <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 text-right leading-tight">
+          {label}
+        </span>
+      </div>
+      <div className="flex items-end justify-between gap-2">
+        <p className={`text-xl font-black font-mono tracking-tight truncate ${s.valueColor}`}>{value}</p>
+        {hint && <p className="text-[9px] text-zinc-400 dark:text-zinc-500 text-right leading-tight max-w-[45%] truncate">{hint}</p>}
+      </div>
+    </div>
+  );
+}
+
+export type HeroAccent = "emerald" | "indigo" | "violet" | "orange" | "rose" | "sky" | "teal";
+
+const HERO_ACCENT_STYLES: Record<HeroAccent, { gradient: string; chip: string; glow: string }> = {
+  emerald: { gradient: "bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800", chip: "bg-white/15 text-white border border-white/20", glow: "text-emerald-200" },
+  indigo:   { gradient: "bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-900", chip: "bg-white/15 text-white border border-white/20", glow: "text-indigo-200" },
+  violet:   { gradient: "bg-gradient-to-br from-violet-600 via-purple-700 to-fuchsia-900", chip: "bg-white/15 text-white border border-white/20", glow: "text-violet-200" },
+  orange:   { gradient: "bg-gradient-to-br from-orange-500 via-orange-600 to-amber-700", chip: "bg-white/15 text-white border border-white/20", glow: "text-orange-200" },
+  rose:     { gradient: "bg-gradient-to-br from-rose-500 via-rose-600 to-pink-700", chip: "bg-white/15 text-white border border-white/20", glow: "text-rose-200" },
+  sky:      { gradient: "bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-700", chip: "bg-white/15 text-white border border-white/20", glow: "text-sky-200" },
+  teal:     { gradient: "bg-gradient-to-br from-teal-500 via-teal-600 to-emerald-800", chip: "bg-white/15 text-white border border-white/20", glow: "text-teal-200" },
+};
+
+interface DashboardHeroProps {
+  user: UserProfile;
+  roleLabel: string;
+  roleBlurb: string;
+  accent: HeroAccent;
+  icon?: React.ComponentType<{ className?: string }>;
+  kpis: KpiCardProps[];
+  rightChip?: React.ReactNode;
+  extra?: React.ReactNode;
+}
+
+export function DashboardHero({ user, roleLabel, roleBlurb, accent, icon: HeroIcon, kpis, rightChip, extra }: DashboardHeroProps) {
+  const s = HERO_ACCENT_STYLES[accent] || HERO_ACCENT_STYLES.emerald;
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-zinc-200/70 dark:border-zinc-800 shadow-md">
+      <div className={`${s.gradient} px-5 sm:px-6 py-5 text-white relative`}>
+        {HeroIcon && (
+          <HeroIcon className={`absolute -right-6 -bottom-8 w-44 h-44 opacity-10 ${s.glow} pointer-events-none`} />
+        )}
+        <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="relative shrink-0">
+              {user.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={user.name}
+                  referrerPolicy="no-referrer"
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-white/40 shadow-lg"
+                />
+              ) : (
+                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl grid place-items-center bg-white/20 border-2 border-white/40 shadow-lg">
+                  <User className="w-7 h-7 text-white" />
+                </div>
+              )}
+              <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 border-2 border-white dark:border-zinc-900 flex items-center justify-center">
+                <span className="w-2 h-2 rounded-full bg-white" />
+              </span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black tracking-tight truncate">{user.companyName || user.name}</h2>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${s.chip}`}>
+                  {roleLabel}
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-white/80 mt-1 truncate">
+                {user.name} {user.email ? `· ${user.email}` : ""}
+              </p>
+              {rightChip && <div className="mt-2">{rightChip}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur px-5 sm:px-6 py-4 border-t border-zinc-100 dark:border-zinc-800">
+        <p className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">{roleBlurb}</p>
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {kpis.map((k, ki) => (
+            <KpiCard key={ki} label={k.label} value={k.value} icon={k.icon} tone={k.tone} hint={k.hint} />
+          ))}
+        </div>
+        {extra}
+      </div>
     </div>
   );
 }
@@ -376,23 +514,39 @@ export function AdminDashboard({
       {/* Claims Summary Widget for Admin oversight */}
       <ClaimsSummaryWidget orders={orders} users={users}
              currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
-      {/* Real-time stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
-        {[
-          { label: "Fabricants", count: stats.m, color: "text-indigo-600 bg-indigo-50 dark:bg-indigo-950/20" },
-          { label: "Grossistes", count: stats.w, color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20" },
-          { label: "Demi-Grossistes", count: stats.sg, color: "text-orange-600 bg-orange-50 dark:bg-orange-950/20" },
-          { label: "Détaillants", count: stats.r, color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20" },
-          { label: "Livreurs", count: stats.d, color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20" },
-          { label: "Clients", count: stats.c, color: "text-teal-600 bg-teal-50 dark:bg-teal-950/20" },
-          { label: "Volume total", count: orders.length, color: "text-rose-600 bg-rose-50 dark:bg-rose-950/20" },
-        ].map((stat, i) => (
-          <div key={i} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl">
-            <p className="text-[10px] text-zinc-500 font-medium">{stat.label}</p>
-            <p className={`text-lg font-bold mt-1 ${stat.color.split(" ")[0]}`}>{stat.count}</p>
-          </div>
-        ))}
-      </div>
+      {/* Modern hero header with platform KPIs */}
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Administrateur"
+        roleBlurb="Supervision des réseaux, commissions et santé de la plateforme"
+        accent="emerald"
+        icon={Shield}
+        kpis={[
+          { label: "Comptes actifs", value: String(users.length), icon: Users, tone: "indigo", hint: `${pendingApprovals.length} en attente d'approbation` },
+          { label: "Commandes enregistrées", value: String(orders.length), icon: ShoppingCart, tone: "sky" },
+          { label: "Chiffre global", value: formatCFA(stats.revenue), icon: DollarSign, tone: "emerald", hint: "volume cumulé toutes commandes" },
+        ]}
+        extra={<div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          {[
+            { label: "Fabricants", count: stats.m, icon: Factory, tone: "indigo" as KpiTone },
+            { label: "Grossistes", count: stats.w, icon: Store, tone: "amber" as KpiTone },
+            { label: "Demi-Grossistes", count: stats.sg, icon: Briefcase, tone: "orange" as KpiTone },
+            { label: "Détaillants", count: stats.r, icon: ShoppingBag, tone: "purple" as KpiTone },
+            { label: "Livreurs", count: stats.d, icon: Truck, tone: "sky" as KpiTone },
+            { label: "Clients", count: stats.c, icon: Users, tone: "teal" as KpiTone },
+          ].map((d) => (
+            <div key={d.label} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 shadow-sm">
+              <span className="w-8 h-8 rounded-lg grid place-items-center bg-zinc-100 dark:bg-zinc-800">
+                <d.icon className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400 truncate">{d.label}</p>
+                <p className="text-sm font-black font-mono text-zinc-900 dark:text-white">{d.count}</p>
+              </div>
+            </div>
+          ))}
+        </div>}
+      />
       {/* Admin Tabs */}
       <DashboardTabBar
         title="Administration Système - Module de Contrôle"
@@ -449,7 +603,7 @@ export function AdminDashboard({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-zinc-50 dark:bg-zinc-850 text-zinc-500 text-[10px] uppercase font-bold tracking-wider border-b border-zinc-100 dark:border-zinc-800">
+                <tr className="bg-zinc-50 dark:bg-zinc-800 text-zinc-500 text-[10px] uppercase font-bold tracking-wider border-b border-zinc-100 dark:border-zinc-800">
                   <th className="px-4 py-3">Utilisateur</th>
                   <th className="px-4 py-3">Rôle</th>
                   <th className="px-4 py-3">Géolocalisation</th>
@@ -583,7 +737,7 @@ export function AdminDashboard({
           ) : (
             <div className="space-y-3">
               {pendingApprovals.map((p) => (
-                <div key={p.id} className="p-4 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center justify-between">
+                <div key={p.id} className="p-4 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <img loading="lazy" src={p.avatar} alt={p.name} className="w-10 h-10 rounded-full object-cover" />
                     <div>
@@ -637,7 +791,7 @@ export function AdminDashboard({
                   step="0.1"
                   value={newRate}
                   onChange={(e) => setNewRate(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-950 dark:text-white"
+                  className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs text-zinc-950 dark:text-white"
                 />
                 <button
                   type="submit"
@@ -803,8 +957,26 @@ export function ManufacturerDashboard({
   const manufacturerExpirationAlerts = useMemo(() => {
     return inventoryService.checkExpirationAlerts(inventory, products, 15).filter(a => a.ownerId === currentUser.id || currentUser.role === UserRole.ADMIN);
   }, [inventory, products, currentUser]);
+  const mfgStockAlerts = myInventory.filter(i => i.stock <= (i.threshold || 10)).length;
+  const mfgPendingOrders = myOrders.filter(o => o.status === OrderStatus.PENDING).length;
+  const mfgDeliveredRevenue = myOrders
+    .filter(o => o.status === OrderStatus.DELIVERED)
+    .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   return (
     <div className="space-y-6" id="manufacturer-dashboard">
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Fabricant"
+        roleBlurb="Catalogue usine, production, prévisions de périssabilité et ventes comptoir"
+        accent="indigo"
+        icon={Factory}
+        kpis={[
+          { label: "Références en stock", value: String(myInventory.length), icon: Package, tone: "indigo", hint: `${myProducts.length} produits créés` },
+          { label: "Alertes stock", value: String(mfgStockAlerts), icon: AlertTriangle, tone: "amber", hint: "seuils franchis" },
+          { label: "Commandes en attente", value: String(mfgPendingOrders), icon: Clock, tone: "rose", hint: "à valider / expédier" },
+          { label: "CA livré", value: formatCFA(mfgDeliveredRevenue), icon: DollarSign, tone: "emerald" },
+        ]}
+      />
       <DashboardTabBar
         title="Menu Fabricant - Operations & Catalogue"
         activeTab={activeTab}
@@ -837,7 +1009,7 @@ export function ManufacturerDashboard({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {myBuyers.map(buyer => (
-                <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center gap-3">
+                <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center gap-3">
                   <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center text-emerald-700 dark:text-emerald-300 font-bold">
                     {buyer.companyName ? buyer.companyName[0] : buyer.name[0]}
                   </div>
@@ -857,7 +1029,7 @@ export function ManufacturerDashboard({
               {myBuyers.map(buyer => {
                 const buyerInventory = inventory.filter(i => i.ownerId === buyer.id);
                 return (
-                  <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl">
+                  <div key={buyer.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl">
                     <p className="font-semibold text-sm mb-2">{buyer.companyName || buyer.name}</p>
                     {buyerInventory.length === 0 ? (
                       <p className="text-xs text-zinc-400 italic">Aucun stock disponible.</p>
@@ -947,16 +1119,16 @@ export function ManufacturerDashboard({
                 );
                 setIsAdding(false);
               }}
-              className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"
+              className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-100 dark:border-zinc-800 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs"
             >
               <div className="space-y-3">
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Nom du produit</label>
-                  <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                  <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                 </div>
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Description</label>
-                  <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl h-20" />
+                  <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl h-20" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -974,14 +1146,14 @@ export function ManufacturerDashboard({
                               setMfgCategory(val);
                             }
                           }}
-                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                          className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
                         >
                           {PREDEFINED_CATEGORIES.map((cat) => (
                             <option key={cat} value={cat}>
                               {cat}
                             </option>
                           ))}
-                          <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                          <option value="AUTRE"> Autre (saisir manuellement)...</option>
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                           ▼
@@ -997,7 +1169,7 @@ export function ManufacturerDashboard({
                           value={mfgCategory}
                           onChange={(e) => setMfgCategory(e.target.value)}
                           placeholder="Saisir la catégorie..."
-                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                          className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
                           name="category"
                         />
                         <button
@@ -1015,7 +1187,7 @@ export function ManufacturerDashboard({
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Marque</label>
-                    <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                 </div>
               </div>
@@ -1023,31 +1195,31 @@ export function ManufacturerDashboard({
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Unité B2B</label>
-                    <input required name="unit" placeholder="Carton de 24" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required name="unit" placeholder="Carton de 24" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Poids (kg)</label>
-                    <input required type="number" step="0.1" name="weight" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required type="number" step="0.1" name="weight" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Vol (m³)</label>
-                    <input required type="number" step="0.01" name="volume" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required type="number" step="0.01" name="volume" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
-                  <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
+                  <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
                     <button
                       type="button"
                       onClick={() => setUploadMode("file")}
-                      className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                      className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                     >
                       <Upload className="w-3.5 h-3.5" /> Uploader un fichier
                     </button>
                     <button
                       type="button"
                       onClick={() => setUploadMode("url")}
-                      className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                      className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                     >
                       <LinkIcon className="w-3.5 h-3.5" /> Lien URL
                     </button>
@@ -1094,7 +1266,7 @@ export function ManufacturerDashboard({
                         placeholder="https://images.unsplash.com/photo-..."
                         defaultValue={uploadedImage && uploadedImage.startsWith("http") ? uploadedImage : ""}
                         onChange={(e) => setUploadedImage(e.target.value)}
-                        className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs"
+                        className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs"
                       />
                       {uploadedImage && uploadedImage.startsWith("http") && (
                         <div className="flex items-center gap-2 p-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-lg">
@@ -1108,7 +1280,7 @@ export function ManufacturerDashboard({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Stock Initial</label>
-                    <input required type="number" name="stock" defaultValue="50" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required type="number" name="stock" defaultValue="50" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-emerald-700 dark:text-emerald-400 font-bold mb-1">Prix Gros B2B (FCFA)</label>
@@ -1116,7 +1288,7 @@ export function ManufacturerDashboard({
                   </div>
                   <div>
                     <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Quantité Min B2B</label>
-                    <input required type="number" name="quantiteMinimum" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                    <input required type="number" name="quantiteMinimum" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                   </div>
                   <div>
                     <label className="block text-amber-700 dark:text-amber-400 font-bold mb-1">Prix Détail (FCFA)</label>
@@ -1165,7 +1337,7 @@ export function ManufacturerDashboard({
               {myOrders.map((order) => {
                 const client = users.find((u) => u.id === order.senderId);
                 return (
-                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl space-y-3">
+                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-bold font-mono uppercase">
@@ -1198,7 +1370,7 @@ export function ManufacturerDashboard({
                       </div>
                     </div>
                     {/* Order items summary */}
-                    <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
+                    <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800 text-[11px] space-y-1">
                       {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
@@ -1232,12 +1404,12 @@ export function ManufacturerDashboard({
                           <select
                             value={selectedDriver}
                             onChange={(e) => setSelectedDriver(e.target.value)}
-                            className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-850"
+                            className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-800"
                           >
                             <option value="">Sélectionner un livreur usine...</option>
                             {m2wDrivers.map((d) => (
                               <option key={d.id} value={d.id}>
-                                {d.name} ({d.rating}★)
+                                {d.name} ({d.rating})
                               </option>
                             ))}
                           </select>
@@ -1438,7 +1610,7 @@ export function WholesalerDashboard({
       if (diag.canDeliver) {
         alert(diag.summaryMessage);
       } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
-        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
+        alert(`${diag.summaryMessage}\n\n Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
       } else {
         if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
           let connectionId = diag.relationId;
@@ -1612,7 +1784,7 @@ export function WholesalerDashboard({
       setPosAmountPaid(0);
       setPosSelectedLightClientId("");
     } catch (e: any) {
-      console.warn("Erreur sauvegarde Vente POS Supabase:", e);
+      console.warn("Erreur sauvegarde Vente POS Firebase:", e);
       const items = saleData.lignes.map((l: any) => ({ productId: l.produitId, quantity: l.quantite }));
       onPlaceSale(saleData.acheteurId || "CASH_CLIENT", items, posAmountPaid, "CASH");
       setPosCart({});
@@ -1626,6 +1798,19 @@ export function WholesalerDashboard({
     <div className="space-y-6" id="wholesaler-dashboard">
       <ClaimsSummaryWidget orders={orders} users={users}
              currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Grossiste"
+        roleBlurb="Procurement B2B, distribution aux détaillants et demi-grossistes, encours de crédit"
+        accent="emerald"
+        icon={Store}
+        kpis={[
+          { label: "Références en stock", value: String(myInventory.length), icon: Package, tone: "emerald" },
+          { label: "Alertes stock", value: String(activeAlerts.length), icon: AlertTriangle, tone: "amber", hint: "seuils franchis" },
+          { label: "Commandes en attente", value: String(incomingRetailerOrders.filter((o) => o.status === OrderStatus.PENDING).length), icon: Clock, tone: "rose", hint: "à valider / expédier" },
+          { label: "CA livré", value: formatCFA(totalRevenue), icon: DollarSign, tone: "indigo", hint: "achats gros cumulés" },
+        ]}
+      />
       <DashboardTabBar
         title="Menu Grossiste - Opérations & Dashboard de Vente"
         activeTab={activeTab}
@@ -1681,10 +1866,7 @@ export function WholesalerDashboard({
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
-                  if (typeof window !== "undefined") {
-                    const btn = document.getElementById("header-comparator-toggle");
-                    if (btn) btn.click();
-                  }
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("wakat:open-comparator"));
                 }}
               />
               {onSelectProduct && (
@@ -1705,17 +1887,14 @@ export function WholesalerDashboard({
                 currentUser={currentUser}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
-                  if (typeof window !== "undefined") {
-                    const btn = document.getElementById("header-comparator-toggle");
-                    if (btn) btn.click();
-                  }
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("wakat:open-comparator"));
                 }}
               />
             </div>
           )}
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
@@ -1762,7 +1941,7 @@ export function WholesalerDashboard({
                       const stock = invItem ? invItem.stock : 999;
                       const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       return (
-                        <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
+                        <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between">
                           <div className="flex gap-2 items-center min-w-0">
                             <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded object-cover" />
                             <div className="min-w-0">
@@ -1793,7 +1972,7 @@ export function WholesalerDashboard({
                 </div>
               </div>
               {/* Shopping summary */}
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-800 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Synthèse du Panier B2B</h5>
                 <div className="space-y-2">
                   {Object.keys(procureCart)
@@ -1847,7 +2026,7 @@ export function WholesalerDashboard({
               {myB2BOrders.map((order) => {
                 const manufacturer = users.find((u) => u.id === order.receiverId);
                 return (
-                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl space-y-3 shadow-xs">
+                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl space-y-3 shadow-xs">
                     <div className="flex justify-between items-start flex-wrap gap-2">
                       <div>
                         <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono uppercase">
@@ -1881,7 +2060,7 @@ export function WholesalerDashboard({
                         </p>
                       </div>
                     </div>
-                    <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] space-y-1">
+                    <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800 text-[11px] space-y-1">
                       {order.items.map((item, idx) => {
                         const prod = products.find((p) => p.id === item.productId);
                         return (
@@ -1903,7 +2082,7 @@ export function WholesalerDashboard({
                       )}
                       {order.paymentStatus === "PAID" && (
                         <span className="text-emerald-600 text-xs font-bold flex items-center gap-1">
-                          ✓ Commande payée
+                           Commande payée
                         </span>
                       )}
                     </div>
@@ -1941,7 +2120,7 @@ export function WholesalerDashboard({
                 {incomingRetailerOrders.map((order) => {
                   const shop = users.find((u) => u.id === order.senderId);
                   return (
-                    <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                    <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl shadow-sm hover:shadow-md transition-shadow">
                       <div className="flex justify-between items-start mb-3">
                         <div>
                           <span className="text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded font-bold font-mono uppercase">
@@ -1963,7 +2142,7 @@ export function WholesalerDashboard({
                           </p>
                         </div>
                       </div>
-                      <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-850 text-[11px] mb-3">
+                      <div className="bg-zinc-50 dark:bg-zinc-950/40 p-2.5 rounded-lg border border-zinc-100 dark:border-zinc-800 text-[11px] mb-3">
                         {order.items.map((item, idx) => {
                           const prod = products.find((p) => p.id === item.productId);
                           return (
@@ -2079,7 +2258,7 @@ export function WholesalerDashboard({
                       className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 rounded-xl text-xs font-semibold"
                     >
                       <option value="">-- Sélectionner un produit --</option>
-                      <option value="__NEW__">➕ Créer / Saisir un nouveau produit</option>
+                      <option value="__NEW__"> Créer / Saisir un nouveau produit</option>
                       {products.map((p, idx) => (
                         <option key={`wh_prod_${p.id}_${idx}`} value={p.id}>{p.name} ({p.unit || 'Unité'})</option>
                       ))}
@@ -2120,7 +2299,7 @@ export function WholesalerDashboard({
                                     {cat}
                                   </option>
                                 ))}
-                                <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                                <option value="AUTRE"> Autre (saisir manuellement)...</option>
                               </select>
                               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                                 ▼
@@ -2312,7 +2491,7 @@ export function WholesalerDashboard({
           <p className="text-xs leading-relaxed">
             Notre système est connecté en direct aux stocks de vos détaillants affiliés pour vous proposer des réapprovisionnements automatiques proactifs.
           </p>
-          <div className="bg-white dark:bg-zinc-900 p-3.5 border border-amber-150 rounded-xl space-y-3">
+          <div className="bg-white dark:bg-zinc-900 p-3.5 border border-amber-100 rounded-xl space-y-3">
             <h5 className="font-bold text-xs text-amber-700 dark:text-amber-400">Boutique : Alimentation Générale Médina (Dakar)</h5>
             <div className="grid grid-cols-3 gap-2 text-[10px] text-zinc-500">
               <div className="p-2 bg-zinc-50 dark:bg-zinc-950 rounded">
@@ -2625,7 +2804,7 @@ export function RetailerDashboard({
       if (diag.canDeliver) {
         alert(diag.summaryMessage);
       } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
-        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
+        alert(`${diag.summaryMessage}\n\n Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
       } else {
         if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
           let connectionId = diag.relationId;
@@ -2655,6 +2834,19 @@ export function RetailerDashboard({
     <div className="space-y-6" id="retailer-dashboard">
       <ClaimsSummaryWidget orders={orders} users={users}
              currentUser={currentUser} onUpdateOrderStatus={onUpdateOrderStatus} />
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Détaillant"
+        roleBlurb="Boutique POS, réapprovisionnement, ventes B2C et fidélisation client"
+        accent="violet"
+        icon={ShoppingBag}
+        kpis={[
+          { label: "Articles en stock", value: String(myInventory.length), icon: Package, tone: "violet", hint: "références boutique" },
+          { label: "Alertes stock", value: String(myInventory.filter((i) => i.stock <= (i.threshold || 10)).length), icon: AlertTriangle, tone: "amber" },
+          { label: "Commandes en attente", value: String(myB2COrders.filter((o) => o.status === OrderStatus.PENDING).length), icon: Clock, tone: "rose" },
+          { label: "CA encaissé", value: formatCFA(myB2COrders.filter((o) => o.status === OrderStatus.DELIVERED).reduce((s, o) => s + (o.totalAmount || 0), 0)), icon: DollarSign, tone: "emerald" },
+        ]}
+      />
       <DashboardTabBar
         title="Menu Détaillant - Opérations & Dashboard de Vente"
         activeTab={activeTab}
@@ -2709,10 +2901,7 @@ export function RetailerDashboard({
                 onUpdateOrderStatus={onUpdateOrderStatus}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
-                  if (typeof window !== "undefined") {
-                    const btn = document.getElementById("header-comparator-toggle");
-                    if (btn) btn.click();
-                  }
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("wakat:open-comparator"));
                 }}
               />
               {onSelectProduct && (
@@ -2733,17 +2922,14 @@ export function RetailerDashboard({
                 currentUser={currentUser}
                 onOpenReorderModal={() => setActiveTab("procure")}
                 onOpenComparator={() => {
-                  if (typeof window !== "undefined") {
-                    const btn = document.getElementById("header-comparator-toggle");
-                    if (btn) btn.click();
-                  }
+                  if (typeof window !== "undefined") window.dispatchEvent(new Event("wakat:open-comparator"));
                 }}
               />
             </div>
           )}
           {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
@@ -2794,7 +2980,7 @@ export function RetailerDashboard({
                         <h5 className="font-bold text-emerald-800 dark:text-emerald-400 text-xs uppercase tracking-wider">Informations du Fournisseur</h5>
                         <p className="text-zinc-700 dark:text-zinc-300 text-sm mt-1 font-semibold">{ws.name} {ws.companyName ? `(${ws.companyName})` : ''}</p>
                         <p className="text-zinc-600 dark:text-zinc-400 text-xs mt-0.5">
-                          📍 {ws.region || "Local"}, {ws.country || ""} {ws.sector ? `- ${ws.sector}` : ''}
+                           {ws.region || "Local"}, {ws.country || ""} {ws.sector ? `- ${ws.sector}` : ''}
                         </p>
                       </div>
                       <div className="text-left md:text-right">
@@ -2854,7 +3040,7 @@ export function RetailerDashboard({
                       const stock = invItem.stock > 0 ? invItem.stock : 999;
                       const price = invItem.price || invItem.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       return (
-                        <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between">
+                        <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between">
                           <div className="flex gap-2 items-center min-w-0">
                             <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded object-cover" />
                             <div className="min-w-0">
@@ -2886,7 +3072,7 @@ export function RetailerDashboard({
                 </div>
               </div>
               {/* Procure Basket */}
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-800 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Panier Réappro B2B</h5>
                 <div className="space-y-2">
                   {Object.keys(procureCart)
@@ -2941,7 +3127,7 @@ export function RetailerDashboard({
               {myB2BOrders.map((order) => {
                 const wholesaler = users.find((u) => u.id === order.receiverId);
                 return (
-                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl space-y-3 shadow-xs">
+                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl space-y-3 shadow-xs">
                     <div className="flex justify-between items-start flex-wrap gap-2">
                       <div>
                         <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono uppercase">
@@ -2952,9 +3138,9 @@ export function RetailerDashboard({
                         </p>
                         {wholesaler && (
                           <div className="mt-1 text-[10px] text-zinc-500 space-y-0.5">
-                            <p>👤 {wholesaler.name}</p>
-                            <p>📞 {wholesaler.phone} | ✉️ {wholesaler.email}</p>
-                            <p>📍 {wholesaler.region}, {wholesaler.country} {wholesaler.sector ? `- ${wholesaler.sector}` : ''}</p>
+                            <p> {wholesaler.name}</p>
+                            <p> {wholesaler.phone} |  {wholesaler.email}</p>
+                            <p> {wholesaler.region}, {wholesaler.country} {wholesaler.sector ? `- ${wholesaler.sector}` : ''}</p>
                           </div>
                         )}
                         <p className="text-[10px] text-zinc-400 mt-1">Créée le : {new Date(order.createdAt).toLocaleString()}</p>
@@ -3004,7 +3190,7 @@ export function RetailerDashboard({
                       )}
                       {order.paymentStatus === "PAID" && (
                         <span className="text-emerald-600 text-xs font-bold flex items-center gap-1">
-                          ✓ Commande payée
+                           Commande payée
                         </span>
                       )}
                     </div>
@@ -3042,7 +3228,7 @@ export function RetailerDashboard({
                 {myB2COrders.map((order) => {
                   const client = users.find((u) => u.id === order.senderId);
                   return (
-                    <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center justify-between text-xs">
+                    <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between text-xs">
                        <div className="flex flex-col gap-1">
                           <p className="font-bold">{client?.name}</p>
                           <p className="text-zinc-500">{order.deliveryAddress}</p>
@@ -3114,17 +3300,17 @@ export function RetailerDashboard({
             </button>
           </div>
           {isAdding && (
-            <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
+            <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
               <div className="flex flex-col sm:flex-row gap-4 items-end">
                 <div className="flex-1 w-full">
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold uppercase text-[10px]">Rechercher ou Saisir un produit</label>
                   <select
                     value={selectedProdId}
                     onChange={(e) => setSelectedProdId(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-semibold"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-semibold"
                   >
                     <option value="">-- Sélectionner un produit du réseau --</option>
-                    <option value="__NEW__">➕ Nouveau produit (N'existe pas dans la liste)</option>
+                    <option value="__NEW__"> Nouveau produit (N'existe pas dans la liste)</option>
                     {products.map(p => (
                       <option key={p.id} value={p.id}>{p.name} ({p.brand})</option>
                     ))}
@@ -3197,11 +3383,11 @@ export function RetailerDashboard({
                       <div className="space-y-3">
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Nom du produit</label>
-                          <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                          <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                         </div>
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Description</label>
-                          <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl h-20" />
+                          <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl h-20" />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -3219,14 +3405,14 @@ export function RetailerDashboard({
                                       setRetailerCategory(val);
                                     }
                                   }}
-                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
                                 >
                                   {PREDEFINED_CATEGORIES.map((cat) => (
                                     <option key={cat} value={cat}>
                                       {cat}
                                     </option>
                                   ))}
-                                  <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                                  <option value="AUTRE"> Autre (saisir manuellement)...</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                                   ▼
@@ -3242,7 +3428,7 @@ export function RetailerDashboard({
                                   value={retailerCategory}
                                   onChange={(e) => setRetailerCategory(e.target.value)}
                                   placeholder="Saisir la catégorie..."
-                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
                                   name="category"
                                 />
                                 <button
@@ -3260,7 +3446,7 @@ export function RetailerDashboard({
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Marque</label>
-                            <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
                       </div>
@@ -3268,31 +3454,31 @@ export function RetailerDashboard({
                         <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Unité</label>
-                            <input required name="unit" placeholder="Pièce / Carton" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required name="unit" placeholder="Pièce / Carton" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Poids (kg)</label>
-                            <input required type="number" step="0.1" name="weight" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required type="number" step="0.1" name="weight" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1">Vol (m³)</label>
-                            <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
-                          <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
+                          <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
                             <button
                               type="button"
                               onClick={() => setUploadMode("file")}
-                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                             >
                               <Upload className="w-3.5 h-3.5" /> Uploader
                             </button>
                             <button
                               type="button"
                               onClick={() => setUploadMode("url")}
-                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                             >
                               <LinkIcon className="w-3.5 h-3.5" /> Lien URL
                             </button>
@@ -3338,7 +3524,7 @@ export function RetailerDashboard({
                                 placeholder="https://images.unsplash.com/photo-..."
                                 defaultValue={uploadedImage && uploadedImage.startsWith("http") ? uploadedImage : ""}
                                 onChange={(e) => setUploadedImage(e.target.value)}
-                                className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs"
+                                className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs"
                               />
                             </div>
                           )}
@@ -3359,11 +3545,11 @@ export function RetailerDashboard({
                   <div className="grid grid-cols-2 gap-2 md:col-span-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 mt-2">
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold">Quantité en Stock</label>
-                      <input required name="stock" type="number" defaultValue="10" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
+                      <input required name="stock" type="number" defaultValue="10" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold">Prix de Vente (FCFA)</label>
-                      <input required name="price" type="number" step="1" placeholder="Ex: 500" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
+                      <input required name="price" type="number" step="1" placeholder="Ex: 500" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                   </div>
                   <div className="md:col-span-2 pt-2">
@@ -3682,6 +3868,19 @@ export function ClientDashboard({
   };
   return (
     <div className="space-y-6" id="client-dashboard">
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Client"
+        roleBlurb="Marché B2C, livraison du dernier kilomètre et solde cadeau"
+        accent="teal"
+        icon={ShoppingCart}
+        kpis={[
+          { label: "Mes commandes", value: String(orders.filter((o) => o.senderId === currentUser.id).length), icon: FileText, tone: "teal" },
+          { label: "En cours", value: String(orders.filter((o) => o.senderId === currentUser.id && o.status !== OrderStatus.DELIVERED && (o.status as string) !== "CANCELLED" && o.status !== OrderStatus.CANCELLED).length), icon: Truck, tone: "sky", hint: "à venir / livraison" },
+          { label: "Favoris", value: String(favoriteProductIds.length), icon: Star, tone: "amber" },
+          { label: "Commerçants", value: String(activePartnerIds.length), icon: Store, tone: "emerald", hint: "fournisseurs connectés" },
+        ]}
+      />
       {/* Banner Publicitaire Dynamique - Offres Spéciales */}
       <div className="relative overflow-hidden rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-950 text-white shadow-md group">
         <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/70 to-transparent z-10" />
@@ -3732,7 +3931,7 @@ export function ClientDashboard({
             <div className="text-center py-8 text-zinc-400">Aucune actualité récente.</div>
           ) : (
             feedItems.map((item) => (
-              <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl flex items-center gap-4 hover:border-emerald-200 transition">
+              <div key={item.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center gap-4 hover:border-emerald-200 transition">
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 p-2.5 rounded-lg flex-shrink-0">
                     <Sparkles className="w-5 h-5 text-emerald-600"/>
                 </div>
@@ -3755,7 +3954,7 @@ export function ClientDashboard({
       {activeTab === "market" && (
         <div className="space-y-4">
           {/* Shop Selector Header */}
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-3">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-3">
             <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
               <div>
                 <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
@@ -3771,7 +3970,7 @@ export function ClientDashboard({
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border ${
                     onlyPartners
                       ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                      : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-750"
+                      : "bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800"
                   }`}
                   title="Filtrer uniquement les commerces et demi-grossistes partenaires"
                 >
@@ -3795,12 +3994,12 @@ export function ClientDashboard({
                   setSelectedRetailer(e.target.value);
                   setCart({});
                 }}
-                className="w-full sm:flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-medium text-zinc-900 dark:text-zinc-100 shadow-xs"
+                className="w-full sm:flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-800 font-medium text-zinc-900 dark:text-zinc-100 shadow-xs"
               >
                 <option value="">-- Choisissez une Boutique ou Demi-Gros dans la liste --</option>
                 {displayedRetailers.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant Boutique"} • {r.address || r.region || "Local"}) {activePartnerIds.includes(r.id) ? "🔒 [Partenaire]" : ""}
+                    {r.companyName || r.name} ({r.role === UserRole.SEMI_WHOLESALER ? "Demi-Gros" : "Détaillant Boutique"} • {r.address || r.region || "Local"}) {activePartnerIds.includes(r.id) ? " [Partenaire]" : ""}
                   </option>
                 ))}
               </select>
@@ -3833,7 +4032,7 @@ export function ClientDashboard({
                   </span>
                 </div>
                 <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1">
-                  📍 {selectedShopObj.address || selectedShopObj.region || "Local"} • 📞 {selectedShopObj.phone || "Non renseigné"} • ✉️ {selectedShopObj.email}
+                   {selectedShopObj.address || selectedShopObj.region || "Local"} •  {selectedShopObj.phone || "Non renseigné"} •  {selectedShopObj.email}
                 </p>
               </div>
               <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-900/40 px-3 py-1 rounded-lg">
@@ -3878,7 +4077,7 @@ export function ClientDashboard({
                             {r.companyName || r.name}
                           </h5>
                           <p className="text-xs text-zinc-500 truncate mt-0.5">
-                            📍 {r.address || r.region || "Local"}
+                             {r.address || r.region || "Local"}
                           </p>
                         </div>
                         <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex justify-between items-center text-[11px] text-zinc-500 font-medium">
@@ -3919,7 +4118,7 @@ export function ClientDashboard({
                     const stock = invItem.stock > 0 ? invItem.stock : 999;
                     const price = getProductPrice(invItem, prod);
                     return (
-                      <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-sm">
+                      <div key={invItem.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between shadow-sm">
                         <div className="flex gap-3 items-center min-w-0 flex-1">
                           <img loading="lazy" src={prod.image} alt={prod.name} className="w-12 h-12 rounded-lg object-cover shadow-xs" />
                           <div className="min-w-0">
@@ -3970,7 +4169,7 @@ export function ClientDashboard({
                 )}
               </div>
               {/* Checkout panel */}
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs checkout-panel">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-800 rounded-2xl h-fit space-y-4 text-xs checkout-panel">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Panier Client</h5>
                 <div className="space-y-2">
                   {Object.keys(cart)
@@ -3991,7 +4190,7 @@ export function ClientDashboard({
                 </div>
                 {/* Subtotal & Delivery details breakdown */}
                 {Object.values(cart).some(q => (q as number) > 0) && (
-                  <div className="pt-2.5 pb-1 space-y-1.5 border-t border-zinc-150">
+                  <div className="pt-2.5 pb-1 space-y-1.5 border-t border-zinc-100">
                     <div className="flex justify-between text-[11px] text-zinc-500 font-medium">
                       <span>Sous-total</span>
                       <span className="font-mono">{formatCFA(
@@ -4026,7 +4225,7 @@ export function ClientDashboard({
                     </div>
                   </div>
                 )}
-                <div className="space-y-3 pt-3 border-t border-zinc-150">
+                <div className="space-y-3 pt-3 border-t border-zinc-100">
                   <div>
                     <label className="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Adresse de livraison (Auto-complétion)</label>
                     <AddressAutocomplete
@@ -4054,7 +4253,7 @@ export function ClientDashboard({
                     <select
                       value={paymentMethod}
                       onChange={(e) => setPaymentMethod(e.target.value)}
-                      className="w-full mt-1 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-850"
+                      className="w-full mt-1 px-2.5 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs bg-white dark:bg-zinc-800"
                     >
                       <option value="CASH">Espèces à la livraison</option>
                       <option value="ORANGE_MONEY">Orange Money</option>
@@ -4112,7 +4311,7 @@ export function ClientDashboard({
                 if (orderStatusFilter === "ANNULE") return [OrderStatus.CANCELLED, OrderStatus.RETURNED].includes(order.status);
                 return true;
               }).map((order) => (
-                <div key={order.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-xl space-y-4 shadow-sm">
+                <div key={order.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl space-y-4 shadow-sm">
                   <div className="flex justify-between items-start flex-wrap gap-2">
                     <div>
                       <span className="text-[9px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono">
@@ -4171,7 +4370,7 @@ export function ClientDashboard({
                         </div>
                       </div>
                       {/* OTP code needed to validate reception */}
-                      <div className="bg-zinc-900 p-3 rounded-lg flex justify-between items-center border border-zinc-850">
+                      <div className="bg-zinc-900 p-3 rounded-lg flex justify-between items-center border border-zinc-800">
                         <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">CODE OTP DE LIVRAISON</span>
                         <span className="font-mono font-bold text-base text-emerald-400 tracking-widest bg-zinc-950 px-3 py-1 rounded">
                           {order.otpCode || "2048"}
@@ -4194,7 +4393,7 @@ export function ClientDashboard({
                         }}
                         className="space-y-2 text-xs"
                       >
-                        <textarea placeholder="Donnez votre avis sur le livreur, le commerce ou la qualité des produits..." className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none" />
+                        <textarea placeholder="Donnez votre avis sur le livreur, le commerce ou la qualité des produits..." className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none" />
                         <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-lg font-bold">
                           Soumettre l'avis
                         </button>
@@ -4222,7 +4421,7 @@ export function ClientDashboard({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-zinc-700 dark:text-zinc-300">
             <div className="p-3 border border-zinc-200 dark:border-zinc-800 rounded-xl flex justify-between items-center">
               <div>
-                <p className="font-bold text-zinc-900 dark:text-white">📍 Maison Principale</p>
+                <p className="font-bold text-zinc-900 dark:text-white"> Maison Principale</p>
                 <p className="text-[11px] text-zinc-500 mt-1">{currentUser.address}</p>
               </div>
               <span className="text-[9px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-bold">Défaut</span>
@@ -4300,22 +4499,25 @@ export function DriverDashboard({
   };
   return (
     <div className="space-y-6" id="driver-dashboard">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-4">
-        <div>
-          <h3 className="font-bold text-base text-zinc-900 dark:text-zinc-100">Missions Logistiques & Tournées</h3>
-          <p className="text-xs text-zinc-500 mt-0.5">Pilote de transport connecté au réseau national</p>
-        </div>
-        <div className="self-start sm:self-auto">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50">
-            <Truck className="w-3.5 h-3.5" />
-            {currentUser.role === UserRole.DRIVER_M2W && "Acheminement Usine ➔ Grossiste"}
-            {currentUser.role === UserRole.DRIVER_W2SG && "Acheminement Grossiste ➔ Demi-Grossiste"}
-            {currentUser.role === UserRole.DRIVER_W2R && "Distribution Grossiste ➔ Détaillant"}
-            {currentUser.role === UserRole.DRIVER_SG2R && "Distribution Demi-Grossiste ➔ Détaillant"}
-            {currentUser.role === UserRole.DRIVER_R2C && "Livraison Dernier Kilomètre Détaillant ➔ Client"}
-          </span>
-        </div>
-      </div>
+      <DashboardHero
+        user={currentUser}
+        roleLabel={
+          currentUser.role === UserRole.DRIVER_M2W ? "Livreur Usine → Grossiste" :
+          currentUser.role === UserRole.DRIVER_W2SG ? "Livreur Grossiste → Demi-Grossiste" :
+          currentUser.role === UserRole.DRIVER_W2R ? "Livreur Grossiste → Détaillant" :
+          currentUser.role === UserRole.DRIVER_SG2R ? "Livreur Demi-Grossiste → Détaillant" :
+          "Livreur Dernier Kilomètre"
+        }
+        roleBlurb="Pilote de transport connecté au réseau national de distribution"
+        accent="sky"
+        icon={Truck}
+        kpis={[
+          { label: "Missions assignées", value: String(myAssignedOrders.length), icon: Navigation, tone: "sky" },
+          { label: "En attente", value: String(myAssignedOrders.filter((o) => o.status === OrderStatus.PENDING).length), icon: Clock, tone: "amber" },
+          { label: "Livrées", value: String(myAssignedOrders.filter((o) => o.status === OrderStatus.DELIVERED).length), icon: CheckCircle, tone: "emerald" },
+          { label: "En cours", value: String(myAssignedOrders.filter((o) => o.status !== OrderStatus.DELIVERED && o.status !== OrderStatus.PENDING && (o.status as string) !== "CANCELLED").length), icon: Truck, tone: "indigo" },
+        ]}
+      />
       {myAssignedOrders.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl">
           <Truck className="w-10 h-10 text-zinc-300 mx-auto mb-2" />
@@ -4327,7 +4529,7 @@ export function DriverDashboard({
             const client = users.find((u) => u.id === order.senderId);
             const vendor = users.find((u) => u.id === order.receiverId);
             return (
-              <div key={order.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl shadow-xs space-y-4">
+              <div key={order.id} className="p-5 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl shadow-xs space-y-4">
                 <div className="flex justify-between items-start flex-wrap gap-2">
                   <div>
                     <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono">
@@ -4341,7 +4543,7 @@ export function DriverDashboard({
                     </p>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs bg-zinc-150 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2.5 py-1 rounded-full font-bold">
+                    <span className="text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-2.5 py-1 rounded-full font-bold">
                       {order.status}
                     </span>
                     <p className="text-[10px] text-zinc-500 mt-2">Distance : {order.distanceKm} km</p>
@@ -4349,7 +4551,7 @@ export function DriverDashboard({
                 </div>
                 {/* Live Driver Interactive route map simulator */}
                 {order.status === OrderStatus.DELIVERING && (
-                  <div className="p-4 bg-zinc-950 text-white rounded-xl space-y-4 border border-zinc-850">
+                  <div className="p-4 bg-zinc-950 text-white rounded-xl space-y-4 border border-zinc-800">
                     <p className="text-xs font-semibold flex items-center gap-1.5 text-emerald-400">
                       <Navigation className="w-4 h-4 animate-bounce" /> Itinéraire GPS en cours (Assistant Route)
                     </p>
@@ -4381,7 +4583,7 @@ export function DriverDashboard({
                             placeholder="Entrez le code OTP 4 chiffres..."
                             value={otpInput}
                             onChange={(e) => setOtpInput(e.target.value)}
-                            className="w-full mt-1.5 px-3 py-2 border border-zinc-750 bg-zinc-900 text-white font-mono rounded-lg text-xs"
+                            className="w-full mt-1.5 px-3 py-2 border border-zinc-800 bg-zinc-900 text-white font-mono rounded-lg text-xs"
                           />
                         </div>
                       )}
@@ -4394,7 +4596,7 @@ export function DriverDashboard({
                           <Camera className="w-4 h-4" /> Prendre une photo justificative (Optionnel)
                         </button>
                         {photoMockActive && (
-                          <p className="text-[9px] text-emerald-400 mt-1 font-mono">✓ Photo enregistrée : [COLIS_LIVRE_SEUIL.jpg]</p>
+                          <p className="text-[9px] text-emerald-400 mt-1 font-mono"> Photo enregistrée : [COLIS_LIVRE_SEUIL.jpg]</p>
                         )}
                       </div>
                       {/* 3. Digital signature Canvas pad */}
@@ -4518,7 +4720,7 @@ export function SemiWholesalerDashboard({
       if (diag.canDeliver) {
         alert(diag.summaryMessage);
       } else if (diag.isActive && !diag.inventoryCheck.hasStock) {
-        alert(`${diag.summaryMessage}\n\n⚠️ Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
+        alert(`${diag.summaryMessage}\n\n Risque de rupture de stock fournisseur : ${diag.inventoryCheck.itemsSummary}`);
       } else {
         if (confirm(`${diag.summaryMessage}\n\nVoulez-vous réparer automatiquement cette connexion pour autoriser la livraison ?`)) {
           let connectionId = diag.relationId;
@@ -4798,6 +5000,19 @@ export function SemiWholesalerDashboard({
   }, [inventory, products, currentUser]);
   return (
     <div className="space-y-6" id="semi-wholesaler-dashboard">
+      <DashboardHero
+        user={currentUser}
+        roleLabel="Demi-Grossiste"
+        roleBlurb="Vente hybride : achats du grossiste, revente au détail et crédits clients"
+        accent="orange"
+        icon={Briefcase}
+        kpis={[
+          { label: "Références en stock", value: String(myInventory.length), icon: Package, tone: "orange" },
+          { label: "Alertes stock", value: String(activeAlerts.length), icon: AlertTriangle, tone: "amber" },
+          { label: "Commandes clients", value: String(incomingOrders.length), icon: FileText, tone: "rose", hint: `${incomingOrders.filter((o) => o.status === OrderStatus.PENDING).length} en attente` },
+          { label: "CA livré", value: formatCFA(totalSalesRevenue), icon: DollarSign, tone: "emerald" },
+        ]}
+      />
       {/* Tabs list with Sync Indicator */}
       <DashboardTabBar
         title="Menu Demi-Grossiste - Opérations & Commandes Reçues"
@@ -4822,7 +5037,7 @@ export function SemiWholesalerDashboard({
       />
       {activeTab === "buyers" && (
         <div className="space-y-4 animate-fade-in">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Mes Acheteurs & Crédits</h4>
             <p className="text-[11px] text-zinc-500 mt-1">Identifiez clairement vos acheteurs (partenaires et locaux), suivez leurs volumes d'achats cumulés et gérez leurs encours de crédit (ardoises).</p>
           </div>
@@ -4867,7 +5082,7 @@ export function SemiWholesalerDashboard({
           {/* Left Column: Inventory & Alerts (Takes 2 columns) */}
           <div className="lg:col-span-2 space-y-6">
             {/* Quick summary card for Incoming Orders */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4 shadow-xs">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-4 shadow-xs">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
                   <FileText className="w-4 h-4 text-emerald-600" /> Commandes Clients Reçues ({incomingOrders.length})
@@ -4917,7 +5132,7 @@ export function SemiWholesalerDashboard({
           {/* Right Column: Alerts & Notifications */}
           <div className="space-y-6">
             {/* Stock Alerts Panel */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4 text-orange-500" /> Alertes de stock
@@ -4955,7 +5170,7 @@ export function SemiWholesalerDashboard({
               )}
             </div>
             {/* Notifications */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-4">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-4">
               <h4 className="font-bold text-xs uppercase text-zinc-900 dark:text-zinc-100 tracking-wider mb-4 flex items-center gap-1.5">
                 <Bell className="w-4 h-4 text-indigo-500" /> Notifications
               </h4>
@@ -5015,7 +5230,7 @@ export function SemiWholesalerDashboard({
                       const stock = invItem ? invItem.stock : 999;
                       const price = invItem?.price || invItem?.prixGros || prod.prixGros || prod.prixDetail || (prod as any).price || 1000;
                       return (
-                        <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-850 rounded-xl flex items-center justify-between shadow-xs">
+                        <div key={prod.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-xl flex items-center justify-between shadow-xs">
                           <div className="flex gap-2 items-center min-w-0">
                             <img loading="lazy" src={prod.image} alt={prod.name} className="w-10 h-10 rounded object-cover" />
                             <div className="min-w-0">
@@ -5046,7 +5261,7 @@ export function SemiWholesalerDashboard({
                 </div>
               </div>
               {/* Basket */}
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-150 dark:border-zinc-850 rounded-2xl h-fit space-y-4 text-xs">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-100 dark:border-zinc-800 rounded-2xl h-fit space-y-4 text-xs">
                 <h5 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Bon d'Approvisionnement</h5>
                 <div className="space-y-2">
                   {Object.keys(procureCart)
@@ -5101,7 +5316,7 @@ export function SemiWholesalerDashboard({
               {myPurchases.map((order) => {
                 const supplierObj = users.find((u) => u.id === order.receiverId);
                 return (
-                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl space-y-3">
+                  <div key={order.id} className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl space-y-3">
                     <div className="flex justify-between items-center">
                       <div>
                         <span className="font-bold text-xs text-orange-600">{order.id}</span>
@@ -5288,7 +5503,7 @@ export function SemiWholesalerDashboard({
       )}
       {activeTab === "pos" && (
         <div className="space-y-6 animate-fade-in">
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-150 dark:border-zinc-800">
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50 rounded-2xl border border-zinc-100 dark:border-zinc-800">
             <h4 className="font-bold text-xs text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">Caisse Minute - Vente POS</h4>
             <p className="text-[11px] text-zinc-500 mt-1">Sélectionnez les produits de votre stock de demi-gros, ajustez les quantités et facturez en gros ou détail.</p>
           </div>
@@ -5319,17 +5534,17 @@ export function SemiWholesalerDashboard({
             </button>
           </div>
           {isAdding && (
-            <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
+            <div className="bg-zinc-50 dark:bg-zinc-900/50 p-5 rounded-2xl border border-zinc-100 dark:border-zinc-800 space-y-4 animate-fade-in text-xs">
               <div className="flex flex-col sm:flex-row gap-4 items-end">
                 <div className="flex-1 w-full">
                   <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold uppercase text-[10px]">Rechercher ou Saisir un produit</label>
                   <select
                     value={selectedProdId}
                     onChange={(e) => setSelectedProdId(e.target.value)}
-                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-semibold"
+                    className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-semibold"
                   >
                     <option value="">-- Sélectionner un produit du réseau --</option>
-                    <option value="__NEW__">➕ Nouveau produit (N'existe pas dans la liste)</option>
+                    <option value="__NEW__"> Nouveau produit (N'existe pas dans la liste)</option>
                     {products.map(p => (
                       <option key={p.id} value={p.id}>{p.name} ({p.brand})</option>
                     ))}
@@ -5396,11 +5611,11 @@ export function SemiWholesalerDashboard({
                       <div className="space-y-3">
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Nom du produit</label>
-                          <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                          <input required name="name" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                         </div>
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Description</label>
-                          <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl h-20" />
+                          <textarea required name="description" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl h-20" />
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -5418,14 +5633,14 @@ export function SemiWholesalerDashboard({
                                       setSemiWholesalerCategory(val);
                                     }
                                   }}
-                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
+                                  className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white appearance-none pr-8 cursor-pointer font-medium text-xs"
                                 >
                                   {PREDEFINED_CATEGORIES.map((cat) => (
                                     <option key={cat} value={cat}>
                                       {cat}
                                     </option>
                                   ))}
-                                  <option value="AUTRE">➕ Autre (saisir manuellement)...</option>
+                                  <option value="AUTRE"> Autre (saisir manuellement)...</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-zinc-500 text-[9px]">
                                   ▼
@@ -5441,7 +5656,7 @@ export function SemiWholesalerDashboard({
                                   value={semiWholesalerCategory}
                                   onChange={(e) => setSemiWholesalerCategory(e.target.value)}
                                   placeholder="Saisir la catégorie..."
-                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
+                                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-zinc-900 dark:text-white font-medium text-xs"
                                   name="category"
                                 />
                                 <button
@@ -5459,7 +5674,7 @@ export function SemiWholesalerDashboard({
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Marque</label>
-                            <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required name="brand" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
                       </div>
@@ -5467,31 +5682,31 @@ export function SemiWholesalerDashboard({
                         <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Unité</label>
-                            <input required name="unit" placeholder="Carton / Sac" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required name="unit" placeholder="Carton / Sac" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Poids (kg)</label>
-                            <input required type="number" step="0.1" name="weight" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required type="number" step="0.1" name="weight" defaultValue="1" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                           <div>
                             <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Vol (m³)</label>
-                            <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl" />
+                            <input required type="number" step="0.01" name="volume" defaultValue="0.01" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl" />
                           </div>
                         </div>
                         <div>
                           <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-semibold">Illustration du Produit</label>
-                          <div className="flex gap-2 p-1 bg-zinc-150 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
+                          <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg text-[10px] font-bold mb-2">
                             <button
                               type="button"
                               onClick={() => setUploadMode("file")}
-                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "file" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                             >
                               <Upload className="w-3.5 h-3.5" /> Fichier
                             </button>
                             <button
                               type="button"
                               onClick={() => setUploadMode("url")}
-                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-850"}`}
+                              className={`flex-1 py-1 rounded transition cursor-pointer flex items-center justify-center gap-1 ${uploadMode === "url" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs" : "text-zinc-500 hover:text-zinc-800"}`}
                             >
                               <LinkIcon className="w-3.5 h-3.5" /> URL
                             </button>
@@ -5532,7 +5747,7 @@ export function SemiWholesalerDashboard({
                               type="url"
                               name="image"
                               placeholder="Lien de l'image (Unsplash...)"
-                              className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl text-xs"
+                              className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl text-xs"
                             />
                           )}
                         </div>
@@ -5552,11 +5767,11 @@ export function SemiWholesalerDashboard({
                   <div className="grid grid-cols-2 gap-2 md:col-span-2 pt-2 border-t border-zinc-200 dark:border-zinc-800 mt-2">
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold uppercase text-[10px]">Quantité Entrée</label>
-                      <input required name="stock" type="number" defaultValue="10" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
+                      <input required name="stock" type="number" defaultValue="10" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                     <div>
                       <label className="block text-zinc-700 dark:text-zinc-300 mb-1 font-bold uppercase text-[10px]">Prix d'Achat/Base (FCFA)</label>
-                      <input required name="price" type="number" defaultValue="1000" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-750 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
+                      <input required name="price" type="number" defaultValue="1000" className="w-full px-3 py-2 border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-800 rounded-xl font-mono text-sm" />
                     </div>
                   </div>
                   <div className="md:col-span-2 pt-2">

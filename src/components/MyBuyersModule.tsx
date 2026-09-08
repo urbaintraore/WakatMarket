@@ -596,7 +596,7 @@ export function MyBuyersModule({
                 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer border ${
                   showAddForm
                     ? "bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200"
-                    : "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-505 shadow-sm shadow-emerald-600/10"
+                    : "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-500 shadow-sm shadow-emerald-600/10"
                 }`}
               >
                 <PlusCircle className="w-4 h-4" />
@@ -609,7 +609,7 @@ export function MyBuyersModule({
           {showAddForm && onCreateLightClient && (
             <form 
               onSubmit={handleAddNewBuyerSubmit} 
-              className="p-5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-150 dark:border-zinc-800 rounded-2xl space-y-4 animate-fade-in"
+              className="p-5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-100 dark:border-zinc-800 rounded-2xl space-y-4 animate-fade-in"
               id="add-buyer-form"
             >
               <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-2.5">
@@ -656,12 +656,12 @@ export function MyBuyersModule({
 
               {/* Real-time search/matching feedback inside the form */}
               {addIdentifier.trim() && (
-                <div className="p-3.5 rounded-xl border border-zinc-150 dark:border-zinc-800 text-xs">
+                <div className="p-3.5 rounded-xl border border-zinc-100 dark:border-zinc-800 text-xs">
                   {foundUser ? (
                     isRoleMismatch ? (
                       <div className="bg-rose-50/70 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 text-rose-800 dark:text-rose-300 flex items-start gap-3 p-2 rounded-lg">
                         <div className="w-6 h-6 rounded-lg bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center font-bold text-rose-600 dark:text-rose-400 text-xs shrink-0">
-                          ⚠️
+                          
                         </div>
                         <div>
                           <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Erreur de profil / Rôle non correspondant</p>
@@ -676,7 +676,7 @@ export function MyBuyersModule({
                     ) : (
                       <div className="bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30 text-emerald-800 dark:text-emerald-400 flex items-start gap-3 p-1 rounded-lg">
                         <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center font-bold text-emerald-600 dark:text-emerald-400 text-xs shrink-0">
-                          ✓
+                          
                         </div>
                         <div>
                           <p className="font-extrabold text-[10.5px] uppercase tracking-wider">Compte Partenaire Trouvé sur Wakat ERP</p>
@@ -745,7 +745,7 @@ export function MyBuyersModule({
                 <button
                   type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-750 text-zinc-600 dark:text-zinc-300 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+                  className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
                 >
                   Annuler
                 </button>
@@ -760,7 +760,7 @@ export function MyBuyersModule({
           )}
 
           {filteredBuyers.length === 0 ? (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-8 text-center text-zinc-400 dark:text-zinc-500 text-xs italic">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-8 text-center text-zinc-400 dark:text-zinc-500 text-xs italic">
               Aucun acheteur enregistré ou ne correspond à la recherche.
             </div>
           ) : (
@@ -776,7 +776,7 @@ export function MyBuyersModule({
                     className={`bg-white dark:bg-zinc-900 border rounded-2xl transition-all overflow-hidden ${
                       isExpanded 
                         ? "border-emerald-500 shadow-md ring-1 ring-emerald-500/10" 
-                        : "border-zinc-150 dark:border-zinc-850 hover:border-zinc-300 dark:hover:border-zinc-700"
+                        : "border-zinc-100 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
                     }`}
                   >
                     {/* Accordion Trigger Head */}
@@ -932,7 +932,7 @@ export function MyBuyersModule({
                       <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/20 p-5 space-y-5 animate-fade-in">
                         
                         {/* Credit Limit Setting Card */}
-                        <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                           <div>
                             <p className="text-[10px] text-zinc-400 uppercase font-black tracking-wider">Limite de crédit autorisée</p>
                             {editingLimitId === buyer.id ? (
@@ -1013,7 +1013,7 @@ export function MyBuyersModule({
                           }
 
                           return (
-                            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-4 rounded-xl space-y-3 shadow-sm">
+                            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-4 rounded-xl space-y-3 shadow-sm">
                               <div className="flex justify-between items-center text-xs">
                                 <span className="font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider text-[10px]">Utilisation du Crédit</span>
                                 <span className={`font-black font-mono ${textColorClass}`}>
@@ -1114,10 +1114,10 @@ export function MyBuyersModule({
                             {stats.orders.length === 0 ? (
                               <p className="text-zinc-400 italic text-center py-6 text-[11px]">Aucun achat enregistré pour le moment.</p>
                             ) : (
-                              <div className="overflow-x-auto border border-zinc-150 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 shadow-sm">
+                              <div className="overflow-x-auto border border-zinc-100 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900 shadow-sm">
                                 <table className="w-full text-left border-collapse text-xs">
                                   <thead>
-                                    <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-150 dark:border-zinc-800 text-[10px] text-zinc-400 font-black uppercase tracking-wider">
+                                    <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-black uppercase tracking-wider">
                                       <th className="py-3 px-4">Date</th>
                                       <th className="py-3 px-4">N° Facture</th>
                                       <th className="py-3 px-4">Méthode</th>
@@ -1175,7 +1175,7 @@ export function MyBuyersModule({
                               <p className="text-zinc-400 italic text-center py-6 text-[11px]">Aucun règlement enregistré pour le moment.</p>
                             ) : (
                               stats.payments.map((p, idx) => (
-                                <div key={`buyer_pay_${p.id}_${idx}`} className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 p-3 rounded-xl flex justify-between items-center">
+                                <div key={`buyer_pay_${p.id}_${idx}`} className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 p-3 rounded-xl flex justify-between items-center">
                                   <div className="flex items-center gap-2">
                                     <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                                     <div>
@@ -1202,7 +1202,7 @@ export function MyBuyersModule({
         <div className="space-y-4" id="suivi-des-dettes">
           {/* Global Statistics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
+            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
               <div className="w-9 h-9 bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 rounded-xl flex items-center justify-center shrink-0">
                 <TrendingDown className="w-4 h-4" />
               </div>
@@ -1212,7 +1212,7 @@ export function MyBuyersModule({
               </div>
             </div>
 
-            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
+            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
               <div className="w-9 h-9 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-xl flex items-center justify-center shrink-0">
                 <AlertCircle className="w-4 h-4" />
               </div>
@@ -1222,7 +1222,7 @@ export function MyBuyersModule({
               </div>
             </div>
 
-            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
+            <div className="p-4 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl flex items-center gap-3 shadow-sm">
               <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
                 <Users className="w-4 h-4" />
               </div>
@@ -1248,7 +1248,7 @@ export function MyBuyersModule({
               />
             </div>
             
-            <label className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-350 cursor-pointer select-none shrink-0 shadow-sm">
+            <label className="flex items-center gap-2 px-3.5 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-600 dark:text-zinc-400 cursor-pointer select-none shrink-0 shadow-sm">
               <input
                 type="checkbox"
                 checked={onlyShowDebtors}
@@ -1261,7 +1261,7 @@ export function MyBuyersModule({
 
           {/* List of Debtors/Buyers */}
           {debtFilteredBuyers.length === 0 ? (
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-8 text-center text-zinc-400 dark:text-zinc-500 text-xs italic">
+            <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-8 text-center text-zinc-400 dark:text-zinc-500 text-xs italic">
               Aucun débiteur trouvé ou ne correspond aux filtres.
             </div>
           ) : (
@@ -1279,7 +1279,7 @@ export function MyBuyersModule({
                 return (
                   <div 
                     key={`debt_buyer_${buyer.id}_${idx}`}
-                    className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 space-y-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-750 transition"
+                    className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-5 space-y-4 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-800 transition"
                   >
                     {/* Header info of debtor partner */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1359,10 +1359,10 @@ export function MyBuyersModule({
                           Toutes les factures pour cet acheteur sont entièrement réglées. (Aucun impayé actif).
                         </div>
                       ) : (
-                        <div className="overflow-x-auto border border-zinc-150 dark:border-zinc-850 rounded-xl bg-zinc-50/20 dark:bg-zinc-950/10">
+                        <div className="overflow-x-auto border border-zinc-100 dark:border-zinc-800 rounded-xl bg-zinc-50/20 dark:bg-zinc-950/10">
                           <table className="w-full text-left border-collapse text-xs">
                             <thead>
-                              <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-150 dark:border-zinc-850 text-[9px] text-zinc-400 font-bold uppercase tracking-wider">
+                              <tr className="bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-100 dark:border-zinc-800 text-[9px] text-zinc-400 font-bold uppercase tracking-wider">
                                 <th className="py-2.5 px-3">Date</th>
                                 <th className="py-2.5 px-3">Réf Facture</th>
                                 <th className="py-2.5 px-3">Montant Global</th>
@@ -1372,7 +1372,7 @@ export function MyBuyersModule({
                                 <th className="py-2.5 px-3 text-center">Action</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-850">
+                            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
                               {unpaidInvoices.map((order, idx) => {
                                 const remainingAmount = order.totalAmount - order.amountPaid;
                                 return (

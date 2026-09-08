@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2, Clock, Filter, XCircle, RotateCcw, Sparkles } from 'lucide-react';
+import { Cloud, CloudOff, AlertTriangle, Users, BookOpen, Calculator, History, Search, UserCheck, UserX, MessageSquare, Bell, Send, CheckCircle2, Trash2, UserMinus, TrendingUp, TrendingDown, Package, Store, ShoppingCart, ShieldCheck, Landmark, Plus, Phone, Mail, Building2, Clock, Filter, XCircle, RotateCcw, Sparkles, Zap, Check, ShieldAlert, MapPin, X, BarChart3, GitCompareArrows } from 'lucide-react';
 import { formatCFA, db } from '../data';
 import { LightClient, StockMovement, DebtPayment, Order, OrderStatus, Product, InventoryItem, UserRole, UserProfile, Connection, Notification, isConnectionActive } from '../types';
 import { useAuthContext } from '../context/AuthContext';
@@ -96,8 +96,8 @@ export const LowStockAlerts: React.FC<LowStockAlertsProps> = ({
                   Stock: <strong className="font-bold">{item.stock} u</strong> (Seuil: {item.lowStockThreshold || item.threshold} u)
                 </p>
                 {vitesse > 0 && (
-                  <p className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                    ⚡ Vitesse : {vitesse} u/jour (14j)
+                  <p className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> Vitesse : {vitesse} u/jour (14j)
                   </p>
                 )}
               </div>
@@ -381,7 +381,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
     const dbList = db.getUsers();
     const map = new Map<string, UserProfile>();
     
-    // We prioritize the optimized Supabase results, falling back to local list and prop-subscribed users
+    // We prioritize the optimized Firebase results, falling back to local list and prop-subscribed users
     [...dbSearchResults, ...dbList, ...users].forEach(u => {
       if (u && u.id) map.set(u.id, u);
     });
@@ -654,7 +654,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
             {mismatchedUser && (
               <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300 text-xs space-y-1">
                 <p className="font-extrabold flex items-center gap-1.5">
-                  ⚠️ Profil non correspondant détecté
+                  <AlertTriangle className="w-4 h-4" /> Profil non correspondant détecté
                 </p>
                 <p>
                   L'utilisateur <strong>{mismatchedUser.name}</strong> ({mismatchedUser.phone || mismatchedUser.email}) possède le rôle <strong>{mismatchedUser.role}</strong>, mais vous avez sélectionné le profil <strong>{allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}</strong>.
@@ -674,7 +674,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
               <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-xs text-center py-6">
                 {searchQuery.trim() 
                   ? (searchQuery.trim().length < 3
-                      ? `⚠️ Veuillez saisir au moins 3 caractères pour lancer la recherche (actuel : ${searchQuery.trim().length}/3).`
+                      ? ` Veuillez saisir au moins 3 caractères pour lancer la recherche (actuel : ${searchQuery.trim().length}/3).`
                       : (mismatchedUser 
                           ? `L'utilisateur correspondant à "${searchQuery}" n'a pas le bon profil.` 
                           : `Aucun utilisateur trouvé avec le profil "${allowedRoles.find(r => r.role === selectedRole)?.label || selectedRole}" correspondant à "${searchQuery}".`
@@ -706,7 +706,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                       </div>
                       <div>
                         {isSelected ? (
-                          <span className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold">Sélectionné ✓</span>
+                          <span className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold flex items-center gap-1"><Check className="w-3 h-3" /> Sélectionné</span>
                         ) : (
                           <span className="px-3 py-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg text-xs">Choisir</span>
                         )}
@@ -721,9 +721,9 @@ export const ClientManagement: React.FC<ClientListProps> = ({
           {/* 3. Informations récupérées */}
           {selectedTargetUser && (
             <div className="p-4 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2 animate-fadeIn">
-              <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
-                ✓ Profil trouvé :
-              </p>
+              <p className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                  <UserCheck className="w-3.5 h-3.5" /> Profil trouvé :
+                </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 <div>
                   <span className="text-zinc-500">Nom complet :</span> <strong className="text-zinc-900 dark:text-zinc-100">{selectedTargetUser.name}</strong>
@@ -1426,7 +1426,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
                 </div>
               </div>
               
-              <div className="flex flex-wrap items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-750 text-xs mb-3">
+              <div className="flex flex-wrap items-center gap-3 p-3 bg-zinc-50 dark:bg-zinc-800/40 rounded-xl border border-zinc-200 dark:border-zinc-800 text-xs mb-3">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-zinc-500">Du :</span>
                   <input
@@ -1538,8 +1538,7 @@ export const ClientManagement: React.FC<ClientListProps> = ({
           isOpen={true}
           onClose={() => setSelectedClientForMessage(null)}
           onOpenGlobalChat={() => {
-            const chatToggle = document.getElementById("header-chat-toggle") as HTMLButtonElement;
-            if (chatToggle) chatToggle.click();
+            if (typeof window !== "undefined") window.dispatchEvent(new Event("wakat:open-chat"));
           }}
         />
       )}
@@ -1892,7 +1891,7 @@ export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({
   }, [totalCA, totalDette]);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 border border-zinc-150 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-5" id="debt-vs-revenue-chart">
+    <div className="bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-2xl p-5 shadow-sm space-y-5" id="debt-vs-revenue-chart">
       {/* Chart Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
@@ -2043,7 +2042,7 @@ export const DebtVsRevenueChart: React.FC<DebtVsRevenueChartProps> = ({
             : 'bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-400'
       }`}>
         <span className="text-xs">
-          {ratioDetteCA >= 20 ? '⚠️' : ratioDetteCA >= 10 ? '⚡' : '✅'}
+          {ratioDetteCA >= 20 ? <AlertTriangle className="w-4 h-4" /> : ratioDetteCA >= 10 ? <ShieldAlert className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
         </span>
         <span>
           {ratioDetteCA >= 20 
@@ -2589,11 +2588,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         <select
           value={selectedSupplierId}
           onChange={(e) => onSelectSupplier(e.target.value)}
-          className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-850 font-semibold text-zinc-900 dark:text-zinc-100 min-w-[220px]"
+          className="px-3 py-1.5 border border-zinc-200 dark:border-zinc-700 rounded-xl text-xs bg-white dark:bg-zinc-800 font-semibold text-zinc-900 dark:text-zinc-100 min-w-[220px]"
         >
           <option value="">-- Choisir un fournisseur confirmé --</option>
           {addressBookSuppliers.length > 0 && (
-            <optgroup label="📍 Carnet d'adresses & Partenaires Confirmés">
+            <optgroup label="Carnet d'adresses & Partenaires Confirmés">
               {addressBookSuppliers.map((s, idx) => (
                 <option key={`ab_${s.id}_${idx}`} value={s.id}>
                   {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.phone || s.email || s.region}
@@ -2601,7 +2600,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
               ))}
             </optgroup>
           )}
-          <optgroup label="🌐 Tous les Fournisseurs Accessibles">
+          <optgroup label="Tous les Fournisseurs Accessibles">
             {allSuppliers.map((s, idx) => (
               <option key={`all_${s.id}_${idx}`} value={s.id}>
                 [{s.role}] {s.name} {s.companyName ? `(${s.companyName})` : ''} - {s.region || 'National'}
@@ -2641,7 +2640,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                       className={isSelected ? "bg-white/20 text-white border-white/40" : ""}
                     />
                   )}
-                  {s.phone && <span className="text-[10px] opacity-80">📞 {s.phone}</span>}
+                  {s.phone && <span className="text-[10px] opacity-80 flex items-center gap-1"><Phone className="w-3 h-3" /> {s.phone}</span>}
                   {s.isAddressBook && (
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${isSelected ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300"}`}>
                       Carnet
@@ -2717,9 +2716,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                 <div>
                   <span className="font-semibold">{s.name} {s.companyName ? `(${s.companyName})` : ''}</span>
                   <div className="text-[10px] text-zinc-500 flex gap-2 mt-0.5">
-                    {s.phone && <span>📞 {s.phone}</span>}
-                    {s.email && <span>✉️ {s.email}</span>}
-                    {s.region && <span>📍 {s.region}</span>}
+                    {s.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {s.phone}</span>}
+                    {s.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {s.email}</span>}
+                    {s.region && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {s.region}</span>}
                   </div>
                 </div>
 
@@ -2753,7 +2752,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1 flex items-center gap-1">
-                      <span>⚠️</span> {reason}
+                      <AlertTriangle className="w-3.5 h-3.5" /> {reason}
                     </p>
                   </div>
 
@@ -2840,9 +2839,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                 )}
               </div>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 flex flex-wrap gap-2">
-                {selectedSupplierObj.phone && <span>📞 {selectedSupplierObj.phone}</span>}
-                {selectedSupplierObj.email && <span>✉️ {selectedSupplierObj.email}</span>}
-                {selectedSupplierObj.region && <span>📍 {selectedSupplierObj.region}</span>}
+                {selectedSupplierObj.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {selectedSupplierObj.phone}</span>}
+                {selectedSupplierObj.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {selectedSupplierObj.email}</span>}
+                {selectedSupplierObj.region && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {selectedSupplierObj.region}</span>}
                 {selectedSupplierObj.isAddressBook && <span className="font-bold text-indigo-600 dark:text-indigo-400">[Carnet d'adresses]</span>}
               </p>
             </div>
@@ -2889,7 +2888,7 @@ export function ExpirationAlertsBanner({ alerts }: ExpirationAlertsBannerProps) 
       <div className="p-3 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-fade-in my-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="p-2 bg-amber-500 text-white rounded-xl font-bold shrink-0">
-            ⚠️
+            <AlertTriangle className="w-4 h-4" />
           </span>
           <div className="min-w-0">
             <p className="text-xs font-bold text-amber-900 dark:text-amber-200 truncate">
@@ -2915,7 +2914,7 @@ export function ExpirationAlertsBanner({ alerts }: ExpirationAlertsBannerProps) 
             className="p-1 text-amber-700 dark:text-amber-400 hover:text-amber-900 text-xs font-bold"
             title="Masquer l'alerte"
           >
-            ✕
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -2932,7 +2931,7 @@ export function ExpirationAlertsBanner({ alerts }: ExpirationAlertsBannerProps) 
                 onClick={() => setShowModal(false)}
                 className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 font-bold"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
@@ -3089,7 +3088,7 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
                 : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
             }`}
           >
-            📊 Ventes Quotidiennes
+<BarChart3 className={`w-3.5 h-3.5 ${activeTab === 'sales' ? 'text-emerald-600 dark:text-emerald-300' : 'text-zinc-400'}`} /> Ventes Quotidiennes
           </button>
           <button
             onClick={() => setActiveTab('stock')}
@@ -3099,7 +3098,7 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
                 : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
             }`}
           >
-            📈 Tendances Stock
+             <TrendingUp className={`w-3.5 h-3.5 ${activeTab === 'stock' ? 'text-blue-600 dark:text-blue-300' : 'text-zinc-400'}`} /> Tendances Stock
           </button>
           <button
             onClick={() => setActiveTab('combined')}
@@ -3109,7 +3108,7 @@ export const ThirtyDaySalesAndStockChart: React.FC<ThirtyDaySalesAndStockChartPr
                 : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
             }`}
           >
-            🔀 Vue Combinée
+             <GitCompareArrows className={`w-3.5 h-3.5 ${activeTab === 'combined' ? 'text-purple-600 dark:text-purple-300' : 'text-zinc-400'}`} /> Vue Combinée
           </button>
         </div>
       </div>
@@ -3288,7 +3287,7 @@ export const ClaimsSummaryWidget: React.FC<ClaimsSummaryWidgetProps> = ({
           const isResolved = order.claimStatus === "RESOLVED";
 
           return (
-            <div key={order.id} className="p-3.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-750 flex flex-col justify-between gap-2">
+            <div key={order.id} className="p-3.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-xl border border-zinc-200 dark:border-zinc-800 flex flex-col justify-between gap-2">
               <div className="flex justify-between items-start">
                 <div>
                   <span className="font-mono text-xs font-bold text-zinc-900 dark:text-white">Commande #{order.id}</span>
@@ -3296,10 +3295,10 @@ export const ClaimsSummaryWidget: React.FC<ClaimsSummaryWidgetProps> = ({
                     Client : <span className="font-bold text-zinc-700 dark:text-zinc-300">{senderObj?.companyName || senderObj?.name || "Client"}</span>
                   </p>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                   isResolved ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                 }`}>
-                  {isResolved ? '✓ Résolu' : '⚠ Ouvert'}
+                  {isResolved ? <><CheckCircle2 className="w-3 h-3" /> Résolu</> : <><XCircle className="w-3 h-3" /> Ouvert</>}
                 </span>
               </div>
 
@@ -3320,7 +3319,7 @@ export const ClaimsSummaryWidget: React.FC<ClaimsSummaryWidgetProps> = ({
                       : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  {isResolved ? 'Marquer comme Ouvert' : 'Marquer comme Résolu ✓'}
+                  {isResolved ? <><XCircle className="w-3 h-3" /> Marquer comme Ouvert</> : <><CheckCircle2 className="w-3 h-3" /> Marquer comme Résolu</>}
                 </button>
               </div>
             </div>
@@ -3626,7 +3625,7 @@ export const MonthlySalesEvolutionChart: React.FC<MonthlySalesEvolutionChartProp
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-150 dark:border-zinc-850">
+        <div className="flex items-center gap-3 bg-zinc-50 dark:bg-zinc-950 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
           <div className="text-right">
             <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">C.A. Cumulé</p>
             <p className="text-xs font-black text-orange-600 font-mono">
@@ -3652,7 +3651,7 @@ export const MonthlySalesEvolutionChart: React.FC<MonthlySalesEvolutionChartProp
                 <stop offset="95%" stopColor="#ea580c" stopOpacity={0}/>
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-150 dark:stroke-zinc-800" strokeOpacity={0.5} />
+            <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-100 dark:stroke-zinc-800" strokeOpacity={0.5} />
             <XAxis 
               dataKey="name" 
               tick={{ fontSize: 9 }}

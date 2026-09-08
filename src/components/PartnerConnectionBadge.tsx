@@ -100,7 +100,7 @@ export const PartnerConnectionBadge: React.FC<PartnerConnectionBadgeProps> = ({
     if (connState.isActive) {
       return (
         <span
-          title={`Partenaire commercial vérifié et actif 🛡️ (Connexion #${connState.id})`}
+          title={`Partenaire commercial vérifié et actif  (Connexion #${connState.id})`}
           className={`inline-flex items-center justify-center text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60 p-1 rounded-md shadow-xs ${className}`}
         >
           <ShieldCheck className={iconSize} />
