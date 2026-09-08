@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useAuthContext } from '../../context/AuthContext';
 import { chatService } from '../../services/chatService';
 import { connectionService } from '../../services/connectionService';
-import { Conversation, UserProfile, Connection, isConnectionActive } from '../../types';
+import { Conversation, UserProfile, Connection, isConnectionActive, normalizeUserRole } from '../../types';
 import { db } from '../../data';
+import { userService, UserProfileData } from '../../services/userService';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatWindow } from './ChatWindow';
-import { Search, X, MessageSquare, User } from 'lucide-react';
+import { Search, X, MessageSquare, User, UserPlus, CheckCircle2 } from 'lucide-react';
 
 interface ChatLayoutProps {
   currentUser?: UserProfile | null;
@@ -32,6 +33,43 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchUserQuery, setSearchUserQuery] = useState('');
+  const [marketUsers, setMarketUsers] = useState<UserProfile[]>([]);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [partnersRequested, setPartnersRequested] = useState<Record<string, boolean>>({});
+
+  // Index complet des profils du marché (recherche de partenaires au-delà des
+  // contacts existants) — paginé par userService.getAllUsers (cache 5 min).
+  useEffect(() => {
+    let cancelled = false;
+    if (currentUser) {
+      setMarketLoading(true);
+      userService
+        .getAllUsers()
+        .then((rows) => {
+          if (cancelled) return;
+          const mapped = (rows || []).map((p: UserProfileData): UserProfile => ({
+            id: p.id || p.uid,
+            name: [p.prénom, p.nom].filter(Boolean).join(' ').trim() || p.companyName || p.nomDEntreprise || 'Utilisateur',
+            email: p.email,
+            phone: p.téléphone || p.phone || '',
+            role: normalizeUserRole(p.rôle || p.role || ''),
+            status: 'ACTIVE',
+            companyName: p.companyName || p.nomDEntreprise,
+            avatar: p.logoUrl || '',
+            country: p.pays || "Burkina Faso",
+            region: p.ville || ''
+          }));
+          setMarketUsers(mapped);
+          setMarketLoading(false);
+        })
+        .catch(() => {
+          if (!cancelled) setMarketLoading(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (currentUser) {
@@ -61,12 +99,25 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
   };
 
   const allowedPartners = getAllowedChatPartners();
-  const filteredPartners = allowedPartners.filter(u => {
+
+  // Annuaire complet : profils distants (index marché) complétés par les données locales.
+  const searchDirectory = React.useMemo(() => {
+    const map = new Map<string, UserProfile>();
+    marketUsers.forEach((u) => map.set(u.id, u));
+    users.forEach((u) => map.set(u.id, u));
+    const all = Array.from(map.values()).filter((u) => u.id !== currentUser?.id);
+    const partnerIds = new Set(allowedPartners.map((p) => p.id));
+    return all.sort((a, b) => (partnerIds.has(b.id) ? 1 : 0) - (partnerIds.has(a.id) ? 1 : 0));
+  }, [marketUsers, users, allowedPartners, currentUser?.id]);
+
+  const filteredPartners = searchDirectory.filter(u => {
     const query = searchUserQuery.toLowerCase();
     const nameMatch = u.name ? u.name.toLowerCase().includes(query) : false;
     const companyMatch = u.companyName ? u.companyName.toLowerCase().includes(query) : false;
+    const emailMatch = u.email ? u.email.toLowerCase().includes(query) : false;
+    const phoneMatch = u.phone ? u.phone.replace(/[^0-9+]/g, '').includes(query.replace(/[^0-9+]/g, '')) : false;
     const roleMatch = u.role ? u.role.toLowerCase().includes(query) : false;
-    return nameMatch || companyMatch || roleMatch;
+    return nameMatch || companyMatch || emailMatch || phoneMatch || roleMatch;
   });
 
   const handleStartNewChat = () => {
@@ -74,21 +125,46 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
       alert("Veuillez vous connecter pour démarrer une discussion.");
       return;
     }
+    setSearchUserQuery('');
     setShowNewChatModal(true);
   };
 
   const handleSelectUserToChat = async (otherUser: UserProfile) => {
     if (!currentUser) return;
-    try {
-      const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, otherUser.id);
-      if (convId) {
-        setActiveConvId(convId);
-        setShowNewChatModal(false);
-        setSearchUserQuery('');
+    const isPartner = allowedPartners.some(p => p.id === otherUser.id);
+    if (isPartner) {
+      try {
+        const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, otherUser.id);
+        if (convId) {
+          setActiveConvId(convId);
+          setShowNewChatModal(false);
+          setSearchUserQuery('');
+          return;
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Erreur lors de la création de la conversation.");
+        return;
       }
+      return;
+    }
+
+    // Pas encore partenaire → envoyer une demande de partenariat (MVP réseau B2B).
+    if (partnersRequested[otherUser.id]) {
+      alert("Demande de partenariat déjà envoyée à " + (otherUser.companyName || otherUser.name) + ".");
+      return;
+    }
+    const init = window.confirm(
+      `Envoyer une demande de partenariat à ${otherUser.companyName || otherUser.name} ?\nLe chat s'ouvrira une fois la demande acceptée.`
+    );
+    if (!init) return;
+    try {
+      await connectionService.sendConnectionRequest(currentUser, otherUser);
+      setPartnersRequested((prev) => ({ ...prev, [otherUser.id]: true }));
+      alert(`Demande de partenariat envoyée à ${otherUser.companyName || otherUser.name} (en attente de confirmation).`);
     } catch (e) {
       console.error(e);
-      alert("Erreur lors de la création de la conversation.");
+      alert("Erreur lors de l'envoi de la demande de partenariat.");
     }
   };
 
@@ -173,50 +249,72 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
                 <input
                   type="text"
-                  placeholder="Rechercher par nom, entreprise, rôle..."
+                  placeholder="Rechercher par nom, entreprise, email, téléphone..."
                   value={searchUserQuery}
                   onChange={(e) => setSearchUserQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-zinc-900 dark:text-white"
                   autoFocus
                 />
               </div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2">
+                Partenaires actifs en premier — les autres profils peuvent être invités en demande de partenariat.
+              </p>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {filteredPartners.length === 0 ? (
+              {marketLoading && filteredPartners.length === 0 ? (
+                <div className="text-center py-12 text-zinc-500">
+                  <div className="mx-auto mb-3 w-8 h-8 border-2 border-zinc-300 dark:border-zinc-600 border-t-emerald-500 rounded-full animate-spin" />
+                  <p className="text-sm">Chargement des profils...</p>
+                </div>
+              ) : filteredPartners.length === 0 ? (
                 <div className="text-center py-12 text-zinc-500">
                   <User className="mx-auto w-10 h-10 text-zinc-300 dark:text-zinc-700 mb-2" />
-                  <p className="text-sm">Aucun utilisateur trouvé</p>
-                  <p className="text-xs text-zinc-400 mt-1">Essayez un autre terme de recherche.</p>
+                  <p className="text-sm">Aucun profil trouvé</p>
+                  <p className="text-xs text-zinc-400 mt-1">Essayez un autre nom, email ou téléphone.</p>
                 </div>
               ) : (
-                filteredPartners.map(partner => (
-                  <button
-                    key={partner.id}
-                    onClick={() => handleSelectUserToChat(partner)}
-                    className="w-full p-3 flex items-center gap-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left border border-zinc-100 dark:border-zinc-800/60"
-                  >
-                    <img 
-                      src={partner.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"} 
-                      alt={partner.name}
-                      className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0" 
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-sm text-zinc-900 dark:text-white truncate">
-                        {partner.companyName || partner.name}
-                      </h4>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${getRoleBadge(partner.role)}`}>
-                          {getRoleLabel(partner.role)}
-                        </span>
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{partner.name}</span>
+                filteredPartners.map(partner => {
+                  const isPartner = allowedPartners.some(p => p.id === partner.id);
+                  const requested = partnersRequested[partner.id];
+                  return (
+                    <button
+                      key={partner.id}
+                      onClick={() => handleSelectUserToChat(partner)}
+                      className="w-full p-3 flex items-center gap-3 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-left border border-zinc-100 dark:border-zinc-800/60"
+                    >
+                      <img 
+                        src={partner.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"} 
+                        alt={partner.name}
+                        className="w-11 h-11 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 shrink-0" 
+                      />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-sm text-zinc-900 dark:text-white truncate">
+                          {partner.companyName || partner.name}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${getRoleBadge(partner.role)}`}>
+                            {getRoleLabel(partner.role)}
+                          </span>
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">{partner.name}</span>
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-lg shrink-0">
-                      Discuter
-                    </span>
-                  </button>
-                ))
+                      {isPartner ? (
+                        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-lg shrink-0">
+                          Discuter
+                        </span>
+                      ) : requested ? (
+                        <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-lg shrink-0 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Envoyée
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 rounded-lg shrink-0 flex items-center gap-1">
+                          <UserPlus className="w-3.5 h-3.5" /> Demander
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
