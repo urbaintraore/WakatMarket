@@ -7,7 +7,7 @@ import { db } from '../../data';
 import { userService, UserProfileData } from '../../services/userService';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatWindow } from './ChatWindow';
-import { Search, X, MessageSquare, User, UserPlus, CheckCircle2 } from 'lucide-react';
+import { Search, X, MessageSquare, User, UserPlus, CheckCircle2, Bell } from 'lucide-react';
 
 // Persistance locale des demandes de partenariat envoyées depuis le chat,
 // afin que l'état "Envoyée" survive au rechargement (clé par utilisateur).
@@ -47,6 +47,10 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
   const [marketUsers, setMarketUsers] = useState<UserProfile[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
   const [partnersRequested, setPartnersRequested] = useState<Record<string, boolean>>({});
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const toastTimerRef = React.useRef<number | null>(null);
+  const hydratedConnRef = React.useRef(false);
+  const toastedConnIdsRef = React.useRef<Set<string>>(new Set());
 
   // Index complet des profils du marché (recherche de partenaires au-delà des
   // contacts existants) — paginé par userService.getAllUsers (cache 5 min).
@@ -152,6 +156,82 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     return nameMatch || companyMatch || emailMatch || phoneMatch || roleMatch;
   });
 
+  // Demandes de partenariat REÇUES en attente (côté destinataire) — affichées
+  // sous forme de bannière dans le chat pour qu'elles soient impossibles à rater.
+  const pendingReceived = React.useMemo(() => {
+    if (!currentUser?.id) return [] as { connection: Connection; partner?: UserProfile }[];
+    const result: { connection: Connection; partner?: UserProfile }[] = [];
+    connections.forEach(c => {
+      const statut = String((c as any).statut || c.status || "").toLowerCase();
+      const isPending = c.status === "en_attente" || statut === "pending" || statut === "p";
+      if (c.receiverId === currentUser.id && isPending) {
+        const partner = searchDirectory.find(u => u.id === c.senderId);
+        result.push({ connection: c, partner });
+      }
+    });
+    return result;
+  }, [connections, currentUser?.id, searchDirectory]);
+
+  // Toast à l'arrivée d'une nouvelle demande reçue (une fois par demande).
+  React.useEffect(() => {
+    if (!currentUser?.id || !hydratedConnRef.current) {
+      hydratedConnRef.current = true;
+      return;
+    }
+    pendingReceived.forEach(({ connection, partner }) => {
+      if (toastedConnIdsRef.current.has(connection.id)) return;
+      toastedConnIdsRef.current.add(connection.id);
+      const nom = partner?.companyName || partner?.name || "Un partenaire B2B";
+      setToastMsg(`Nouvelle demande de partenariat de ${nom}`);
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = window.setTimeout(() => setToastMsg(null), 6000);
+    });
+  }, [pendingReceived, currentUser?.id]);
+
+  const handleRelance = async (senderId: string, receiverId: string, nomCible: string) => {
+    const relationId = [senderId, receiverId].sort().join("_");
+    try {
+      await connectionService.relancerDemande(relationId);
+      alert(`Relance envoyée à ${nomCible}. Le destinataire est averti à nouveau.`);
+    } catch (e: any) {
+      if (e?.status === 429) {
+        alert(e?.details?.error || "Relance déjà envoyée récemment. Réessayez dans une minute.");
+      } else {
+        console.error(e);
+        alert("Relance impossible pour le moment (backend indisponible ?). Réessayez plus tard.");
+      }
+    }
+  };
+
+  const handleAcceptRequest = async (conn: Connection, partner?: UserProfile) => {
+    if (!currentUser) return;
+    try {
+      await connectionService.acceptConnection(conn.id, currentUser.id);
+      if (partner) {
+        try {
+          const convId = await chatService.getOrCreatePrivateConversation(currentUser.id, partner.id);
+          if (convId) setActiveConvId(convId);
+        } catch (e) {
+          console.error("Ouverture de la conversation après acceptation:", e);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de l'acceptation du partenariat.");
+    }
+  };
+
+  const handleRefuseRequest = async (conn: Connection) => {
+    if (!currentUser) return;
+    if (!window.confirm("Refuser cette demande de partenariat ?")) return;
+    try {
+      await connectionService.rejectConnection(conn.id, currentUser.id);
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors du refus de la demande.");
+    }
+  };
+
   const handleStartNewChat = () => {
     if (!currentUser) {
       alert("Veuillez vous connecter pour démarrer une discussion.");
@@ -184,10 +264,13 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     // Pas encore partenaire → envoyer une demande de partenariat (MVP réseau B2B).
     const nomCible = otherUser.companyName || otherUser.name;
     if (partnersRequested[otherUser.id] || pendingSentPartnerIds.has(otherUser.id)) {
-      alert(
-        `Demande de partenariat déjà envoyée à ${nomCible} et en attente de validation.\n` +
-        `Pour suivre son statut : Tableau de bord → Partenaires → « En attente ».`
+      const relance = window.confirm(
+        `Une demande de partenariat est déjà en attente chez ${nomCible}.\n\n` +
+        `Voulez-vous envoyer une relance pour le prévenir à nouveau ?\n` +
+        `(1 relance max toutes les 60 secondes)\n\n` +
+        `Pour suivre le statut : Tableau de bord → Partenaires → « En attente ».`
       );
+      if (relance) await handleRelance(currentUser.id, otherUser.id, nomCible);
       return;
     }
     const init = window.confirm(
@@ -239,15 +322,66 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     <div className="flex h-full bg-white dark:bg-slate-900 overflow-hidden shadow-lg border border-gray-100 dark:border-slate-800 rounded-2xl relative w-full">
       {/* View logic for Mobile vs Desktop */}
       <div className={`w-full md:w-auto h-full ${activeConvId ? 'hidden md:flex' : 'flex'}`}>
-        <ChatSidebar 
-          currentUser={currentUser}
-          conversations={conversations} 
-          users={users} 
-          activeConvId={activeConvId}
-          onSelectConversation={setActiveConvId}
-          onStartNewChat={handleStartNewChat}
-        />
+        <div className="flex flex-col w-full md:w-80 lg:w-96 h-full overflow-hidden relative">
+          {pendingReceived.length > 0 && (
+            <div className="shrink-0 p-3 bg-amber-50 dark:bg-amber-950/40 border-b-2 border-amber-200 dark:border-amber-900/50 space-y-2 z-10">
+              {pendingReceived.map(({ connection, partner }) => (
+                <div key={connection.id} className="rounded-xl bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800/60 p-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={partner?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"}
+                      alt={partner?.name || "Partenaire"}
+                      className="w-9 h-9 rounded-full object-cover border border-amber-200 shrink-0 bg-gray-100"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                        {partner?.companyName || partner?.name || "Un partenaire B2B"}
+                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                        {partner ? getRoleLabel(partner.role) : "Partenariat"} — demande de partenariat reçue
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handleAcceptRequest(connection, partner)}
+                      className="flex-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg py-2 transition-colors"
+                    >
+                      Accepter
+                    </button>
+                    <button
+                      onClick={() => handleRefuseRequest(connection)}
+                      className="flex-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/60 rounded-lg py-2 transition-colors"
+                    >
+                      Refuser
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex-1 min-h-0 relative">
+            <ChatSidebar 
+              currentUser={currentUser}
+              conversations={conversations} 
+              users={users} 
+              activeConvId={activeConvId}
+              onSelectConversation={setActiveConvId}
+              onStartNewChat={handleStartNewChat}
+            />
+          </div>
+        </div>
       </div>
+
+      {/* Toast d'arrivée de nouvelle demande de partenariat */}
+      {toastMsg && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top fade-in">
+          <div className="flex items-center gap-2 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg border border-emerald-500/40">
+            <Bell className="w-4 h-4 text-emerald-400 shrink-0" /> {toastMsg}
+          </div>
+        </div>
+      )}
 
       <div className={`flex-1 h-full ${!activeConvId ? 'hidden md:flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950/50' : 'flex'}`}>
         {activeConv ? (

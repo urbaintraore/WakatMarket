@@ -14,6 +14,7 @@ import {
   isFirebaseConfigured
 } from "../firebase";
 import { userService } from "./userService";
+import apiService from "./apiService";
 
 export async function ensureUserExistsInFirestore(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
   if (!isFirebaseConfigured() || !user?.id) return;
@@ -552,6 +553,11 @@ export const connectionService = {
     initialStatus: Connection["status"] = "en_attente"
   ): Promise<Connection> {
     return this.createConnectionRequest(sender, receiver, notes, initialStatus);
+  },
+
+  async relancerDemande(relationId: string): Promise<void> {
+    const data = await apiService.post(`/api/relations/${relationId}/relance`, {});
+    if (!data) throw new Error("API backend indisponible pour la relance.");
   },
 
   /**
