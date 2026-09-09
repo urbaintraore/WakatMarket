@@ -7,7 +7,8 @@ import {
   firestoreGetLimitOrdered,
   firestoreGetWhere,
   firestoreSubscribe,
-  firestoreSubscribeWhere
+  firestoreSubscribeWhere,
+  subscribeSharedFirestore
 } from "../firebase";
 import { inventoryToDb, inventoryFromDb } from "./dbMappers";
 
@@ -70,13 +71,11 @@ export const inventoryService = {
   subscribeToInventory(callback: (items: InventoryItem[]) => void): () => void {
     if (!isFirebaseConfigured()) return () => {};
 
-    this.getAllInventory().then(callback);
-
-    const unsubscribe = firestoreSubscribe("inventory", (rows) => {
-      callback(rows.map(mapRowToInventoryItem));
-    });
-
-    return unsubscribe;
+    return subscribeSharedFirestore(
+      "inventory",
+      (emit) => firestoreSubscribe("inventory", (rows) => emit(rows)),
+      (rows) => callback(rows.map(mapRowToInventoryItem))
+    );
   },
 
   /**

@@ -1,5 +1,5 @@
 import { Conversation, ChatMessage, MessageType, MessageStatus } from "../types";
-import { isFirebaseConfigured, firestoreUpsert, firestoreUpdate, firestoreSubscribe, firestoreSubscribeWhere } from "../firebase";
+import { isFirebaseConfigured, firestoreUpsert, firestoreUpdate, firestoreSubscribe, firestoreSubscribeWhere, subscribeSharedFirestore } from "../firebase";
 import { uploadToCloudflare } from "../cloudflare";
 import { db } from "../data";
 import apiService from "./apiService";
@@ -387,9 +387,13 @@ export const chatService = {
     let unsubscribeRemote: (() => void) | null = null;
     if (isFirebaseConfigured()) {
       try {
-        unsubscribeRemote = firestoreSubscribe("conversations", (rows) => {
-          emitConvs(rows);
-        });
+        unsubscribeRemote = subscribeSharedFirestore(
+          "conversations",
+          (emit) => firestoreSubscribe("conversations", (rows) => emit(rows)),
+          (rows) => {
+            emitConvs(rows);
+          }
+        );
       } catch (e) {
         console.warn("Notice abonnement conversations Firestore:", e);
       }

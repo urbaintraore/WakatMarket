@@ -7,7 +7,8 @@ import {
   firestoreUpdate,
   firestoreDelete,
   firestoreGetLimitOrdered,
-  firestoreSubscribe
+  firestoreSubscribe,
+  subscribeSharedFirestore
 } from "../firebase";
 import { uploadToCloudflare } from "../cloudflare";
 import { productToDb, productFromDb } from "./dbMappers";
@@ -54,13 +55,11 @@ export const productService = {
   subscribeToProducts(callback: (products: Product[]) => void): () => void {
     if (!isFirebaseConfigured()) return () => {};
 
-    this.getAllProducts().then(callback);
-
-    const unsubscribe = firestoreSubscribe("products", (rows) => {
-      callback(rows.map(mapRowToProduct));
-    });
-
-    return unsubscribe;
+    return subscribeSharedFirestore(
+      "products",
+      (emit) => firestoreSubscribe("products", (rows) => emit(rows)),
+      (rows) => callback(rows.map(mapRowToProduct))
+    );
   },
 
   /**

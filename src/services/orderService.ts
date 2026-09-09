@@ -5,7 +5,8 @@ import {
   firestoreUpsert,
   firestoreUpdate,
   firestoreGetLimitOrdered,
-  firestoreSubscribe
+  firestoreSubscribe,
+  subscribeSharedFirestore
 } from "../firebase";
 import { orderToDb, orderFromDb } from "./dbMappers";
 import { jsPDF } from "jspdf";
@@ -264,12 +265,10 @@ export const orderService = {
   subscribeToOrders(callback: (orders: Order[]) => void): () => void {
     if (!isFirebaseConfigured()) return () => {};
 
-    this.getAllOrders().then(callback);
-
-    const unsubscribe = firestoreSubscribe("orders", (rows) => {
-      callback(rows.map(mapRowToOrder));
-    });
-
-    return unsubscribe;
+    return subscribeSharedFirestore(
+      "orders",
+      (emit) => firestoreSubscribe("orders", (rows) => emit(rows)),
+      (rows) => callback(rows.map(mapRowToOrder))
+    );
   }
 };

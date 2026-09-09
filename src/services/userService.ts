@@ -9,7 +9,8 @@ import {
   firestoreGetChunked,
   firestoreUpdate,
   firestoreDelete,
-  firestoreSubscribe
+  firestoreSubscribe,
+  subscribeSharedFirestore
 } from "../firebase";
 import { normalizeUserRole, UserRole, NumeroPaiement, isBonkoungou, isRootAdminEmail } from "../types";
 import { profileToDb } from "./dbMappers";
@@ -19,7 +20,8 @@ import { db } from "../data";
 // évite de re-parcourir Firestore à chaque frappe de recherche.
 let profilesCache: UserProfileData[] | null = null;
 let profilesCacheAt = 0;
-const PROFILES_CACHE_TTL = 5 * 60 * 1000;
+let profilesInflight: Promise<UserProfileData[]> | null = null;
+const PROFILES_CACHE_TTL = 15 * 60 * 1000;
 
 export interface UserProfileData {
   uid: string;
@@ -241,25 +243,44 @@ export const userService = {
    */
   async getAllUsers(): Promise<UserProfileData[]> {
     if (!isFirebaseConfigured()) return [];
-    try {
-      const now = Date.now();
-      if (profilesCache && now - profilesCacheAt < PROFILES_CACHE_TTL) {
-        return profilesCache;
-      }
-      const rows = await firestoreGetChunked("profiles", "created_at", 500, 4);
-      profilesCache = rows
-        .map(normalizeRow)
-        .filter((p): p is UserProfileData => !!p);
-      profilesCacheAt = now;
+
+    const now = Date.now();
+    if (profilesCache && now - profilesCacheAt < PROFILES_CACHE_TTL) {
       return profilesCache;
-    } catch (e) {
-      if (isNetworkError(e)) {
-        console.warn("[userService] Réseau Firestore indisponible pour getAllUsers (mode hors-ligne actif).");
-      } else {
-        console.error("Exception dans getAllUsers:", e);
-      }
-      return [];
     }
+
+    // Onglet masqué : on sert le cache s'il existe, sinon on garde le seed
+    // initial (jamais "gratuitement", une seule fois).
+    const isHidden = typeof document !== "undefined" && document.hidden;
+    if (isHidden && profilesCache) {
+      return profilesCache;
+    }
+
+    // « Single-flight » : les appels concurrents partagent la même lecture.
+    if (profilesInflight) return profilesInflight;
+
+    profilesInflight = (async () => {
+      try {
+        const rows = await firestoreGetChunked("profiles", "created_at", 500, 4);
+        const mapped = rows
+          .map(normalizeRow)
+          .filter((p): p is UserProfileData => !!p);
+        profilesCache = mapped;
+        profilesCacheAt = Date.now();
+        return mapped;
+      } catch (e) {
+        if (isNetworkError(e)) {
+          console.warn("[userService] Réseau Firestore indisponible pour getAllUsers (mode hors-ligne actif).");
+        } else {
+          console.error("Exception dans getAllUsers:", e);
+        }
+        return profilesCache || [];
+      } finally {
+        profilesInflight = null;
+      }
+    })();
+
+    return profilesInflight;
   },
 
   /**
@@ -336,14 +357,6 @@ export const userService = {
   subscribeToUsers(callback: (users: UserProfileData[]) => void): () => void {
     if (!isFirebaseConfigured()) return () => {};
 
-    const unsubscribe = firestoreSubscribe("profiles", (rows) => {
-      callback(
-        rows
-          .map(normalizeRow)
-          .filter((p): p is UserProfileData => !!p)
-      );
-    });
-
     // Chargement initial depuis le cache local pour l'UI offline-first
     try {
       const local = db.getUsers();
@@ -369,7 +382,20 @@ export const userService = {
       // ignore cache read
     }
 
-    return unsubscribe;
+    const mapRows = (rows: any[]) => {
+      callback(
+        rows
+          .map(normalizeRow)
+          .filter((p): p is UserProfileData => !!p)
+      );
+    };
+
+    // Canal temps réel partagé (1 seul onSnapshot "profiles", pause onglet masqué).
+    return subscribeSharedFirestore(
+      "profiles",
+      (emit) => firestoreSubscribe("profiles", (rows) => emit(rows)),
+      mapRows
+    );
   },
 
   /**

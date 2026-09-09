@@ -11,10 +11,19 @@ import {
   firestoreSubscribeWhere,
   firestoreUpdate,
   firestoreUpsert,
-  isFirebaseConfigured
+  isFirebaseConfigured,
+  subscribeSharedFirestore
 } from "../firebase";
+import { cachedFirestoreGetAll, cachedFirestoreWhere } from "./readCache";
 import { userService } from "./userService";
 import apiService from "./apiService";
+
+// Caches Firestore partagés entre les flux temps réel : les livraisons
+// onSnapshot alimentent ces caches, les émissions évitent ainsi de re-requêter
+// Firestore à chaque événement local (économie majeure de lectures Spark).
+let sbRelationsCache: Record<string, any[]> = {};
+let sbNotifsCache: Record<string, any[]> = {};
+let lastCleanupRun: Record<string, number> = {};
 
 export async function ensureUserExistsInFirestore(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
   if (!isFirebaseConfigured() || !user?.id) return;
@@ -1090,12 +1099,12 @@ export const connectionService = {
         let sbData: any[] = [];
         if (userId) {
           const [asGrossiste, asClient] = await Promise.all([
-            firestoreGetWhere("relations", "grossiste_id", "==", userId),
-            firestoreGetWhere("relations", "client_id", "==", userId)
+            cachedFirestoreWhere("relations", "grossiste_id", "==", userId, 60_000),
+            cachedFirestoreWhere("relations", "client_id", "==", userId, 60_000)
           ]);
           sbData = [...asGrossiste, ...asClient];
         } else {
-          sbData = await firestoreGetAll("relations");
+          sbData = await cachedFirestoreGetAll("relations", 60_000);
         }
         if (sbData && Array.isArray(sbData)) {
           sbData.forEach((row: any) => {
@@ -1634,7 +1643,7 @@ export const connectionService = {
       }
       if (sId && rId) {
         try {
-          const rels = await firestoreGetAll("relations");
+          const rels = await cachedFirestoreGetAll("relations", 15_000);
           await Promise.all(
             rels
               .filter((r: any) =>
@@ -1656,11 +1665,15 @@ export const connectionService = {
     console.log(`[ConnectionService.subscribeToUserConnections]  Subscribing to connections for userId="${userId}"`);
 
     const emitConnections = async () => {
-      // Auto-cleanup any pending partnership requests older than 30 days
-      try {
-        await this.cleanupExpiredPendingRequests(userId);
-      } catch (cleanErr) {
-        console.warn("[ConnectionService] Background cleanup notice:", cleanErr);
+      // Auto-cleanup de demandes en attente > 30 jours — au plus une fois / 5 min / user.
+      const sinceCleanup = Date.now() - (lastCleanupRun[userId] || 0);
+      if (sinceCleanup > 5 * 60 * 1000) {
+        lastCleanupRun[userId] = Date.now();
+        try {
+          await this.cleanupExpiredPendingRequests(userId);
+        } catch (cleanErr) {
+          console.warn("[ConnectionService] Background cleanup notice:", cleanErr);
+        }
       }
 
       const deletedIds = getDeletedConnectionIds();
@@ -1700,15 +1713,14 @@ export const connectionService = {
       let mappedSb: Connection[] = [];
       if (isFirebaseConfigured()) {
         try {
-          console.log(`[ConnectionService.subscribeToUserConnections]  [3/4] Fetching connections from Firestore 'relations' for grossiste_id=${userId} OR client_id=${userId}...`);
-          const [relsGrossiste, relsClient] = await Promise.all([
-            firestoreGetWhere("relations", "grossiste_id", "==", userId),
-            firestoreGetWhere("relations", "client_id", "==", userId)
-          ]);
-          const data = [...relsGrossiste, ...relsClient];
+          // Données servies depuis le cache alimenté par l'onSnapshot partagé
+          // (aucune requête Firestore par événement local).
+          const data = (sbRelationsCache[userId] || []).filter((r: any) =>
+            r.grossiste_id === userId || r.client_id === userId
+          );
 
           if (data.length > 0) {
-            console.log(`[ConnectionService.subscribeToUserConnections]  Firestore returned ${data.length} relation row(s) for user ${userId}:`, data);
+            console.log(`[ConnectionService.subscribeToUserConnections]  Cache relations Firestore a renvoyé ${data.length} ligne(s) pour user ${userId}:`, data);
 
             // Auto-fetch any missing partner profiles into local db BEFORE mapping!
             const partnerUserIds = data.flatMap((r: any) => [r.grossiste_id, r.client_id]).filter(Boolean);
@@ -1844,11 +1856,17 @@ export const connectionService = {
     let channel: any = null;
     if (isFirebaseConfigured()) {
       try {
-        channel = firestoreSubscribe("relations", async () => {
-          console.log(`[ConnectionService:Realtime]  Firestore 'relations' snapshot change received for userId=${userId}`);
-          // Run emitConnections to sync Firestore, local state, and immediately persist to localStorage
-          await emitConnections();
-        });
+        channel = subscribeSharedFirestore(
+          "relations",
+          (emit) => firestoreSubscribe("relations", (rows) => emit(rows)),
+          (rows) => {
+            sbRelationsCache[userId] = rows || [];
+            const run = async () => {
+              await emitConnections();
+            };
+            run().catch(() => {});
+          }
+        );
       } catch (e) {
         console.warn("Notice Firestore channel conn:", e);
       }
@@ -1890,7 +1908,9 @@ export const connectionService = {
       let mappedSb: any[] = [];
       if (isFirebaseConfigured()) {
         try {
-          const data = await firestoreGetWhere("notifications", "user_id", "==", userId);
+          // Servi depuis le cache alimenté par l'onSnapshot partagé (aucune
+          // requête Firestore à chaque événement local).
+          const data = sbNotifsCache[userId] || [];
           data.sort((a: any, b: any) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
           if (data.length > 0) {
             mappedSb = data.map((row: any) => ({
@@ -1937,10 +1957,17 @@ export const connectionService = {
     let channel: any = null;
     if (isFirebaseConfigured()) {
       try {
-        channel = firestoreSubscribeWhere("notifications", "user_id", "==", userId, () => {
-          console.log(`[NotificationService:Realtime]  Firestore 'notifications' snapshot change received for userId=${userId}`);
-          emitNotifs();
-        });
+        channel = subscribeSharedFirestore(
+          `notifications:${userId}`,
+          (emit) => firestoreSubscribeWhere("notifications", "user_id", "==", userId, (rows) => emit(rows)),
+          (rows) => {
+            sbNotifsCache[userId] = rows || [];
+            const run = async () => {
+              await emitNotifs();
+            };
+            run().catch(() => {});
+          }
+        );
       } catch (e) {
         console.warn("Notice Firestore channel notifs:", e);
       }
