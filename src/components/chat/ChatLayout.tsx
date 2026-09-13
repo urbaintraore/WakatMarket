@@ -194,8 +194,23 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
       await connectionService.relancerDemande(relationId);
       alert(`Relance envoyée à ${nomCible}. Le destinataire est averti à nouveau.`);
     } catch (e: any) {
-      if (e?.status === 429) {
+      const status = Number(e?.status);
+      if (status === 429) {
         alert(e?.details?.error || "Relance déjà envoyée récemment. Réessayez dans une minute.");
+      } else if (status === 404) {
+        console.warn("[handleRelance] Demande introuvable côté serveur → nettoyage local:", e?.details || e);
+        try {
+          await connectionService.pruneStalePending(relationId);
+        } catch {}
+        alert("Cette demande n'existe plus (elle a été refusée ou expirée).");
+      } else if (status === 409) {
+        console.warn("[handleRelance] Demande déjà traitée côté serveur → nettoyage local:", e?.details || e);
+        try {
+          await connectionService.pruneStalePending(relationId);
+        } catch {}
+        alert("Cette demande a déjà été traitée (acceptée ou refusée).");
+      } else if (status === 403) {
+        alert("Seul l'expéditeur de la demande peut la relancer.");
       } else {
         console.error(e);
         alert("Relance impossible pour le moment (backend indisponible ?). Réessayez plus tard.");

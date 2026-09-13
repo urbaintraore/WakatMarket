@@ -24,6 +24,10 @@ import apiService from "./apiService";
 let sbRelationsCache: Record<string, any[]> = {};
 let sbNotifsCache: Record<string, any[]> = {};
 let lastCleanupRun: Record<string, number> = {};
+// Gardes de réconciliation : le snapshot `relations` réellement livré (pas un
+// simple cache) autorise la purge des demandes locales devenues "fantômes".
+let relationsSnapshotReady: Record<string, boolean> = {};
+let relationsSnapshotAt: Record<string, number> = {};
 
 export async function ensureUserExistsInFirestore(user: { id: string; name?: string; companyName?: string; email?: string; phone?: string; role?: string }): Promise<void> {
   if (!isFirebaseConfigured() || !user?.id) return;
@@ -567,6 +571,49 @@ export const connectionService = {
   async relancerDemande(relationId: string): Promise<void> {
     const data = await apiService.post(`/api/relations/${relationId}/relance`, {});
     if (!data) throw new Error("API backend indisponible pour la relance.");
+  },
+
+  /**
+   * Nettoie l'enregistrement local obsolète d'une demande de partenaire qui
+   * n'existe plus côté Firestore (refusée/expirée/supprimée à distance) pour
+   * que l'UI cesse de proposer une relance impossible. Ne touche jamais aux
+   * demandes actives/refusées (historique conservé).
+   */
+  async pruneStalePending(relationId: string): Promise<void> {
+    const all = db.getConnections();
+    const target = all.find(c =>
+      c.id === relationId && (c.status === "en_attente" || String((c as any).statut || "").toLowerCase() === "pending")
+    );
+    if (!target) return;
+
+    console.log(`[ConnectionService.pruneStalePending]  Demande #${relationId} devenue obsolète → nettoyage local.`);
+    saveDeletedConnectionId(relationId);
+    if (target.senderId && target.receiverId) {
+      saveDeletedPartnerPair(target.senderId, target.receiverId);
+    }
+
+    const updated = all.filter(c => {
+      if (c.id === relationId) return false;
+      if (target.senderId && target.receiverId) {
+        if (
+          (c.senderId === target.senderId && c.receiverId === target.receiverId) ||
+          (c.senderId === target.receiverId && c.receiverId === target.senderId)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+    db.saveConnections(updated);
+    try {
+      await offlineStorage.setItems("relations", updated);
+    } catch (e) {
+      console.warn("[ConnectionService.pruneStalePending] Warning saving to offlineStorage:", e);
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_connections_updated"));
+    }
   },
 
   /**
@@ -1679,10 +1726,52 @@ export const connectionService = {
       const deletedIds = getDeletedConnectionIds();
       const deletedPairs = getDeletedPartnerPairs();
 
+      // Réconciliation proactive : la source de vérité est le snapshot Firestore
+      // `relations` réellement livré. Toute demande locale encore "en_attente",
+      // plus ancienne que le dernier snapshot et absente de Firestore est un
+      // "fantôme" (relation refusée/expirée/supprimée à distance) → purge locale +
+      // tombstone pour éviter qu'elle ne ressuscite depuis un cache.
+      const sbRows = sbRelationsCache[userId] || [];
+      const sbIds = new Set(sbRows.map((r: any) => r.id).filter(Boolean));
+      const sbPairs = new Set<string>();
+      sbRows.forEach((r: any) => {
+        const g = r.grossiste_id;
+        const cl = r.client_id;
+        if (g && cl) {
+          sbPairs.add([g, cl].sort().join("_"));
+          sbPairs.add(`${g}:${cl}`);
+          sbPairs.add(`${cl}:${g}`);
+        }
+      });
+      const snapshotReady = relationsSnapshotReady[userId] === true;
+      const snapshotAt = relationsSnapshotAt[userId] || 0;
+
+      const isPendingLocal = (c: Connection) => {
+        const st = String(c.status || (c as any).statut || "").toLowerCase().trim();
+        return st === "en_attente" || st === "pending" || st === "p";
+      };
+      const isGhost = (c: Connection): boolean => {
+        if (!snapshotReady) return false;
+        if (!isPendingLocal(c)) return false;
+        const created = new Date(c.createdAt || c.updatedAt || "").getTime();
+        if (!Number.isFinite(created) || created >= snapshotAt) return false;
+        const pairKey = c.senderId && c.receiverId ? [c.senderId, c.receiverId].sort().join("_") : "";
+        if (sbIds.has(c.id)) return false;
+        if (pairKey && sbPairs.has(pairKey)) return false;
+        return true;
+      };
+
       let localConns = db.getConnections().filter(c => {
         if (deletedIds.has(c.id)) return false;
         if (deletedPairs.has(`${c.senderId}:${c.receiverId}`) || deletedPairs.has(`${c.receiverId}:${c.senderId}`)) return false;
-        return c.senderId === userId || c.receiverId === userId;
+        if (c.senderId !== userId && c.receiverId !== userId) return false;
+        if (isGhost(c)) {
+          console.log(`[ConnectionService.subscribeToUserConnections]  Demande locale #${c.id} absente de Firestore → purgée (fantôme).`);
+          saveDeletedConnectionId(c.id);
+          if (c.senderId && c.receiverId) saveDeletedPartnerPair(c.senderId, c.receiverId);
+          return false;
+        }
+        return true;
       });
 
       console.log(`[ConnectionService.subscribeToUserConnections]  [1/4] Memory DB connections for user ${userId}:`, localConns.length, "item(s)");
@@ -1861,6 +1950,8 @@ export const connectionService = {
           (emit) => firestoreSubscribe("relations", (rows) => emit(rows)),
           (rows) => {
             sbRelationsCache[userId] = rows || [];
+            relationsSnapshotReady[userId] = true;
+            relationsSnapshotAt[userId] = Date.now();
             const run = async () => {
               await emitConnections();
             };
