@@ -141,7 +141,9 @@ export function ChatLayout({ currentUser: propCurrentUser, users }: ChatLayoutPr
     const map = new Map<string, UserProfile>();
     marketUsers.forEach((u) => map.set(u.id, u));
     users.forEach((u) => map.set(u.id, u));
-    const all = Array.from(map.values()).filter((u) => u.id !== currentUser?.id);
+    const all = Array.from(map.values()).filter(
+      (u) => u.id !== currentUser?.id && u.role !== "ADMIN"
+    );
     const partnerIds = new Set(allowedPartners.map((p) => p.id));
     return all.sort((a, b) => (partnerIds.has(b.id) ? 1 : 0) - (partnerIds.has(a.id) ? 1 : 0));
   }, [marketUsers, users, allowedPartners, currentUser?.id]);

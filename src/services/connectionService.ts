@@ -1,4 +1,4 @@
-import { Connection, Notification, UserProfile, UserRole, InventoryItem, Product, Order } from "../types";
+import { Connection, Notification, UserProfile, UserRole, InventoryItem, Product, Order, isConnectionActive } from "../types";
 import { db } from "../data";
 import { syncService } from "./syncService";
 import { offlineStorage } from "./offlineStorage";
@@ -712,6 +712,32 @@ export const connectionService = {
       statut: "ACTIF",
       details: "Messagerie autorisée."
     };
+  },
+
+  /**
+   * Vérification « authoritative » côté Cloud avant d'autoriser la messagerie :
+   * la paire doit exister dans le cache du snapshot `relations` (zéro lecture
+   * Firestore) avec un statut actif. Tant que le snapshot n'a rien livré
+   * (hors-ligne / chargement), on fait confiance à l'évaluation locale pour ne
+   * pas bloquer une discussion légitime.
+   */
+  isPairActiveInCloud(uidA: string, uidB: string): boolean {
+    if (!uidA || !uidB || uidA === uidB) return true;
+    const pairKey = [uidA, uidB].sort().join("_");
+
+    const sources = Object.keys(sbRelationsCache)
+      .filter(k => Array.isArray(sbRelationsCache[k]) && sbRelationsCache[k].length > 0)
+      .map(k => sbRelationsCache[k]);
+    // Snapshot pas encore livré → confiance au local (offline-first).
+    if (sources.length === 0) return true;
+
+    const rows = sources[0];
+    const doc = rows.find((r: any) => r && r.id === pairKey);
+    if (!doc) {
+      console.log(`[ConnectionService.isPairActiveInCloud]  Paire ${pairKey} absente du snapshot relations → messagerie verrouillée.`);
+      return false;
+    }
+    return isConnectionActive({ statut: doc.statut || doc.status });
   },
 
   /**
@@ -2033,10 +2059,50 @@ export const connectionService = {
 
       const totalList = Array.from(map.values());
       console.log(`[NotificationService.emitNotifs] Émission de ${totalList.length} notification(s) (${mappedLocal.length} locales, ${mappedSb.length} Firestore) pour l'utilisateur ${userId}`);
+      if (typeof window !== "undefined") {
+        (window as any).__wakatNotifs = {
+          user: userId,
+          local: mappedLocal.length,
+          remote: mappedSb.length,
+          total: totalList.length,
+          at: new Date().toISOString()
+        };
+      }
       callback(totalList);
     };
 
     emitNotifs();
+
+    // Fallback one-shot : si l'onSnapshot partagé ne livre pas (quota,
+    // permission ou réseau), on récupère les notifications du destinataire
+    // via une requête GET simple, sans bloquer l'interface.
+    let snapshotDelivered = false;
+    let fallbackFired = false;
+    let fallbackTimer: any = null;
+    const pullFallback = async () => {
+      if (fallbackFired || snapshotDelivered) return;
+      if (!isFirebaseConfigured()) return;
+      fallbackFired = true;
+      try {
+        const rows = await firestoreGetWhere("notifications", "user_id", "==", userId);
+        if (rows && rows.length > 0) {
+          const map = new Map<string, any>();
+          (sbNotifsCache[userId] || []).forEach((r: any) => map.set(r.id, r));
+          rows.forEach((r: any) => {
+            if (!map.has(r.id)) map.set(r.id, r);
+          });
+          sbNotifsCache[userId] = Array.from(map.values());
+          await emitNotifs();
+        }
+      } catch (e) {
+        console.warn("[NotificationService] Fallback GET notifs échoué :", e);
+      }
+    };
+    if (typeof window !== "undefined") {
+      fallbackTimer = window.setTimeout(() => {
+        pullFallback().catch(() => {});
+      }, 2500);
+    }
 
     const handleLocalNotifChange = () => {
       emitNotifs();
@@ -2053,6 +2119,7 @@ export const connectionService = {
           (emit) => firestoreSubscribeWhere("notifications", "user_id", "==", userId, (rows) => emit(rows)),
           (rows) => {
             sbNotifsCache[userId] = rows || [];
+            snapshotDelivered = true;
             const run = async () => {
               await emitNotifs();
             };
@@ -2067,6 +2134,7 @@ export const connectionService = {
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("wakat_notifications_updated", handleLocalNotifChange);
+        if (fallbackTimer) window.clearTimeout(fallbackTimer);
       }
       if (channel) {
         channel();

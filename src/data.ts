@@ -7,7 +7,7 @@ import {
   UserRole, UserProfile, Product, InventoryItem, Order, OrderStatus, 
   ChatMessage, AIRecommendation, GeoNode, PlatformStats, 
   LightClient, StockMovement, DebtPayment, PriceTier,
-  Connection, Notification, normalizeUserRole, isBonkoungou, isRootAdminEmail
+  Connection, Conversation, Notification, normalizeUserRole, isBonkoungou, isRootAdminEmail
 } from "./types";
 
 // Simulated Geographies in Africa
@@ -306,6 +306,17 @@ class ERPStorage {
     this.set("wakat_erp_v2_messages", messages);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("wakat_messages_updated", { detail: messages }));
+    }
+  }
+
+  getConversations(): Conversation[] {
+    return filterMockData(this.get("wakat_erp_v2_conversations", []));
+  }
+
+  saveConversations(conversations: Conversation[]): void {
+    this.set("wakat_erp_v2_conversations", conversations);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("wakat_conversations_updated", { detail: conversations }));
     }
   }
 

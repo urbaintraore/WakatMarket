@@ -69,11 +69,25 @@ export function ChatWindow({ conversation, users, onBack }: ChatWindowProps) {
         (c.senderId === currentUser.id && c.receiverId === otherUserId) ||
         (c.senderId === otherUserId && c.receiverId === currentUser.id)
       );
-      setIsPartnerActive(!!conn && isConnectionActive(conn));
+      const locallyActive = !!conn && isConnectionActive(conn);
+      // Vérification « authoritative » contre le snapshot relations Cloud pour
+      // bloquer les discussions avec des partenaire seulement « actifs » en local.
+      const cloudActive = connectionService.isPairActiveInCloud(currentUser.id, otherUserId);
+      setIsPartnerActive(locallyActive && cloudActive);
     });
 
     return () => unsubscribe();
   }, [currentUser?.id, conversation.id, conversation.participants]);
+
+  // Assure que le doc conversation existe en Firestore pour toute conversation
+  // privée ouverte (liste latérale, recherche, acceptation) : la découverte chez
+  // le destinataire et la survie au rechargement en dépendent.
+  useEffect(() => {
+    if (!currentUser || conversation.type === "GROUP") return;
+    const otherUserId = conversation.participants.find(p => p !== currentUser.id);
+    if (!otherUserId || conversation.id.startsWith("grp_")) return;
+    chatService.getOrCreatePrivateConversation(currentUser.id, otherUserId).catch(() => {});
+  }, [currentUser?.id, conversation?.id, conversation?.participants]);
 
   // Voice Call States
   const [isCallingModalOpen, setIsCallingModalOpen] = useState(false);

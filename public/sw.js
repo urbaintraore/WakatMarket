@@ -1,5 +1,5 @@
-// WakatMarket Service Worker - Offline-First Resilient Cache v2
-const CACHE_NAME = "wakatmarket-pwa-v2";
+// WakatMarket Service Worker - Offline-First Resilient Cache v3
+const CACHE_NAME = "wakatmarket-pwa-v3";
 const STATIC_ASSETS = [
   "/",
   "/index.html",

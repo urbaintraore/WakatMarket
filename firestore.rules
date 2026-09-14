@@ -145,6 +145,16 @@ service cloud.firestore {
     // CHAT (conversations + messages)
     // =========================================================================
 
+    // Une relation B2B abilitante : doc relations dont l'id est la paire triée
+    // et le statut actif. Le chat privé est strictement réservé aux partenaires
+    // approuvés (besoin de la mise en relation).
+    function isActiveRelationBetween(uidA, uidB) {
+      let pid = (uidA < uidB) ? uidA + '_' + uidB : uidB + '_' + uidA;
+      return exists(/databases/$(database)/documents/relations/$(pid)) &&
+        get(/databases/$(database)/documents/relations/$(pid)).data.statut in
+          ['actif', 'ACTIF', 'accepte', 'accepté', 'ACCEPTE', 'active', 'ACTIVE', 'confirmed'];
+    }
+
     match /conversations/{conversationId} {
       allow read: if isAuthenticated() && (
         isAdmin() ||
@@ -165,11 +175,21 @@ service cloud.firestore {
          exists(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)) &&
          get(/databases/$(database)/documents/conversations/$(resource.data.conversation_id)).data.participants.hasAny([request.auth.uid]))
       );
-      allow create: if isAuthenticated() &&
-        (request.resource.data.sender_id == request.auth.uid ||
-         (request.resource.data.conversation_id != null &&
+      allow create: if isAuthenticated() && (
+        isAdmin() ||
+        (
+          request.resource.data.sender_id == request.auth.uid &&
+          request.resource.data.conversation_id != null &&
           exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)) &&
-          get(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)).data.participants.hasAny([request.auth.uid])));
+          get(/databases/$(database)/documents/conversations/$(request.resource.data.conversation_id)).data.participants.hasAny([request.auth.uid]) &&
+          (
+            request.resource.data.receiver_id == null ||
+            request.resource.data.receiver_id == '' ||
+            // Conversation privée : une relation approuvée (statut actif) est obligatoire.
+            isActiveRelationBetween(request.resource.data.sender_id, request.resource.data.receiver_id)
+          )
+        )
+      );
       allow update, delete: if isAdmin() ||
         resource.data.sender_id == request.auth.uid;
     }

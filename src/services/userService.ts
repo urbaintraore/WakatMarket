@@ -321,6 +321,9 @@ export const userService = {
       const scored: { user: UserProfileData; score: number }[] = [];
 
       Array.from(map.values()).forEach((u) => {
+        // L'administrateur de la plateforme n'apparaît pas dans la recherche
+        // de partenaires B2B (compte de maintenance).
+        if (u.rôle === "ADMIN" || u.role === "ADMIN") return;
         if (role && u.rôle !== role && u.role !== role) return;
 
         const fields = [

@@ -7,6 +7,7 @@ import apiService from "./apiService";
 import { connectionService, ensureUsersExistLocally } from "./connectionService";
 
 const READ_MARKER_KEY = "wakat_erp_v2_conv_read";
+let lastConvsSignature = "";
 
 function getReadMarkers(): Record<string, Record<string, string>> {
   try {
@@ -194,13 +195,21 @@ export const chatService = {
 
         await firestoreUpsert("messages", record);
 
+        // Upsert fiable du doc conversation (merge) pour que le destinataire
+        // découvre la discussion et qu'elle survive au rechargement. Avant,
+        // firestoreUpdate échouait silencieusement quand le doc n'existait pas.
         try {
-          await firestoreUpdate("conversations", conversationId, {
+          const participants = conversationId.startsWith("grp_")
+            ? [senderId, receiverId].filter(Boolean)
+            : conversationId.split("_").filter(Boolean);
+          await firestoreUpsert("conversations", {
+            id: conversationId,
+            participants,
             last_message: finalContent,
             updated_at: nowIso
           });
         } catch (convErr: any) {
-          console.warn("Notice update conversation Firestore:", convErr.message);
+          console.warn("Notice upsert conversation Firestore:", convErr.message);
         }
 
         // Notification serveur "nouveau message" (fire-and-forget, idempotente)
@@ -364,13 +373,25 @@ export const chatService = {
         updatedAt: c.updatedAt
       }));
 
+      // Cache local (offline + survie au reload) d'abord, relations ensuite,
+      // Firestore en autorité finale une fois l'onSnapshot livré.
       const map = new Map<string, Conversation>();
+      db.getConversations().forEach(c => map.set(c.id, c));
       localConvs.forEach(c => map.set(c.id, c));
-      remoteConvs.forEach(c => {
-        if (!map.has(c.id)) map.set(c.id, c);
-      });
+      remoteConvs.forEach(c => map.set(c.id, c));
 
-      callback(Array.from(map.values()));
+      const merged = Array.from(map.values());
+      try {
+        const sig = merged.map(c => `${c.id}:${c.lastMessage || ""}:${c.updatedAt || ""}`).join("|");
+        if (sig !== lastConvsSignature) {
+          lastConvsSignature = sig;
+          db.saveConversations(merged);
+        }
+      } catch (e) {
+        console.warn("[ChatService] Persistance des conversations impossible :", e);
+      }
+
+      callback(merged);
     };
 
     emitConvs();
@@ -427,7 +448,12 @@ export const chatService = {
 
     if (isFirebaseConfigured()) {
       try {
-        await firestoreUpdate("conversations", conversationId, {
+        const participants = conversationId.startsWith("grp_")
+          ? []
+          : conversationId.split("_").filter(Boolean);
+        await firestoreUpsert("conversations", {
+          id: conversationId,
+          ...(participants.length ? { participants } : {}),
           [`unread_count_${userId}`]: 0,
           [`last_read_at_${userId}`]: nowIso
         });

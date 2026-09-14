@@ -393,8 +393,10 @@ export const ClientManagement: React.FC<ClientListProps> = ({
     if (!q || q.length < 3) return [];
 
     return allKnownUsers.filter(u => {
-      // 1. Exclure l'utilisateur connecté lui-même
+      // 1. Exclure l'utilisateur connecté lui-même ET l'administrateur
+      //    de la plateforme (compte de maintenance, hors annuaire B2B).
       if (currentUser?.id && u.id === currentUser.id) return false;
+      if (u.role === "ADMIN") return false;
 
       // 2. Exiger le rôle/profil sélectionné (ne jamais contourner cette règle)
       if (selectedRole && u.role !== selectedRole) return false;
